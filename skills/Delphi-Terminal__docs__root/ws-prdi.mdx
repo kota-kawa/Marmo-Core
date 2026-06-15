@@ -1,0 +1,108 @@
+---
+title: "PredictIt WebSocket"
+description: "Real-time price streaming for PredictIt prediction markets"
+---
+
+## Connection
+
+Connect to the PredictIt WebSocket endpoint:
+
+```
+wss://api.delphiterminal.co/ws/prdi?api_key=YOUR_API_KEY
+```
+
+| Property | Value |
+|----------|-------|
+| Protocol | WebSocket (wss://) |
+| Authentication | `api_key` query parameter |
+| Keepalive | Ping every 54 seconds |
+| Timeout | 60 seconds without pong |
+| Max Message Size | 16 KB |
+
+## Subscribing to markets
+
+Once connected, send a JSON message to subscribe using `market_id`:
+
+```json
+{
+  "action": "subscribe",
+  "market_ids": ["34256"],
+  "message_types": ["prices"]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `action` | string | Yes | `subscribe` or `unsubscribe` |
+| `market_ids` | array | Yes | Array of PredictIt market identifiers (numeric strings) |
+| `message_types` | array | No | `["prices"]` only. Defaults to prices if omitted. **No orderbook or trades available.** |
+
+## Unsubscribing
+
+```json
+{
+  "action": "unsubscribe",
+  "market_ids": ["34256"]
+}
+```
+
+## Message types
+
+### Price messages
+
+```json
+{
+  "type": "prices",
+  "data": {
+    "venue": "PRDI",
+    "market_id": "34256",
+    "server_time": 1774762511552,
+    "ingest_time": 1774762511553,
+    "payload": {
+      "type": "Ticker",
+      "Ticker": {
+        "price": 0.42,
+        "yes_bid": 0.41,
+        "yes_ask": 0.43,
+        "volume": 0,
+        "open_interest": 0
+      }
+    }
+  }
+}
+```
+
+## Full example
+
+```javascript
+const ws = new WebSocket("wss://api.delphiterminal.co/ws/prdi?api_key=YOUR_API_KEY");
+
+ws.onopen = () => {
+  console.log("Connected to PredictIt WebSocket");
+
+  ws.send(JSON.stringify({
+    action: "subscribe",
+    market_ids: ["34256"],
+    message_types: ["prices"]
+  }));
+};
+
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+
+  if (data.type === "prices") {
+    console.log("Price update:", data.data);
+  }
+};
+
+ws.onclose = () => console.log("Disconnected");
+ws.onerror = (error) => console.error("WebSocket error:", error);
+```
+
+## Important notes
+
+- **Authentication required** via `api_key` query parameter
+- **Prices only** — PredictIt does not provide orderbook depth or individual trade history
+- PredictIt data is sourced via REST polling (60-second intervals)
+- Only emits updates when market state changes (last trade price, best bid/ask)
+- Use `market_id` (PredictIt market identifier) to subscribe

@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --cream: #F5F0EA;
+  --navy: #1C2B4B;
+  --gold: #C9A84C;
+  --gold-lt: #E8D5A3;
+  --charcoal: #2D2D2D;
+  --white: #FFFFFF;
+}
+
+body {
+  background-color: var(--cream);
+  color: var(--charcoal);
+  font-family: 'Josefin Sans', sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Cormorant Garamond', serif;
+  color: var(--navy);
+}
+
+/* Base resets */
+img {
+  object-fit: cover;
+  display: block;
+  max-width: 100%;
+}
+
+/* Custom Selection */
+::selection {
+  background: var(--gold-lt);
+  color: var(--navy);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--cream);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--gold);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--navy);
+}
+
+/* Loader Path Animation */
+.path-draw {
+  stroke-dasharray: 1000;
+  stroke-dashoffset: 1000;
+  animation: draw 1.5s ease forwards;
+}
+
+@keyframes draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}

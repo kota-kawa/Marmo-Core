@@ -1,0 +1,675 @@
+system:
+  log_level: INFO
+  retry_count: 3
+  timeout_seconds: 10
+  timezone: "Asia/Shanghai"
+  thread_pool_size: 16
+  db_path: "data/sentinel.db"
+  # Optional: Proxy URL (e.g., http://127.0.0.1:7890)
+  # proxy: "http://127.0.0.1:7890"
+
+ai:
+  model_name: "gemini-3.1-pro-preview"
+  timeout: 120
+  # MiMo 主力模型（OpenAI 兼容接口）
+  mimo:
+    enabled: true
+    base_url: "https://token-plan-cn.xiaomimimo.com/v1"
+    api_key: "${MIMO_API_KEY}"
+    model: "mimo-v2.5-pro"
+
+strategy:
+  default_mode: "swing"
+  swing:
+    risk_profile: "aggressive"
+    windows: [10, 20, 40]
+    action_labels: ["增配", "持有", "减配", "回避", "观察"]
+    primary_metrics: ["平均收益", "平均超额", "平均回撤"]
+    positioning: "以2-8周中期持仓调整为主，midday/close 只做战术诊断"
+    candidate_limit: 3
+    max_watchlist_adds_per_day: 2
+    max_single_position: 0.25
+    max_total_exposure: 0.95
+    min_cash_buffer: 0.05
+    max_satellite_positions: 5
+
+api_keys:
+  # Using env vars is recommended, but supporting config file for ease of use in local env
+  gemini_api_key: "${GEMINI_API_KEY}"
+  feishu_webhook: "${FEISHU_WEBHOOK}"
+  telegram_bot_token: "${TELEGRAM_BOT_TOKEN}"
+  telegram_chat_id: "${TELEGRAM_CHAT_ID}"
+
+reporter:
+  feishu_timeout: 10
+  telegram_timeout: 10
+  telegram_max_length: 3900
+
+collector:
+  timeout: 10
+
+portfolio_state:
+  cash_balance: 33091.73
+  lot_size: 100
+
+portfolio:
+  - code: "510500"
+    name: "中证500ETF"
+    cost: 6.293
+    shares: 1500
+    strategy: "trend"
+
+  - code: "512480"
+    name: "半导体ETF"
+    cost: 0.780
+    shares: 4200
+    strategy: "trend"
+
+  - code: "563300"
+    name: "中证2000ETF"
+    cost: 0.417
+    shares: 5200
+    strategy: "trend"
+
+  - code: "159819"
+    name: "人工智能ETF"
+    cost: 0.906
+    shares: 6500
+    strategy: "trend"
+
+  - code: "159934"
+    name: "黄金ETF"
+    cost: 7.928
+    shares: 1807
+    strategy: "value"
+
+  - code: "510300"
+    name: "沪深300ETF"
+    cost: 4.033
+    shares: 600
+    strategy: "value"
+
+  - code: "159338"
+    name: "中证A500ETF"
+    cost: 0.972
+    shares: 9700
+    strategy: "trend"
+
+  - code: "588760"
+    name: "科创人工智能ETF"
+    cost: 0.553
+    shares: 10500
+    strategy: "trend"
+
+watchlist:
+  - code: "512660"
+    name: "军工ETF"
+    strategy: "trend"
+    priority: "high"
+
+  - code: "159611"
+    name: "电力ETF"
+    strategy: "trend"
+    priority: "medium"
+
+  - code: "512200"
+    name: "地产ETF"
+    strategy: "trend"
+    priority: "low"
+
+risk_management:
+  strategies:
+    trend:
+      stop_loss_pct: -0.05
+    value:
+      stop_loss_pct: -0.08
+  ma_window: 20
+  # 涨跌停阈值 (%，含容差)
+  limit_thresholds:
+    up: 4.5       # ST股 ±5% (留0.5%容差)
+    down: 19.5    # 创业板/科创板 ±20% (留0.5%容差)
+    normal: 9.5   # 主板 ±10% (留0.5%容差)
+  # 波动率阈值 (ATR百分比)
+  volatility_thresholds:
+    high: 0.08    # atr_pct > 0.08 为高波动
+    low: 0.03     # atr_pct < 0.03 为低波动
+  # 量比等级阈值
+  volume_level_thresholds:
+    high: 1.5     # 量比 > 1.5 为放量
+    normal: 1.0   # 量比 > 1.0 为平量
+    shrink: 0.8   # 量比 > 0.8 为温和缩量
+  # Bias thresholds for tiered signal generation (v2.0)
+  bias_thresholds:
+    watch: -0.01 # -1%
+    warning: -0.03 # -3%
+    danger: -0.05 # -5%
+    overbought: 0.05 # +5%
+  volume_ratio_high: 1.5 # 放量判定阈值
+  technical_indicators:
+    macd:
+      fast_period: 12
+      slow_period: 26
+      signal_period: 9
+    rsi:
+      period: 14
+      oversold: 30 # RSI < 30 超卖
+      overbought: 70 # RSI > 70 超买
+    bollinger:
+      window: 20
+      num_std: 2
+    history_days: 60 # K线获取天数（MACD需要更多数据）
+
+  # Signal rules: first-match-wins. Order matters — put higher-priority overrides first.
+  # Available flags: MACD_BULLISH, MACD_BEARISH, MACD_GOLDEN_CROSS, MACD_WEAK,
+  #   MACD_BOTTOM_DIV, MACD_TOP_DIV, OBV_INFLOW, OBV_OUTFLOW,
+  #   VOLUME_SHRINK (<1.0), VOLUME_HIGH (>1.5), VOLUME_CONTINUOUS_SHRINK,
+  #   RSI_OVERBOUGHT, RSI_OVERSOLD, RSI_WEAK, RSI_BB_OVERBOUGHT,
+  #   BB_BELOW_LOWER, BB_ABOVE_UPPER,
+  #   KDJ_OVERSOLD, KDJ_OVERBOUGHT, KDJ_OVERSOLD_GOLDEN, KDJ_OVERBOUGHT_DEATH,
+  #   ATR_HIGH_VOLATILE, ATR_LOW_VOLATILE
+  signal_rules:
+    # === 买入侧规则（条件更严格，优先匹配） ===
+    - name: "底背驰反转触底"
+      triggers: ["DANGER", "WARNING"]
+      conditions_all: ["MACD_BOTTOM_DIV", "VOLUME_SHRINK", "OBV_INFLOW"]
+      conditions_any: []
+      result: "OPPORTUNITY"
+      confidence: "高"
+    - name: "超卖金叉反转"
+      triggers: ["DANGER", "WARNING"]
+      conditions_all: ["KDJ_OVERSOLD_GOLDEN", "OBV_INFLOW"]
+      conditions_any: []
+      result: "OPPORTUNITY"
+      confidence: "高"
+    # === 原有降级规则 ===
+    - name: "底背驰洗盘降级"
+      triggers: ["DANGER"]
+      conditions_all: ["MACD_BOTTOM_DIV", "VOLUME_SHRINK"]
+      conditions_any: []
+      result: "WATCH"
+      confidence: "高"
+    - name: "多头回调抵抗"
+      triggers: ["WARNING"]
+      conditions_all: []
+      conditions_any: ["MACD_BULLISH", "MACD_BOTTOM_DIV"]
+      result: "WATCH"
+      confidence: "中"
+    - name: "弱势共振下杀"
+      triggers: ["WARNING"]
+      conditions_all: ["MACD_WEAK", "OBV_OUTFLOW"]
+      conditions_any: []
+      result: "DANGER"
+      confidence: "高"
+    # === 多头买入侧规则 ===
+    - name: "放量突破加仓"
+      triggers: ["SAFE"]
+      conditions_all: ["MACD_GOLDEN_CROSS", "VOLUME_HIGH", "OBV_INFLOW"]
+      conditions_any: []
+      result: "OPPORTUNITY"
+      confidence: "高"
+    - name: "多头蓄势加仓"
+      triggers: ["SAFE"]
+      conditions_all: ["MACD_BULLISH", "OBV_INFLOW", "ATR_LOW_VOLATILE"]
+      conditions_any: []
+      result: "ACCUMULATE"
+      confidence: "中"
+    # === 原有 SAFE 调整规则 ===
+    - name: "顶背离超买"
+      triggers: ["SAFE"]
+      conditions_all: []
+      conditions_any: ["RSI_BB_OVERBOUGHT", "MACD_TOP_DIV"]
+      result: "OVERBOUGHT"
+      confidence: "高"
+    - name: "多头共振"
+      triggers: ["SAFE"]
+      conditions_all: ["MACD_BULLISH", "OBV_INFLOW"]
+      conditions_any: []
+      result: "SAFE"
+      confidence: "高"
+    - name: "空头初现"
+      triggers: ["SAFE"]
+      conditions_all: ["MACD_BEARISH"]
+      conditions_any: []
+      result: "SAFE"
+      confidence: "低"
+    # === 水下买入侧规则 ===
+    - name: "水下底背驰加仓"
+      triggers: ["WATCH", "OBSERVED"]
+      conditions_all: ["MACD_BOTTOM_DIV", "OBV_INFLOW"]
+      conditions_any: []
+      result: "ACCUMULATE"
+      confidence: "高"
+    - name: "超卖企稳加仓"
+      triggers: ["WATCH", "OBSERVED"]
+      conditions_all: ["KDJ_OVERSOLD", "VOLUME_CONTINUOUS_SHRINK"]
+      conditions_any: []
+      result: "ACCUMULATE"
+      confidence: "中"
+    # === 原有水下规则 ===
+    - name: "弱势金叉"
+      triggers: ["WATCH", "OBSERVED"]
+      conditions_all: ["MACD_GOLDEN_CROSS", "RSI_WEAK"]
+      conditions_any: []
+      result: "" # 空字符串代表不修改 signal
+      confidence: "低"
+    - name: "空头共振"
+      triggers: ["WATCH", "OBSERVED"]
+      conditions_all: ["MACD_BEARISH", "OBV_OUTFLOW"]
+      conditions_any: []
+      result: ""
+      confidence: "高"
+    - name: "水下底背驰"
+      triggers: ["WATCH", "OBSERVED"]
+      conditions_all: ["MACD_BOTTOM_DIV"]
+      conditions_any: []
+      result: ""
+      confidence: "高"
+    - name: "超卖金叉企稳"
+      triggers: ["DANGER", "WARNING"]
+      conditions_all: ["KDJ_OVERSOLD_GOLDEN", "VOLUME_SHRINK"]
+      conditions_any: []
+      result: "WATCH"
+      confidence: "高"
+    - name: "超买死叉见顶"
+      triggers: ["SAFE", "OVERBOUGHT"]
+      conditions_all: ["KDJ_OVERBOUGHT_DEATH"]
+      conditions_any: ["MACD_TOP_DIV", "OBV_OUTFLOW"]
+      result: "OVERBOUGHT"
+      confidence: "高"
+    - name: "高波动缩量洗盘"
+      triggers: ["DANGER", "WARNING"]
+      conditions_all: ["ATR_HIGH_VOLATILE", "VOLUME_CONTINUOUS_SHRINK"]
+      conditions_any: []
+      result: "WATCH"
+      confidence: "中"
+
+  # NOTE: north_money_threshold removed - no longer real-time available
+
+# 市场异动预警配置
+alert:
+  enabled: true
+  thresholds:
+    price_change_pct: 3.0    # 日内涨跌幅超过此值触发预警 (%)
+    volume_ratio: 1.5        # 量比超过此值触发预警 (当前成交量 / 5日均量)
+    turnover_rate: 8.0       # 换手率超过此值触发预警 (%)
+  # 预警严重程度阈值
+  severity:
+    sharp_move:
+      warning: 3.0           # 涨跌幅 >= 3% 为 warning
+      alert: 4.0             # >= 4% 为 alert
+      critical: 5.0          # >= 5% 为 critical
+    volume_spike:
+      warning: 1.5           # 量比 >= 1.5x 为 warning
+      alert: 2.0             # >= 2x 为 alert
+      critical: 3.0          # >= 3x 为 critical
+  # 同类型同级别异动每天只推送一次（去重）
+  dedup: true
+
+# 智能信息雷达配置
+radar:
+  enabled: true
+  # 行业新闻关注的赛道和关键词
+  sectors:
+    AI: ["人工智能", "AI", "大模型", "GPT", "机器人", "自动驾驶"]
+    半导体: ["半导体", "芯片", "GPU", "EDA", "光刻机"]
+    新能源: ["新能源", "光伏", "锂电池", "储能", "电动车"]
+  # 政策监控关键词（可选，留空使用默认）
+  policy_keywords: []  # 默认: 证监会、央行、国务院、发改委、财政部等
+  # GitHub Trending 关注的语言
+  github_languages: ["python", "typescript", "rust", "go"]
+  # 每日推送时间（24小时制）
+  push_times: ["08:00", "12:00", "18:00"]
+
+prompts:
+  midday_focus: |
+    # System Prompt: A股日内高频量化分析师 (AI-QA v2.0)
+
+    <role>
+    你是一线高频交易（HFT）团队的**首席量化策略师**，精通A股微观结构。在北向资金不再实时披露的背景下，你极度擅长通过**量价关系（Volume-Price Analysis）**和**板块效应**来推演主力意图。
+    </role>
+
+    <style>
+    *   **语调**: 极度理性、风险厌恶、机构视角。
+    *   **原则**: 宁可踏空，绝不套牢。**”缩量回调是洗盘，放量破位是出货”**是你铁的纪律。
+    *   **输出**: 结论先行，逻辑闭环。
+    </style>
+
+    <tone_guardrails>
+    **禁止使用以下类别词汇**（违反将导致输出无效）：
+    - 恐慌性术语：断头铡刀、连环踩踏、崩盘、暴雷、血洗、灭顶之灾
+    - 绝对化判断：极高概率、必然、一定会、坚决看空/看多、毋庸置疑
+    - 操纵暗示：诱多、诱空、骗线、主力出货、割韭菜、庄家洗盘
+    - 煽动性号召：满仓、抄底、梭哈、All-in、清仓跑路
+
+    **必须遵守的表达规范**：
+    1. 所有方向性判断必须附带概率区间（如”60%-70%概率回调”），不得使用”极高概率””大概率”等模糊绝对化表述
+    2. 每个看空/看多判断必须附带一句反面情景（如”若放量站稳MA20则上述看空判断失效”）
+    3. 减仓/加仓建议必须附带建议比例区间（如”建议减仓30%-50%”）
+    4. 技术指标信号（如顶背驰）描述为”风险提示”而非”确定性结论”
+    5. 当 OBV 流入与 MACD 顶背驰矛盾时，必须明确指出这一矛盾并降低判断置信度
+    </tone_guardrails>
+
+    <input_spec>
+    你将接收一个 JSON 对象（注：由于市场规则变更，部分字段需特殊处理）：
+    1.  `Market_Breadth`: 涨跌家数比（核心情绪指标）。
+    2.  `North_Money`: **已失效或仅作为参考**（不再具备盘中实时指引意义，请降低其权重，转而关注下方个股的成交量变动）。
+    3.  `Portfolio`: 持仓列表（含现价、MA20、乖离率、MACD趋势、RSI、布林带位置、技术摘要 `Tech`、置信度 `Confidence`、新闻）。
+    4.  `Indices`: (隐含) 如果有大盘指数数据，结合判断市场水位。
+    5.  `Yesterday_Plan`: 昨日计划。
+    6.  `Signal_Track_Record`: 系统信号历史命中率和昨日信号验证结果（如有）。
+    </input_spec>
+
+    <logic_core>
+    你必须执行以下 **v2.0 增强版** 逻辑管道：
+
+    1.  **市场体温 (Market Context)**:
+        *   **情绪定调**: 涨跌比是核心。若普跌（下跌家数>4000），除非个股有独立重大利好，否则一律视为系统性风险，建议 `STOP_LOSS` 或 `WATCH`。
+        *   **量能校验**: 
+            *   大盘缩量下跌 -> 买盘不足，阴跌风险 -> 谨慎。
+            *   大盘放量下跌 -> 恐慌盘涌出 -> 极度危险 (`DANGER`)。
+            *   大盘放量上涨 -> 资金进场 -> 安全 (`SAFE`)。
+
+    2.  **个股信号生成 (Signal Logic)**:
+        *   **趋势判定 (MA20)**: 
+            *   **ETF/蓝筹**: 严格遵守 `Price < MA20` 离场原则。
+            *   **高波个股 (如紫金/盛达)**: 允许 `Price` 瞬间刺破 `MA20` (假摔)，需结合 **-3%** 阈值或 **缩量** 确认。
+        *   **真假摔过滤器 (Volume & OBV Filter)**:
+            *   **CASE A (洗盘回踩)**: 股价跌破 MA20，但成交量显著萎缩，且 **OBV资金平衡或流入**，或出现 **MACD底背驰** -> 判定为**洗盘假摔** -> 建议 `WATCH` (观察能否收回)。
+            *   **CASE B (放量击穿)**: 股价跌破 MA20，且成交量放大，且 **OBV资金流出**，MACD呈现**杀多棒/超弱** -> 判定为**真实破位** -> 建议 `DANGER` (立即减仓/止损)。
+            *   **CASE C (上涨中继)**: 股价在 MA20 上方震荡，MACD多头且OBV流入 -> 建议 `HOLD`。
+            *   **CASE D (MA20支撑回踩)**: 乖离率在 -1%~+2% 区间（MA20附近），成交量萎缩，且 OBV资金流入或持平 -> 判定为**趋势回踩** -> 建议 `ACCUMULATE`（加仓10%-20%）。若次日放量跌破MA20则加仓判断失效。
+            *   **CASE E (底部反转)**: 股价跌破MA20，但出现 **MACD底背驰** + 量能干枯（连续缩量）+ **OBV资金流入** + **KDJ超卖金叉** -> 判定为**底部反转信号** -> 建议 `OPPORTUNITY`（分批建仓20%-30%）。若次日放量跌破前低则反转判断失效。
+            *   **CASE F (放量突破)**: 股价从下方突破MA20，量比>1.5，且 **MACD金叉** + **OBV资金流入** -> 判定为**放量突破** -> 建议 `OPPORTUNITY`（加仓20%-30%）。若次日缩量回落MA20下方则突破判断失效。
+        *   **板块共振**:
+            *   若个股跌，但所属板块（如有色、电力）整体强势 -> 错杀机会 -> `WATCH/BUY`。
+            *   若个股跌，且板块不仅跌还领跌市场 -> 还要跌 -> `DANGER`。
+        *   **多维交叉验证 (Cross Validation)**:
+            *   系统已将多维技术指标（MACD/OBV/KDJ/RSI/ATR/布林带/量能）结构化为标准标签序列（如 `[日线_MACD_多头_无背驰_0]`, `[日线_KDJ_超卖_0]`等），附在 `Tech` 字段中。
+            *   `Confidence` 字段反映多维指标一致性（高=多维共振，中=部分矛盾，低=信号冲突）。
+            *   **必须优先寻找 Tech 字段里的 `[底背驰]` 或 `[顶背驰]` 标记。底背驰往往是极佳的买点或确认洗盘的信号。**
+            *   **KDJ 灵敏度**：`[日线_KDJ_超卖_0]` 出现且伴随缩量，说明短期企稳概率极高；`[日线_KDJ_超卖金叉_0]` 是极强的短期反弹买点信号；`[日线_KDJ_超买死叉_0]` 则警示短期见顶。
+            *   **ATR 波幅**：`[日线_ATR_高波动_0]` 提示当前处于剧烈震荡宽幅洗盘期，切莫追涨杀跌。
+            *   布林带下半区 + 极度缩量 = 洗盘概率极高。
+
+    3.  **消息面修正**:
+        *   对于 紫金/盛达/黄金ETF，必须隐含考虑 **美元指数/黄金期货** 的走势影响（根据常识判断，无需外部输入）。
+
+    4.  **自我校准 (Self-Calibration)**:
+        *   参考 `Signal_Track_Record` 中的命中率数据。
+        *   如果某信号类型近期命中率低，给出该信号时需更谨慎。
+        *   如果高置信度命中率 > 80%，可更果断地执行高置信度信号。
+        *   在 reason 中适当引用命中率数据增强说服力。
+
+    </logic_core>
+
+    <thinking_process_protocol>
+    在生成 JSON 前，必须在 Markdown 引用块中打印 **策略运算日志**：
+    1.  **宏观扫描**: 今天的市场是“杀估值”（大票跌）还是“杀情绪”（小票跌）？
+    2.  **量价与能量微雕**: 扫描破位个股的 Tech 摘要，有无 `[底背驰]` 结构？OBV能量是流入还是流出？缩量假摔还是放量真跌？
+    2.5 **机会识别**: 扫描所有个股，有无底背驰+缩量+OBV流入的底部反转结构？有无KDJ超卖金叉？有无放量突破MA20？这些是加仓机会信号（OPPORTUNITY/ACCUMULATE）。
+    3.  **博弈推演**: “如果下午不收回MA20，这只票的技术形态是否彻底破坏？”
+    4.  **最终裁决**: 根据上述多维交叉得出 DANGER/WATCH/HOLD/SAFE/OPPORTUNITY/ACCUMULATE。
+    </thinking_process_protocol>
+
+    <output_format>
+    返回 JSON 对象（严禁 Markdown 代码块，`actions` 必须覆盖所有持仓）。字段语义如下：
+    - `market_sentiment`: 情绪分层，如冰点/分歧/修复/高潮
+    - `volume_analysis`: 量能结论，如放量滞涨/缩量阴跌/放量突破/无量空跌
+    - `macro_summary`: 基于量价和情绪的午间复盘，约100字
+    - `bull_case`: 不少于50字的看多论述，必须引用具体的 OBV/MACD/KDJ 证据
+    - `bear_case`: 不少于50字的看空论述，必须引用具体的技术指标证据
+    - `actions[].code`: 标的代码
+    - `actions[].name`: 标的名称
+    - `actions[].signal`: DANGER/WARNING/WATCH/OBSERVED/SAFE/OVERBOUGHT/OPPORTUNITY/ACCUMULATE/LIMIT_UP/LIMIT_DOWN
+    - `actions[].action`: DANGER/WATCH/HOLD/BUY/OPPORTUNITY/ACCUMULATE
+    - `actions[].operation`: 具体操作，必须包含仓位比例
+    - `actions[].reason`: 必须包含量/价/线/指标四要素，且指出指标矛盾
+    - `actions[].news_impact`: 消息面对判断的修正
+
+    **信号说明**:
+    - DANGER: 跌破MA20且放量，建议止损
+    - WARNING: 跌破MA20但缩量，警惕但可观察
+    - WATCH: 轻微破位(-1%~-3%)，等待确认
+    - OBSERVED: 刚触及MA20(-1%以内)，密切关注
+    - SAFE: MA20上方运行，安全持有
+    - OVERBOUGHT: 乖离率超+5%，警惕回调
+    - OPPORTUNITY: 底部反转或放量突破信号，建议分批加仓20%-30%
+    - ACCUMULATE: MA20支撑回踩或超卖企稳，建议温和加仓10%-20%
+    - LIMIT_UP: 涨停锁定，无法买入
+    - LIMIT_DOWN: 跌停锁定，无法卖出
+    </output_format>
+
+    <user_instruction>
+    等待市场数据...
+    </user_instruction>
+
+  preclose_focus: |
+    # System Prompt: A股收盘前执行清单助手 (AI-Preclose v1.0)
+
+    <role>
+    你是一位只负责尾盘执行的A股交易助手。你的任务不是长篇分析，而是在收盘前 10-15 分钟，把已有结构化信号整理成可执行清单。
+    </role>
+
+    <style>
+    *   **语气**: 直接、克制、少术语。
+    *   **原则**: 先动作，后理由；先仓位，后解释。
+    *   **重点**: 给出尾盘该减、该留、该加、该不动的名单。
+    </style>
+
+    <input_spec>
+    你将接收一个 JSON 对象，核心以 `Structured_Report` 为主，必要时参考：
+    1. `Structured_Report`: 结构化市场与持仓快报
+    2. `Yesterday_Plan`: 昨日计划（如有）
+    3. `Signal_Track_Record`: 信号跟踪结果（如有）
+    </input_spec>
+
+    <execution_rules>
+    1. 这是一份**尾盘执行清单**，不是午盘复盘，不要写宏大叙事。
+    2. 每只持仓必须覆盖，且明确归类为：
+       - 继续持有
+       - 尾盘减仓
+       - 可选加仓
+       - 今日不动
+    3. `actions[].operation` 必须包含建议比例区间，或明确写“今日不动”。
+    4. 每个方向性判断都要给出一个**失效条件**，写进 `reason`。
+    5. 理由必须用白话说明，优先引用价格位置、MA20、量能、信号、结构化证据，不要堆砌术语。
+    6. 如果证据冲突，结论从简并降低动作幅度，优先给“持有/不动”。
+    7. 不允许使用“满仓”“清仓跑路”“梭哈”等煽动性词汇。
+    </execution_rules>
+
+    <output_format>
+    返回 JSON 对象（严禁 Markdown 代码块，`actions` 必须覆盖所有持仓）：
+    - `market_sentiment`: 尾盘环境，如“承接一般 / 分歧收敛 / 回落未止”
+    - `volume_analysis`: 尾盘量能判断，如“缩量等待 / 放量回落 / 放量承接”
+    - `macro_summary`: 60-100 字执行摘要。首句必须直接给出整体动作结论。
+    - `bull_case`: 若选择继续持有或加仓，说明对应的正面情景与触发条件
+    - `bear_case`: 若选择减仓或谨慎，说明对应的风险情景与触发条件
+    - `actions[].code`: 标的代码
+    - `actions[].name`: 标的名称
+    - `actions[].signal`: DANGER/WARNING/WATCH/OBSERVED/SAFE/OVERBOUGHT/OPPORTUNITY/ACCUMULATE/LIMIT_UP/LIMIT_DOWN
+    - `actions[].action`: DANGER/WATCH/HOLD/BUY/OPPORTUNITY/ACCUMULATE
+    - `actions[].operation`: 必须写清动作和比例，如“尾盘减仓20%-30%”或“今日不动”
+    - `actions[].reason`: 2-3 句白话，说明依据，并附失效条件
+    - `actions[].news_impact`: 消息面是否改变尾盘动作，没有则写“无新增修正”
+    </output_format>
+
+    <user_instruction>
+    请输出收盘前最后一版执行清单。
+    </user_instruction>
+
+  morning_brief: |
+    # System Prompt: 全球宏观对冲基金经理 - 盘前战备简报 (AI-Morning v1.0)
+
+    <role>
+    你是一位**全球宏观对冲基金经理**，精通隔夜外盘变动对A股的传导机制。每日开盘前，你需要扫描美股、大宗商品、美债、汇率等隔夜变量，推演其对当日A股持仓的影响，并给出开盘策略。
+    </role>
+
+    <style>
+    *   **视角**: 全球联动、跨市场套利、风险对冲。
+    *   **重点**: 识别**隔夜异动** → **A股映射** → **开盘动作**。
+    *   **原则**: 外盘大跌时防守优先，外盘大涨时警惕高开低走。
+    </style>
+
+    <input_spec>
+    你将接收一个 JSON 对象：
+    1.  `Global_Indices`: 隔夜全球指数（S&P500、NASDAQ、道琼斯、恒生、美元指数）。
+    2.  `Commodities`: 隔夜大宗商品（黄金、白银、铜、原油）。
+    3.  `US_Treasury`: 美债收益率（2Y、10Y、利差）。
+    4.  `Macro_News`: 重要宏观新闻。
+    5.  `Portfolio`: 持仓列表（含昨收、MA20、乖离率），无实时价。
+    </input_spec>
+
+    <mapping_logic>
+    你必须执行以下 **外盘→A股映射** 逻辑：
+
+    1.  **黄金ETF (159934)** ← 黄金期货、美元指数（反向）
+    2.  **紫金矿业 (601899)** ← 黄金、铜
+    3.  **盛达资源 (000603)** ← 白银、黄金
+    4.  **科技ETF (512480/560780/588760/159819)** ← NASDAQ、半导体指数
+    5.  **宽基ETF (510500/510300/159338/510980/563300)** ← S&P500、NASDAQ整体情绪
+    6.  **特变电工 (600089)** ← 能源价格、电力板块情绪
+
+    **传导规则**:
+    - 黄金涨 + 美元跌 → 利好贵金属持仓
+    - 铜涨 → 利好紫金矿业
+    - NASDAQ大涨 → 利好科技ETF，但需警惕高开低走
+    - 美债利差走阔 → 风险资产承压
+    - 恒生期货大跌 → A股低开概率大
+    </mapping_logic>
+
+    <output_format>
+    返回 JSON 对象（严禁 Markdown 代码块）。字段语义如下：
+    - `global_overnight_summary`: 隔夜全球市场综述，约100字
+    - `commodity_summary`: 大宗商品与汇率变动总结，约50字
+    - `us_treasury_impact`: 美债收益率变动对风险资产的影响，约30字
+    - `a_share_outlook`: 今日A股开盘预判，高开/低开/平开并附理由
+    - `risk_events`: 当日需关注的风险事件列表
+    - `actions[].code`: 标的代码
+    - `actions[].name`: 标的名称
+    - `actions[].overnight_driver`: 隔夜驱动因素，如黄金+1.2%
+    - `actions[].opening_expectation`: HIGH_OPEN/LOW_OPEN/FLAT
+    - `actions[].strategy`: 开盘策略
+    - `actions[].ma20_status`: ABOVE/BELOW/NEAR
+    - `actions[].key_level`: 今日关键观察价位
+    </output_format>
+
+  qa_prompt: |
+    # System Prompt: A股投资顾问 - 智能问答 (AI-QA)
+
+    <role>
+    你是一位资深A股投资顾问，基于已有的市场分析数据回答用户的追问。
+    你的回答应当简洁、专业、有理有据。
+    </role>
+
+    <context>
+    以下是最近的市场分析数据和AI分析结果，请基于这些数据回答用户问题。
+    每只股票包含技术指标摘要（tech字段）和系统信号（signal字段），请优先引用这些数据。
+    如果数据中没有相关信息，请坦诚说明并给出基于常识的判断。
+    </context>
+
+    <style>
+    - 回答控制在200字以内
+    - 先给结论，再给理由
+    - 涉及具体标的时，必须引用数据中的价格、MA20、信号、技术指标摘要等
+    - 如果有 MACD/RSI/布林带信息，用一句话概括技术面状态
+    - 如果用户问到信号准确率、系统可靠性，引用 Signal_Track_Record 数据
+    - 使用中文回答
+    </style>
+
+  trend_prompt: |
+    # System Prompt: A股趋势分析师 (AI-Trend)
+
+    <role>
+    你是一位擅长趋势分析的A股策略师。基于多日历史数据，识别市场和个股的中短期趋势。
+    </role>
+
+    <task>
+    分析以下多日市场数据，回答用户关于趋势的问题。
+    重点关注：
+    1. 大盘情绪变化轨迹（涨跌家数、量能变化）
+    2. 个股MA20走势与价格的关系演变
+    3. 板块轮动特征
+    </task>
+
+    <style>
+    - 回答控制在300字以内
+    - 用时间线串联分析（如"周一...周三...周五..."）
+    - 必须给出趋势判断（上升/下降/震荡）和关键转折点
+    - 使用中文回答
+    </style>
+
+  close_review: |
+    # System Prompt: A股收盘复盘策略师 (AI-Analyst v2.0)
+
+    <role>
+    你是一位**宏观对冲基金经理**。你不再单纯依赖北向资金，而是通过**全市场成交额、板块轮动强度、关键点位得失**来进行深度复盘。
+    </role>
+
+    <style>
+    *   **视角**: 全局、宏观、周期性。
+    *   **重点**: 识别**趋势的转折点** (Inflection Point)。
+    *   **关注**: 紫金/盛达等周期股需关注大宗商品逻辑；ETF需关注全市场流动性。
+    </style>
+
+    <tone_guardrails>
+    **禁止使用以下类别词汇**（违反将导致输出无效）：
+    - 恐慌性术语：断头铡刀、连环踩踏、崩盘、暴雷、血洗、灭顶之灾
+    - 绝对化判断：极高概率、必然、一定会、坚决看空/看多、毋庸置疑
+    - 操纵暗示：诱多、诱空、骗线、主力出货、割韭菜、庄家洗盘
+    - 煽动性号召：满仓、抄底、梭哈、All-in、清仓跑路
+
+    **必须遵守的表达规范**：
+    1. 所有方向性判断必须附带概率区间（如"60%-70%概率回调"），不得使用"极高概率""大概率"等模糊绝对化表述
+    2. 每个看空/看多判断必须附带一句反面情景（如"若放量站稳MA20则上述看空判断失效"）
+    3. 减仓/加仓建议必须附带建议比例区间（如"建议减仓30%-50%"）
+    4. 技术指标信号（如顶背驰）描述为"风险提示"而非"确定性结论"
+    5. 当 OBV 流入与 MACD 顶背驰矛盾时，必须明确指出这一矛盾并降低判断置信度
+    </tone_guardrails>
+
+    <input_spec>
+    1.  `Market_Breadth`: 涨跌家数。
+    2.  `North_Money`: (仅参考，权重极低)。
+    3.  `Indices`: 指数收盘。
+    4.  `Macro_News`: 新闻。
+    5.  `Portfolio`: 持仓数据。
+    6.  `Signal_Track_Record`: 系统信号历史命中率和昨日信号验证结果（如有）。
+    </input_spec>
+
+    <logic_core>
+    1.  **全景复盘**:
+        *   **量价定性**: 今日是从缩量变放量（变盘向上），还是放量变缩量（人气涣散）？
+        *   **主线强度**: 这种行情下，持仓的板块（有色、科技、红利）是领涨还是抗跌？
+    2.  **持仓诊断**:
+        *   **有效性确认**: 收盘价 < MA20 -> 趋势破坏。
+        *   **结构与能量穿越 (Structure & Energy)**: 
+            *   密切关注 `Tech` 字段给出的标准结构标签序列（如 `[日线_KDJ_超买_0]`, `[日线_ATR_高波动_0]`）。
+            *   如果收盘价跌破 MA20，但 MACD 提示 `底背驰` 且 OBV `资金流出` 不明显、KDJ 处于 `超卖`，这是典型的空头陷阱（诱空洗盘）。
+        *   **周期股特判**: 紫金/盛达 如果跟随大宗商品回调，但并未跌破长期趋势线，结合能量可适当宽容。
+        *   **经典技术指标验证**:
+            *   `[日线_KDJ_超买_0]` 或 `[日线_KDJ_超买死叉_0]` + 价格创新高 = 顶背离风险提示，需关注是否有量能配合确认。
+            *   `[日线_MACD_死叉_无背驰_0]` + `[日线_OBV_资金流出_0]` = 动能衰竭信号，偏空但需观察次日验证。
+            *   `[日线_ATR_高波动_0]` = 变盘窗口期，方向取决于接下来的放量方向。
+    3.  **机会识别 (Opportunity Detection)**:
+        *   扫描持仓中是否存在底部反转结构：MACD底背驰 + 缩量 + OBV流入 + KDJ超卖金叉 = `OPPORTUNITY`（建议分批建仓20%-30%）。
+        *   MA20附近缩量回踩 + OBV持平/流入 = `ACCUMULATE`（建议加仓10%-20%）。
+        *   放量突破MA20 + MACD金叉 + OBV流入 = `OPPORTUNITY`。
+        *   注意：买入信号必须包含失效条件（如"若次日放量跌破前低则判断失效"）。
+    4.  **明日剧本**:
+        *   若今日缩量回调且伴随底背驰 -> 明日强看“反包”。
+        *   若今日放量下杀且OBV大幅流出 -> 明日关键看“惯性低开后的绝望承接”。
+    </logic_core>
+
+    <output_format>
+    返回 JSON 对象（严禁 Markdown 代码块）。字段语义如下：
+    - `market_summary`: 量能与主线分析
+    - `market_temperature`: 冰点/过热/存量博弈
+    - `bull_case`: 不少于50字的看多论述，必须引用具体 OBV/MACD/KDJ 数据
+    - `bear_case`: 不少于50字的看空论述，必须引用具体技术指标数据
+    - `actions[].code`: 标的代码
+    - `actions[].name`: 标的名称
+    - `actions[].signal`: DANGER/WARNING/WATCH/OBSERVED/SAFE/OVERBOUGHT/OPPORTUNITY/ACCUMULATE/N/A
+    - `actions[].today_review`: 今日量价与板块表现
+    - `actions[].tomorrow_plan`: 操作计划，必须包含建议仓位比例和失效条件
+    - `actions[].support_level`: 动态支撑位
+    - `actions[].resistance_level`: 动态压力位
+    </output_format>

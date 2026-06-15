@@ -1,0 +1,64 @@
+name: Skills Publish Check
+
+"on":
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/**
+      - SKILL.md
+      - README.md
+      - README.en.md
+      - CONTRIBUTING.md
+      - SECURITY.md
+      - LICENSE
+      - package.json
+      - .well-known/**
+      - evals/**
+      - scripts/**
+      - tests/**
+      - assets/**
+      - references/**
+  pull_request:
+    paths:
+      - .github/workflows/**
+      - SKILL.md
+      - README.md
+      - README.en.md
+      - CONTRIBUTING.md
+      - SECURITY.md
+      - LICENSE
+      - package.json
+      - .well-known/**
+      - evals/**
+      - scripts/**
+      - tests/**
+      - assets/**
+      - references/**
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Run unified publish gate
+        run: npm run verify:ci
+
+      - name: Validate marketplace metadata
+        run: npm run verify:publish

@@ -1,0 +1,2867 @@
+"""NanoCode TUI - Terminal UI matching opencode style."""
+
+import asyncio
+import logging
+import os
+import sys
+from dataclasses import dataclass
+from enum import Enum
+
+# Set up TUI logger early for debug statements
+# Use centralized logging from main.py - just get the logger
+_tui_logger = logging.getLogger("nanocode.tui")
+_tui_logger.setLevel(logging.DEBUG)
+
+
+class RichColor(Enum):
+    """Gruvbox-inspired color palette for rich text."""
+
+    FG = "#ebdbb2"  # Light gray - main text
+    YELLOW = "#d79921"  # Yellow - highlights/titles
+    GREEN = "#98971a"  # Green - success/user
+    RED = "#cc241d"  # Red - danger/error
+    BLUE = "#458588"  # Blue - info
+    PURPLE = "#b16286"  # Purple - assistant
+    AQUA = "#83a598"  # Aqua - tool
+    GRAY = "#928374"  # Gray - dim/system
+
+
+from rich.style import Style
+from rich.text import Text
+from textual import work
+from textual.app import App, ComposeResult
+from textual.binding import Binding
+from textual.containers import Container, Horizontal, ScrollableContainer, Vertical
+from textual.screen import ModalScreen
+from textual.widgets import (
+    Button,
+    DataTable,
+    Footer,
+    Header,
+    Input,
+    Label,
+    RichLog,
+    Static,
+)
+
+# Gruvbox Dark Theme Colors
+GRUVBOX = {
+    "bg": "#282828",
+    "bg_soft": "#3c3836",
+    "fg": "#ebdbb2",
+    "red": "#ebdbb2",
+    "green": "#98971f",
+    "yellow": "#d79921",
+    "blue": "#458588",
+    "purple": "#b16286",
+    "aqua": "#689d6a",
+    "gray": "#928374",
+    "orange": "#d65d0e",
+}
+
+
+class Style:
+    """Rich text style names for output area."""
+
+    TEXT_HIGHLIGHT = "cyan"
+    TEXT_HIGHLIGHT_BOLD = "cyan bold"
+    TEXT_DIM = "dim"
+    TEXT_DIM_BOLD = "dim"
+    TEXT_NORMAL = ""
+    TEXT_NORMAL_BOLD = "bold"
+    TEXT_WARNING = RichColor.YELLOW.value
+    TEXT_WARNING_BOLD = f"{RichColor.YELLOW.value} bold"
+    TEXT_DANGER = RichColor.RED.value
+    TEXT_DANGER_BOLD = f"{RichColor.RED.value} bold"
+    TEXT_SUCCESS = RichColor.GREEN.value
+    TEXT_SUCCESS_BOLD = f"{RichColor.GREEN.value} bold"
+    TEXT_INFO = RichColor.BLUE.value
+    TEXT_INFO_BOLD = f"{RichColor.BLUE.value} bold"
+
+    USER_MESSAGE = RichColor.GREEN.value
+    USER_MESSAGE_BOLD = f"{RichColor.GREEN.value} bold"
+    ASSISTANT_MESSAGE = RichColor.PURPLE.value
+    ASSISTANT_MESSAGE_BOLD = f"{RichColor.PURPLE.value} bold"
+    TOOL_MESSAGE = RichColor.AQUA.value
+    TOOL_MESSAGE_BOLD = f"{RichColor.AQUA.value} bold"
+    SYSTEM_MESSAGE = RichColor.GRAY.value
+    SYSTEM_MESSAGE_BOLD = f"{RichColor.GRAY.value} bold"
+    THINKING = f"{RichColor.YELLOW.value} italic"
+
+
+class TracebackScreen(ModalScreen):
+    """Modal screen showing error traceback."""
+
+    BINDINGS = [
+        Binding("escape", "dismiss", "Dismiss"),
+    ]
+
+    CSS = """
+    TracebackScreen {
+        align: center middle;
+    }
+    
+    TracebackScreen > #traceback-dialog {
+        width: 90;
+        height: 80%;
+        border: solid #cc241d;
+        background: #282828;
+        padding: 1 2;
+    }
+    
+    #traceback-title {
+        text-align: center;
+        text-style: bold;
+        color: #cc241d;
+        margin-bottom: 1;
+    }
+    
+    #traceback-content {
+        color: #ebdbb2;
+        height: 1fr;
+        overflow-y: scroll;
+    }
+    
+    #traceback-hint {
+        color: #928374;
+        text-align: center;
+        margin-top: 1;
+    }
+    """
+
+    def __init__(self, title: str, traceback: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._title = title
+        self._traceback = traceback
+
+    def compose(self) -> ComposeResult:
+        yield Static(self._title, id="traceback-title")
+        yield ScrollableContainer(
+            Static(self._traceback, id="traceback-content"),
+            id="traceback-scroll"
+        )
+        yield Static("Press Escape to dismiss", id="traceback-hint")
+
+    def on_mount(self):
+        _tui_logger.debug(f"TracebackScreen mounted: {self._title}")
+
+    def action_dismiss(self):
+        self.dismiss()
+
+
+class PermissionScreen(ModalScreen):
+    """Modal screen for permission requests with y/N/a options."""
+
+    BINDINGS = [
+        Binding("y", "allow_once", "Yes"),
+        Binding("n", "deny", "No"),
+        Binding("a", "allow_always", "Always"),
+        Binding("escape", "cancel", "Cancel"),
+    ]
+
+    CSS = """
+    PermissionScreen {
+        align: center middle;
+    }
+    
+    PermissionScreen > #dialog {
+        width: 50;
+        height: auto;
+        border: solid #458588;
+        background: #282828;
+        padding: 1 2;
+    }
+    
+    #dialog-title {
+        text-align: center;
+        text-style: bold;
+        color: #d79921;
+        margin-bottom: 1;
+    }
+    
+    #dialog-info {
+        color: #ebdbb2;
+        margin-bottom: 1;
+    }
+    
+    #dialog-args {
+        color: #928374;
+        margin-bottom: 1;
+    }
+    
+    #dialog-buttons {
+        align: center middle;
+        margin-top: 1;
+    }
+    
+    #dialog-buttons > Button {
+        margin: 0 1;
+        min-width: 8;
+    }
+    """
+
+    def __init__(self, request, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.request = request
+        self._result = None
+        self._on_dismiss_callback = None
+
+    def compose(self):
+        tool_name = self.request.tool_name
+        args_str = str(self.request.arguments)[:200]
+        
+        yield Container(
+            Static("⚠️ Permission Required", id="dialog-title"),
+            Static(f"Tool: {tool_name}", id="dialog-info"),
+            Static(f"Args: {args_str}", id="dialog-args"),
+            Container(
+                Button("Y)es", variant="primary", id="btn-yes"),
+                Button("N)o", variant="error", id="btn-no"),
+                Button("A)lways", variant="default", id="btn-always"),
+                Button("Cancel", variant="default", id="btn-cancel"),
+                id="dialog-buttons",
+            ),
+            id="dialog",
+        )
+
+    def on_mount(self):
+        _tui_logger.debug(f"PermissionScreen mounted: tool={self.request.tool_name}")
+
+    def on_dismiss(self, result):
+        """Called when screen is dismissed."""
+        _tui_logger.debug(f"PermissionScreen on_dismiss: {result}")
+        if self._on_dismiss_callback:
+            self._on_dismiss_callback(result)
+            self._on_dismiss_callback = None
+
+    def on_button_pressed(self, event):
+        """Handle button presses."""
+        if event.button.id == "btn-yes":
+            self.action_allow_once()
+        elif event.button.id == "btn-no":
+            self.action_deny()
+        elif event.button.id == "btn-always":
+            self.action_allow_always()
+        elif event.button.id == "btn-cancel":
+            self.action_cancel()
+
+    def on_dismiss(self, result):
+        """Called when screen is dismissed."""
+        _tui_logger.debug(f"PermissionScreen on_dismiss: {result}")
+        if self._on_dismiss_callback:
+            self._on_dismiss_callback(result)
+            self._on_dismiss_callback = None
+
+    def action_allow_once(self):
+        from nanocode.agents.permission import PermissionReply, PermissionReplyType
+        self.dismiss(PermissionReply(request_id=self.request.id, reply=PermissionReplyType.ONCE))
+
+    def action_deny(self):
+        from nanocode.agents.permission import PermissionReply, PermissionReplyType
+        self.dismiss(PermissionReply(request_id=self.request.id, reply=PermissionReplyType.REJECT))
+
+    def action_allow_always(self):
+        from nanocode.agents.permission import PermissionReply, PermissionReplyType
+        self.dismiss(PermissionReply(request_id=self.request.id, reply=PermissionReplyType.ALWAYS))
+
+    def action_cancel(self):
+        from nanocode.agents.permission import PermissionReply, PermissionReplyType
+        self.dismiss(PermissionReply(request_id=self.request.id, reply=PermissionReplyType.REJECT))
+
+
+class ModelExplorerScreen(ModalScreen):
+    """Modal screen for exploring available models from models.dev."""
+
+    CSS = """
+    ModelExplorerScreen {
+        align: center middle;
+    }
+
+    ModelExplorerScreen > #model-dialog {
+        width: 80;
+        height: 80%;
+        border: solid #b16286;
+        background: #282828;
+        padding: 1 2;
+    }
+
+    #model-title {
+        text-align: center;
+        text-style: bold;
+        color: #b16286;
+    }
+
+    #model-subtitle {
+        color: #928374;
+        text-align: center;
+    }
+
+    #search-input {
+        margin-bottom: 1;
+    }
+
+    #model-list {
+        height: 1fr;
+    }
+
+    DataTable {
+        height: 100%;
+    }
+
+    #help-text {
+        color: #928374;
+        padding: 0 2 1 2;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+        Binding("enter", "select", "Select"),
+        Binding("ctrl+r", "refresh", "Refresh"),
+        Binding("up", "move_up", "Up"),
+        Binding("down", "move_down", "Down"),
+    ]
+
+    def __init__(self, on_select=None, **kwargs):
+        super().__init__(**kwargs)
+        self._on_select = on_select
+        self._models: list[tuple[str, str, int]] = []  # (provider/model, provider, context_limit)
+        self._filtered: list[tuple[str, str, int]] = []
+        self._loading = True
+        self._refresh_time = None
+        self._selected_index = 0
+
+    def compose(self) -> ComposeResult:
+        yield Vertical(
+            Static("Model Explorer (models.dev)", id="model-title"),
+            Static("Loading...", id="model-subtitle"),
+            Input(placeholder="Search models...", id="search-input"),
+            DataTable(id="model-list"),
+            Static("↑↓: navigate | Enter: select | Ctrl+R: refresh | Escape: cancel", id="help-text"),
+        )
+
+    def on_mount(self):
+        self._load_registry()
+        self.query_one("#model-list", DataTable).focus()
+
+    def on_key(self, event):
+        """Catch keys when Input or DataTable has focus."""
+        if event.key == "enter":
+            self.action_select()
+            event.prevent_default()
+        elif event.key == "escape":
+            self.action_cancel()
+            event.prevent_default()
+
+    def _load_registry(self, force: bool = False):
+        async def load_models():
+            from nanocode.provider_registry import get_provider_registry
+            registry = get_provider_registry()
+            await registry.initialize(force_refresh=force)
+            return registry
+
+        async def set_models(registry):
+            subtitle = self.query_one("#model-subtitle", Static)
+            subtitle.update(f"Loaded: {len(registry._providers)} providers")
+
+            models = []
+            for pid, provider in registry._providers.items():
+                for mname, model_spec in provider.models.items():
+                    models.append((f"{pid}/{mname}", pid, model_spec.context_limit))
+            models.sort(key=lambda x: -x[2])
+
+            self._models = models
+            self._filtered = models[:100]
+            self._loading = False
+            self._update_list()
+
+        asyncio.create_task(load_models()).add_done_callback(
+            lambda f: self.call_later(set_models, f.result())
+        )
+
+    @work()
+    async def action_refresh(self):
+        """Refresh the model registry."""
+        self._loading = True
+        self.query_one("#model-subtitle", Static).update("Refreshing...")
+        self._load_registry(force=True)
+
+    def _update_list(self):
+        table = self.query_one("#model-list", DataTable)
+        table.clear()
+        table.add_columns("Provider/Model", "Context", "Output")
+        for i, (full_id, provider, ctx) in enumerate(self._filtered[:50]):
+            output = min(ctx // 8, 16384)
+            table.add_row(full_id, f"{ctx:,}", f"{output:,}")
+
+    def on_input_changed(self, event: Input.Changed):
+        query = event.value.lower()
+        if query:
+            self._filtered = [
+                (m, p, c) for m, p, c in self._models
+                if query in m.lower() or query in p.lower()
+            ][:50]
+        else:
+            self._filtered = self._models[:50]
+        self._selected_index = 0
+        self._update_list()
+
+    def on_input_submitted(self, event: Input.Submitted):
+        """Handle Enter key in search input."""
+        self.action_select()
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected):
+        row_index = event.cursor_row
+        if 0 <= row_index < len(self._filtered):
+            self._selected_index = row_index
+            self.dismiss((self._filtered[row_index][0], self._filtered[row_index][1]))
+
+    def action_cancel(self):
+        self.dismiss(None)
+
+    def action_select(self):
+        """Select current model and dismiss."""
+        if 0 <= self._selected_index < len(self._filtered):
+            full_id, provider, ctx = self._filtered[self._selected_index]
+            self.dismiss((full_id, provider))
+
+    def action_move_up(self):
+        """Move selection up."""
+        if self._filtered:
+            self._selected_index = max(0, self._selected_index - 1)
+            table = self.query_one("#model-list", DataTable)
+            table.cursor_position = self._selected_index
+
+    def action_move_down(self):
+        """Move selection down."""
+        if self._filtered:
+            self._selected_index = min(len(self._filtered) - 1, self._selected_index + 1)
+            table = self.query_one("#model-list", DataTable)
+            table.cursor_position = self._selected_index
+
+
+class AgentPermissionsScreen(ModalScreen):
+    """Modal screen for managing agent permissions."""
+
+    CSS = """
+    AgentPermissionsScreen {
+        align: center middle;
+    }
+
+    AgentPermissionsScreen > #agent-dialog {
+        width: 80;
+        height: 80%;
+        border: solid #689d6a;
+        background: #282828;
+        padding: 1 2;
+    }
+
+    #agent-title {
+        text-align: center;
+        text-style: bold;
+        color: #689d6a;
+    }
+
+    #agent-subtitle {
+        color: #928374;
+        text-align: center;
+    }
+
+    #agent-list {
+        height: 1fr;
+    }
+
+    DataTable {
+        height: 100%;
+    }
+
+    #help-text {
+        color: #928374;
+        padding: 0 2 1 2;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+        Binding("enter", "toggle", "Toggle"),
+        Binding("up", "move_up", "Up"),
+        Binding("down", "move_down", "Down"),
+    ]
+
+    def __init__(self, on_select=None, **kwargs):
+        super().__init__(**kwargs)
+        self._on_select = on_select
+        self._agents: list[dict] = []  # {name, rules}
+        self._filtered: list[dict] = []
+        self._selected_index = 0
+
+    def compose(self) -> ComposeResult:
+        yield Vertical(
+            Static("Agent Permissions", id="agent-title"),
+            Static("Manage agent tool permissions (permission, pattern, action)", id="agent-subtitle"),
+            Input(placeholder="Search agents...", id="search-input"),
+            DataTable(id="agent-list"),
+            Static("↑↓: navigate | Enter/Double-click: view rules | Escape: cancel", id="help-text"),
+        )
+
+    def on_mount(self):
+        self._load_agents()
+        self.query_one("#agent-list", DataTable).focus()
+
+    def _load_permission_overrides(self, config_path) -> dict:
+        """Load permission overrides from config.yaml."""
+        from pathlib import Path
+
+        import yaml
+
+        config_path_obj = Path(config_path)
+        if not config_path_obj.exists():
+            return {}
+        with open(config_path_obj) as f:
+            config = yaml.safe_load(f) or {}
+        perm_overrides = {}
+        agents_config = config.get("agents", {})
+        for name, rules in agents_config.items():
+            if isinstance(rules, list):
+                perm_overrides[name] = rules
+        if not perm_overrides:
+            perms_config = config.get("permissions") or {}
+            for name, rules in perms_config.get("agents", {}).items():
+                if isinstance(rules, list):
+                    perm_overrides[name] = rules
+        return config, perm_overrides
+
+    def _get_agent_base_permission(self, agent, perm_overrides: dict) -> str:
+        """Determine base permission level for an agent."""
+        rules = agent.permission if hasattr(agent, "permission") else []
+        if agent.name in perm_overrides and isinstance(perm_overrides[agent.name], list):
+            for rule_dict in perm_overrides[agent.name]:
+                if isinstance(rule_dict, dict):
+                    if rule_dict.get("permission") == "*" and rule_dict.get("pattern") == "*":
+                        return rule_dict.get("action", "ask")
+        elif rules:
+            for rule in rules:
+                if rule.permission == "*" and rule.pattern == "*":
+                    return rule.action.value
+        return "ask"
+
+    def _load_agents(self):
+        from nanocode.agents import get_agent_registry
+
+        registry = get_agent_registry()
+
+        config, perm_overrides = self._load_permission_overrides("config.yaml")
+        if config:
+            registry.apply_config(config)
+
+        agents = []
+        for agent in registry.list_all():
+            if agent.hidden:
+                continue
+            rules = agent.permission if hasattr(agent, "permission") else []
+            agents.append({
+                "name": agent.name,
+                "rules": rules,
+                "base_permission": self._get_agent_base_permission(agent, perm_overrides),
+            })
+
+        self._agents = agents
+        self._filtered = agents
+        self._update_list()
+
+    def _update_list(self):
+        table = self.query_one("#agent-list", DataTable)
+        table.clear()
+        table.add_columns("Agent", "Base Permission", "Rules Count", "Description")
+        for agent in self._filtered:
+            desc = agent.get("description", "")[:30]
+            table.add_row(
+                agent["name"], agent["base_permission"], str(len(agent["rules"])), desc
+            )
+
+    def on_input_changed(self, event: Input.Changed):
+        query = event.value.lower()
+        if query:
+            self._filtered = [
+                a
+                for a in self._agents
+                if query in a["name"].lower() or query in a["base_permission"].lower()
+            ]
+        else:
+            self._filtered = self._agents
+        self._selected_index = 0
+        self._update_list()
+
+    def on_input_submitted(self, event: Input.Submitted):
+        """Handle Enter key in search - toggle selected agent."""
+        self.action_toggle()
+
+    def on_key(self, event):
+        """Catch Enter key when DataTable has focus."""
+        if event.key == "enter":
+            self.action_toggle()
+            event.prevent_default()
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected):
+        row_index = event.cursor_row
+        if 0 <= row_index < len(self._filtered):
+            self._selected_index = row_index
+            self._show_rules()
+
+    def action_cancel(self):
+        self.dismiss(None)
+
+    def action_toggle(self):
+        """Show rules for current agent."""
+        if self._filtered and 0 <= self._selected_index < len(self._filtered):
+            self._show_rules()
+
+    def _show_rules(self):
+        """Show a screen to manage rules for the selected agent."""
+        from nanocode.tui.app import AgentRulesScreen
+
+        screen = AgentRulesScreen(self._filtered[self._selected_index])
+        result = self.app.push_screen(screen)
+        if result:
+            # Reload agents after rules were modified
+            self._load_agents()
+            self._update_list()
+
+
+class DoomPermissionsScreen(ModalScreen):
+    """Screen for viewing doom loop approved permissions."""
+    
+    CSS = """
+    DoomPermissionsScreen {
+        align: center middle;
+    }
+    
+    DoomPermissionsScreen > #doom-dialog {
+        width: 50;
+        height: auto;
+        max-height: 60%;
+        border: solid #d79921;
+        background: #282828;
+        padding: 1 2;
+    }
+    
+    #doom-title {
+        text-align: center;
+        text-style: bold;
+        color: #d79921;
+    }
+    
+    #doom-list {
+        height: auto;
+    }
+    
+    Static {
+        color: #ebdbb2;
+    }
+    
+    #empty-message {
+        color: #928374;
+        text-align: center;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+        Binding("delete", "clear_all", "Clear All"),
+    ]
+
+    def __init__(self, permission_handler=None, **kwargs):
+        super().__init__(**kwargs)
+        self.permission_handler = permission_handler
+
+    def compose(self):
+        from nanocode.agents import PermissionAction
+        
+        try:
+            handler = self.permission_handler
+            try:
+                approved = handler._approved if handler and hasattr(handler, '_approved') else []
+            except Exception:
+                approved = []
+            
+            # Filter for tools that matter for doom_loop
+            tools = [r.permission for r in approved if r.action == PermissionAction.ALLOW]
+            
+            yield Container(
+                Static("⟳ Doom Loop Permissions", id="doom-title"),
+                id="doom-dialog",
+            )
+            
+            if tools:
+                for tool in tools:
+                    yield Static(f"✓ {tool} - Always allowed", id="doom-list")
+            else:
+                yield Static("No permissions granted yet.\n\nWhen doom_loop triggers, select 'Always' to auto-approve.", id="empty-message")
+        except Exception as e:
+            import logging
+            logging.getLogger("nanocode.tui").error(f"DoomPermissionsScreen compose error: {e}")
+            yield Container(
+                Static("Error loading permissions", id="doom-title"),
+                Static(str(e), id="empty-message"),
+            )
+
+    def action_clear_all(self):
+        """Clear all doom loop permissions."""
+        if self.permission_handler:
+            self.permission_handler._approved.clear()
+            self.notify("Doom permissions cleared", severity="info")
+        self.dismiss(True)
+
+    def action_cancel(self):
+        self.dismiss(None)
+
+
+class AgentRulesScreen(ModalScreen):
+    """Screen for managing individual permission rules of an agent."""
+
+    CSS = """
+    AgentRulesScreen {
+        align: center middle;
+    }
+
+    AgentRulesScreen > #rules-dialog {
+        width: 90;
+        height: 90%;
+        border: solid #b16286;
+        background: #282828;
+        padding: 1 2;
+    }
+
+    #rules-title {
+        text-align: center;
+        text-style: bold;
+        color: #b16286;
+    }
+
+    #rules-list {
+        height: 1fr;
+    }
+
+    DataTable {
+        height: 100%;
+    }
+
+    #rule-help {
+        color: #928374;
+        padding: 0 2 1 2;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "dismiss", "Close"),
+        Binding("enter", "add_rule", "Add"),
+        Binding("up", "move_up", "Up"),
+        Binding("down", "move_down", "Down"),
+        Binding("delete", "delete_rule", "Delete"),
+        Binding("s", "save", "Save"),
+    ]
+
+    def __init__(self, agent_data, **kwargs):
+        super().__init__(**kwargs)
+        self.agent_name = agent_data["name"]
+        self.rules = list(agent_data["rules"])  # Copy to avoid modifying original
+        self._selected_index = 0
+
+    def compose(self) -> ComposeResult:
+        yield Vertical(
+            Static(f"Rules for '{self.agent_name}'", id="rules-title"),
+            Input(placeholder="Filter rules...", id="filter-input"),
+            DataTable(id="rules-list"),
+            Static(
+                "↑↓: navigate | Enter: edit | Delete: remove | Escape: close | A: add | S: save",
+                id="rule-help",
+            ),
+        )
+
+    def on_mount(self):
+        self._update_table()
+        self.query_one("#rules-list", DataTable).focus()
+
+    def _update_table(self):
+        table = self.query_one("#rules-list", DataTable)
+        table.clear()
+        table.add_columns("Permission", "Pattern", "Action", "Description")
+        for rule in self.rules:
+            table.add_row(
+                rule.permission,
+                rule.pattern,
+                rule.action.value,
+                f"{rule.permission}@{rule.pattern}",
+            )
+        if 0 <= self._selected_index < len(self.rules):
+            table.cursor_position = self._selected_index
+
+    def on_key(self, event):
+        """Catch keys when DataTable has focus."""
+        if event.key == "enter":
+            self.action_toggle_rule()
+            event.prevent_default()
+        elif event.key == "delete":
+            self.action_delete_rule()
+            event.prevent_default()
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected):
+        """Handle row selection - toggle the rule's action."""
+        row_index = event.cursor_row
+        if 0 <= row_index < len(self.rules):
+            self._selected_index = row_index
+            self.action_toggle_rule()
+
+    def action_toggle_rule(self):
+        """Toggle the action for the selected rule."""
+        from nanocode.agents import PermissionAction
+        if 0 <= self._selected_index < len(self.rules):
+            rule = self.rules[self._selected_index]
+            # Cycle: ask -> allow -> deny -> ask
+            if rule.action.value == "ask":
+                rule.action = PermissionAction.ALLOW
+            elif rule.action.value == "allow":
+                rule.action = PermissionAction.DENY
+            else:
+                rule.action = PermissionAction.ASK
+            self._update_table()
+
+    def on_input_changed(self, event: Input.Changed):
+        query = event.value.lower()
+        if query:
+            filtered = [
+                r
+                for r in self.rules
+                if query in r.permission.lower()
+                or query in r.pattern.lower()
+                or query in r.action.value.lower()
+            ]
+        else:
+            filtered = self.rules
+        self._update_table()
+
+    def action_add_rule(self):
+        """Add a new permission rule."""
+        from nanocode.agents import PermissionAction, PermissionRule
+
+        self.rules.append(
+            PermissionRule(permission="*", pattern="*", action=PermissionAction.ASK)
+        )
+        self._selected_index = len(self.rules) - 1
+        self._update_table()
+
+    def action_delete_rule(self):
+        """Delete the selected rule."""
+        if 0 <= self._selected_index < len(self.rules):
+            self.rules.pop(self._selected_index)
+            if self._selected_index >= len(self.rules):
+                self._selected_index = max(0, len(self.rules) - 1)
+            self._update_table()
+
+    def action_dismiss(self):
+        self.app.pop_screen()
+
+    def action_save(self):
+        """Save rules and update config."""
+        from pathlib import Path
+
+        import yaml
+
+        # Update config.yaml with the new rules
+        config_path = Path("config.yaml")
+        if config_path.exists():
+            with open(config_path) as f:
+                config = yaml.safe_load(f) or {}
+
+            if "agents" not in config:
+                config["agents"] = {}
+
+            # Store as list of rules - save directly under agent name
+            config["agents"][self.agent_name] = [
+                {
+                    "permission": rule.permission,
+                    "pattern": rule.pattern,
+                    "action": rule.action.value,
+                }
+                for rule in self.rules
+            ]
+
+            with open(config_path, "w") as f:
+                yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+        self.dismiss(self.rules)
+
+
+class MessageActionScreen(ModalScreen):
+    """Modal screen for message actions: fork, copy, revert."""
+
+    CSS = """
+    MessageActionScreen {
+        align: center middle;
+    }
+
+    MessageActionScreen > #msg-dialog {
+        width: 60;
+        height: auto;
+        border: solid #98971f;
+        background: #282828;
+        padding: 1 2;
+    }
+
+    #msg-dialog-title {
+        text-align: center;
+        text-style: bold;
+        color: #98971f;
+        margin-bottom: 1;
+    }
+
+    #msg-dialog-preview {
+        color: #ebdbb2;
+        margin-bottom: 1;
+        height: 5;
+    }
+
+    #msg-dialog-buttons {
+        align: center middle;
+        margin-top: 1;
+    }
+
+    #msg-dialog-buttons > Button {
+        margin: 0 1;
+        min-width: 10;
+    }
+    """
+
+    def __init__(self, message_text: str, message_index: int = 0, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._message_text = message_text
+        self._message_index = message_index
+        self._result = None
+        _tui_logger.debug(f"MessageActionScreen created: index={message_index}")
+
+    def on_mount(self) -> None:
+        _tui_logger.debug("MessageActionScreen mounted")
+
+    def compose(self) -> ComposeResult:
+        preview = (
+            self._message_text[:200] + "..."
+            if len(self._message_text) > 200
+            else self._message_text
+        )
+        yield Vertical(
+            Static("Message Actions", id="msg-dialog-title"),
+            Static(preview, id="msg-dialog-preview"),
+            Horizontal(
+                Button("Fork", id="btn-fork", variant="primary"),
+                Button("Copy", id="btn-copy", variant="default"),
+                Button("Revert", id="btn-revert", variant="warning"),
+                Button("Cancel", id="btn-cancel", variant="default"),
+                id="msg-dialog-buttons",
+            ),
+            id="msg-dialog",
+        )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        action = event.button.id
+        _tui_logger.debug(f"MessageActionScreen button pressed: {action}")
+        if action == "btn-fork":
+            self._result = ("fork", self._message_text, self._message_index)
+        elif action == "btn-copy":
+            self._result = ("copy", self._message_text, self._message_index)
+        elif action == "btn-revert":
+            self._result = ("revert", self._message_text, self._message_index)
+        else:
+            self._result = None
+        _tui_logger.debug(f"MessageActionScreen dismissing with: {self._result}")
+        self.dismiss(self._result)
+
+
+class CommandPaletteScreen(ModalScreen):
+    """Modal screen for command palette."""
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+    ]
+
+    CSS = """
+    CommandPaletteScreen {
+        align: center middle;
+    }
+    
+    CommandPaletteScreen > #container {
+        width: 60;
+        height: 20;
+        border: solid #458588;
+        background: #282828;
+    }
+    
+    #title {
+        text-style: bold;
+        color: #d79921;
+        padding: 1 2;
+    }
+    
+    #search {
+        padding: 0 2;
+    }
+    
+    #commands {
+        height: 1fr;
+        padding: 0 1;
+    }
+    
+    #help-text {
+        color: #928374;
+        padding: 0 2 1 2;
+    }
+    
+    DataTable {
+        height: 100%;
+    }
+    """
+
+    def __init__(self, commands, **kwargs):
+        super().__init__(**kwargs)
+        self._commands = commands
+        self._filtered = commands
+
+    def compose(self) -> ComposeResult:
+        yield Vertical(
+            Static("Command Palette", id="title"),
+            Input(placeholder="Search commands...", id="search"),
+            DataTable(id="commands"),
+            Static("↑↓ navigate  ⏎ select  esc cancel", id="help-text"),
+            id="container",
+        )
+
+    def on_mount(self) -> None:
+        table = self.query_one("#commands", DataTable)
+        table.add_columns("Command", "Description")
+        for cmd, desc in self._commands:
+            table.add_row(cmd, desc)
+        table.cursor_type = "row"
+        self.query_one("#search", Input).focus()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        query = event.value.lower()
+        table = self.query_one("#commands", DataTable)
+        table.clear()
+        self._filtered = [
+            (cmd, desc)
+            for cmd, desc in self._commands
+            if query in cmd.lower() or query in desc.lower()
+        ]
+        for cmd, desc in self._filtered:
+            table.add_row(cmd, desc)
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        row_index = event.cursor_row
+        if 0 <= row_index < len(self._filtered):
+            cmd, _ = self._filtered[row_index]
+            self.dismiss(cmd)
+
+    def action_cancel(self):
+        """Close the palette without selecting."""
+        self.dismiss(None)
+
+
+class OutputArea(RichLog):
+    """Scrollable output area using RichLog widget for color support."""
+
+    GRUVBOX = {
+        "fg": "#ebdbb2",
+        "gray": "#928374",
+        "red": "#cc241d",
+        "green": "#98971a",
+        "yellow": "#d79921",
+        "blue": "#458588",
+        "purple": "#b16286",
+        "aqua": "#689d6a",
+        "orange": "#d65d0e",
+        "red_bright": "#fb4934",
+        "green_bright": "#b8bb26",
+        "yellow_bright": "#fabd2f",
+        "blue_bright": "#83a598",
+        "purple_bright": "#d3869b",
+        "aqua_bright": "#8ec07c",
+        "orange_bright": "#fe8019",
+    }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._lines: list[str] = []
+        self._md_theme: object = None
+        self._user_messages: list[
+            tuple[int, str]
+        ] = []  # (index, text) for user messages
+
+    def _render_markdown(self, text: str) -> object:
+        """Get a markdown renderer with gruvbox theme."""
+        from rich.markdown import Markdown
+
+        return Markdown(text)
+
+    def _on_click(self, event: "events.Click") -> None:
+        """Handle click to show message actions for user messages."""
+        # Delegate to app action for proper screen handling
+        if self._user_messages:
+            _tui_logger.debug(f"OutputArea._on_click: {len(self._user_messages)} user messages")
+            self.app.action_message_actions()
+
+    def add_line(self, text: str, style: str = ""):
+        """Add a line to output with Rich markdown rendering."""
+        import re
+
+        from rich.markdown import Markdown
+
+        style_map = {
+            "user": self.GRUVBOX["green"],
+            "assistant": self.GRUVBOX["fg"],
+            "tool": self.GRUVBOX["gray"],
+            "dim": self.GRUVBOX["gray"],
+            "success": self.GRUVBOX["green"],
+            "warning": self.GRUVBOX["yellow"],
+            "danger": self.GRUVBOX["fg"],
+            "thinking": self.GRUVBOX["yellow"],
+            "info": self.GRUVBOX["blue_bright"],
+        }
+
+        base_color = style_map.get(style, "")
+
+        # Track user messages for click actions (check both "user" and color value)
+        user_color = self.GRUVBOX["green"]
+        is_user = style == "user" or style == user_color
+        if is_user:
+            self._user_messages.append((len(self._user_messages), text))
+
+        # Handle custom styles before markdown rendering
+        if "[thought]" in text:
+            from rich.text import Text as RichText
+
+            rich_text = RichText()
+            parts = text.split("[thought]")
+            if parts[0]:
+                rich_text.append(parts[0])
+            for part in parts[1:]:
+                if "[/thought]" in part:
+                    label, rest = part.split("[/thought]", 1)
+                    rich_text.append(label, f"{self.GRUVBOX['yellow']} italic")
+                    if rest:
+                        rich_text.append(rest)
+                else:
+                    rich_text.append(part)
+            self.write(rich_text)
+            self._lines.append(text)
+            return
+
+        # Use markdown rendering for non-code-block text
+        if "```" in text:
+            code_block_pattern = re.compile(r"```(\w*)\n(.*?)```", re.DOTALL)
+            last_end = 0
+            for match in code_block_pattern.finditer(text):
+                if match.start() > last_end:
+                    text_part = text[last_end : match.start()]
+                    if text_part.strip():
+                        md = Markdown(text_part)
+                        self.write(md)
+
+                # Code block - use syntax highlighting
+                lang = match.group(1) or "python"
+                code = match.group(2).rstrip()
+                from rich.syntax import Syntax
+
+                syntax = Syntax(code, lang, theme="gruvbox-dark", line_numbers=False)
+                self.write(syntax)
+                last_end = match.end()
+
+            if last_end < len(text):
+                text_part = text[last_end:]
+                if text_part.strip():
+                    md = Markdown(text_part)
+                    self.write(md)
+        else:
+            # Render as markdown
+            md = Markdown(text)
+            self.write(md)
+
+        self._lines.append(text)
+
+    def _write_formatted(self, text: str, base_color: str):
+        """Write formatted text with basic markdown highlighting."""
+        import re
+
+        from rich.text import Text
+
+        if not base_color:
+            self.write(text)
+            return
+
+        bold_pattern = re.compile(r"\*\*([^*]+)\*\*")
+        code_pattern = re.compile(r"`([^`]+)`")
+
+        last_end = 0
+        for match in bold_pattern.finditer(text):
+            if match.start() > last_end:
+                self.write(text[last_end : match.start()])
+            self.write(Text(match.group(1), style=base_color + " bold"))
+            last_end = match.end()
+
+        if last_end < len(text):
+            self.write(text[last_end:])
+
+        self._lines.append(text)
+
+    def add_empty_line(self):
+        """Add an empty line."""
+        self.write("")
+        self._lines.append("")
+
+    def clear_lines(self):
+        """Clear all lines."""
+        self._lines.clear()
+        self.clear()
+
+
+class ToolState(Enum):
+    """Tool execution state."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    ERROR = "error"
+
+
+@dataclass
+class ToolCall:
+    """Represents a tool call."""
+
+    tool: str
+    title: str
+    description: str = ""
+    state: ToolState = ToolState.PENDING
+    output: str = ""
+    icon: str = "⚙"
+
+
+class NanoCodeTUI(App):
+    """Main TUI application for NanoCode matching Gruvbox dark theme."""
+
+    CSS = """
+/* Gruvbox Dark Theme */
+Screen {
+    background: #282828;
+}
+Header {
+    background: #3c3836;
+    color: #ebdbb2;
+}
+Footer {
+    background: #3c3836;
+    color: #928374;
+}
+#main-container {
+    height: 100%;
+}
+#content-area {
+    width: 1fr;
+}
+#output-area {
+    height: 1fr;
+    border: solid #458588;
+    background: #282828;
+    margin: 1;
+    padding: 0 1;
+}
+#input-container {
+    height: auto;
+    padding: 0 1 1 1;
+    background: #282828;
+}
+#sidebar {
+    width: 25%;
+    min-width: 30;
+    max-width: 50;
+    background: #3c3836;
+    border-left: solid #928374;
+}
+#sidebar-title {
+    background: #3c3836;
+    color: #d79921;
+    padding: 0 1;
+    text-style: bold;
+}
+#sidebar-body {
+    padding: 1;
+    color: #ebdbb2;
+}
+#sidebar-footer {
+    background: #3c3836;
+    color: #928374;
+    padding: 0 1;
+}
+.sidebar-header {
+    color: #d79921;
+}
+.sidebar-path {
+    color: #83a598;
+}
+.sidebar-add {
+    color: #98971f;
+}
+.sidebar-del {
+    color: #fb4934;
+}
+.sidebar-done {
+    color: #98971f;
+}
+.sidebar-active {
+    color: #83a598;
+}
+.sidebar-cancel {
+    color: #fb4934;
+}
+.sidebar-dim {
+    color: #928374;
+}
+.sidebar-mcp-on {
+    color: #98971f;
+}
+.sidebar-mcp-off {
+    color: #928374;
+}
+#input-prompt {
+    width: 2;
+    text-align: right;
+    color: #ebdbb2;
+}
+#spinner {
+    width: 3;
+    color: #458588;
+    text-style: bold;
+}
+.spinner-active {
+    color: #458588;
+}
+#input {
+    height: auto;
+    border: none;
+    width: 2fr;
+    background: #282828;
+    color: #ebdbb2;
+}
+.tool-title {
+    color: #ebdbb2;
+}
+.tool-description {
+    color: #928374;
+}
+.thinking {
+    color: #d79921;
+    text-style: bold italic;
+}
+.error {
+    color: #cc241d;
+}
+#permission-dock {
+    dock: top;
+    height: auto;
+    background: #d79921;
+    color: #282828;
+    padding: 0 1;
+}
+/* Role-based colors for conversation */
+.user-message {
+    color: #98971f;
+}
+.assistant-message {
+    color: #b16286;
+}
+.tool-message {
+    color: #458588;
+}
+.tool-message {
+    color: #458588;
+}
+.thinking {
+    color: #d79921;
+}
+.success {
+    color: #98971f;
+}
+.success {
+    color: #98971f;
+}
+.tool-output {
+    color: #928374;
+    padding-left: 2;
+}
+"""
+    BINDINGS = [
+        Binding("enter", "submit", "Send"),
+        Binding("ctrl+l", "clear_output", "Clear"),
+        Binding("escape", "quit", "Quit", show=True),
+        Binding("ctrl+c", "interrupt", "Interrupt", show=False),
+        Binding("f1", "show_command_palette", "Commands", show=True),
+        Binding("ctrl+b", "toggle_sidebar", "Sidebar", show=True),
+        Binding("ctrl+m", "message_actions", "Actions", show=True),
+        Binding("f2", "model_explorer", "Models", show=True),
+        Binding("f3", "agent_permissions", "Agents", show=True),
+        Binding("f4", "doom_permissions", "Doom Perms", show=True),
+        Binding("y", "allow_permission", "Allow", show=False),
+        Binding("n", "deny_permission", "Deny", show=False),
+    ]
+
+    def on_key(self, event) -> None:
+        """Capture arrow keys when Input is focused."""
+        input_widget = self.query_one("#input", Input)
+        if self.focused == input_widget:
+            if event.key == "up":
+                self._history_up()
+                event.prevent_default()
+            elif event.key == "down":
+                self._history_down()
+                event.prevent_default()
+        
+        # Handle permission responses
+        if self._pending_permissions:
+            if event.key == "y":
+                self.action_allow_permission()
+                event.prevent_default()
+            elif event.key == "n":
+                self.action_deny_permission()
+                event.prevent_default()
+
+    # CLI commands list (not Textual CommandPalette)
+    CLI_COMMANDS = [
+        ("/help", "Show help and commands"),
+        ("/clear", "Clear output"),
+        ("/exit", "Exit the application"),
+        ("/quit", "Exit the application"),
+        ("/history", "Show conversation history"),
+        ("/tools", "Show available tools"),
+        ("/provider", "Switch LLM provider"),
+        ("/plan", "Enter plan mode"),
+        ("/resume", "Resume a task"),
+        ("/checkpoint", "Create a checkpoint"),
+        ("/skills", "Show available skills"),
+        ("/snapshot", "Manage snapshots"),
+        ("/snapshots", "List snapshots"),
+        ("/trace", "Toggle trace mode"),
+        ("/debug", "Toggle debug mode"),
+        ("/compact", "Compact context"),
+        ("/show_thinking", "Toggle thinking display"),
+        ("/agents", "Show available agents"),
+        ("/agent", "Switch agent"),
+        ("/tasks", "Show active subagent sessions"),
+        ("/kill", "Kill a subagent session"),
+    ]
+
+    def __init__(self, agent=None, show_thinking: bool = True):
+        super().__init__()
+        self.agent = agent
+        self.show_thinking = show_thinking
+        self._processing = False
+        self._input_history: list[str] = []
+        self._history_index = -1
+        self._sidebar_visible = True
+        self._sidebar_content: list[str] = []
+        self._pending_permissions: list[dict] = []
+        self._history_file = self._get_history_file()
+        self._load_input_history()
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield Static("", id="permission-dock")
+        with Horizontal(id="main-container"):
+            with Vertical(id="content-area"):
+                with OutputArea(id="output-area", auto_scroll=True):
+                    pass
+                with Horizontal(id="input-container"):
+                    yield Static("", id="spinner")
+                    yield Label("➜", id="input-prompt")
+                    yield Input(placeholder="Enter your task...", id="input")
+            with Vertical(id="sidebar"):
+                yield Static("╭─ Info ──╮", id="sidebar-title")
+                with ScrollableContainer(id="sidebar-content"):
+                    yield RichLog(id="sidebar-body")
+                yield Static("╰─────────╯", id="sidebar-footer")
+        yield Static("", id="status-bar")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        """Initialize on mount."""
+        self.query_one("#input", Input).focus()
+        self._show_welcome()
+
+        if self.agent:
+            self._setup_permission_callback()
+            self._setup_permission_bus()
+
+        self._status_timer = self.set_interval(1.0, self._update_status_bar)
+        self._sidebar_timer = self.set_interval(2.0, self._update_sidebar)
+        self._update_sidebar()
+
+    def _setup_permission_bus(self):
+        """Subscribe to permission bus events."""
+        try:
+            from nanocode.agents.permission_bus import (
+                PermissionEventType,
+                get_permission_bus,
+            )
+            bus = get_permission_bus()
+            
+            async def on_permission_asked(event):
+                """Handle permission.asked event from agent."""
+                self._pending_permissions.append({
+                    "tool": event.tool_name,
+                    "metadata": event.metadata,
+                    "id": event.id,
+                })
+                self._update_permission_dock()
+                # Permission bus handles response - don't print here
+                # to avoid duplication with callback
+            
+            async def on_permission_answered(event):
+                """Handle permission.answered event."""
+                self._pending_permissions = [
+                    p for p in self._pending_permissions if p.get("id") != event.id
+                ]
+                self._update_permission_dock()
+            
+            bus.subscribe(PermissionEventType.ASKED, on_permission_asked)
+            bus.subscribe(PermissionEventType.ANSWERED, on_permission_answered)
+            _tui_logger.debug("Permission bus subscribed")
+        except Exception as e:
+            _tui_logger.debug(f"Permission bus setup failed: {e}")
+    
+    def _update_permission_dock(self):
+        """Update the permission dock at the top of the screen."""
+        try:
+            dock = self.query_one("#permission-dock", Static)
+            if self._pending_permissions:
+                tools = ", ".join(p["tool"] for p in self._pending_permissions)
+                dock.update(f"⏳ Permissions pending: {tools} [y=allow n=deny]")
+            else:
+                dock.update("")
+        except Exception:
+            pass
+
+    def on_unmount(self) -> None:
+        """Save history before exit."""
+        self._save_input_history()
+
+    def _update_status_bar(self) -> None:
+        """Update status bar with subagent count."""
+        status_bar = self.query_one("#status-bar", Static)
+
+        if self.agent and hasattr(self.agent, "tool_registry"):
+            task_tool = self.agent.tool_registry.get("task")
+            if task_tool and hasattr(task_tool, "sessions"):
+                active = sum(1 for s in task_tool.sessions.values() if not s.completed)
+                if active > 0:
+                    status_bar.update(f"Tasks: {active}")
+                    self._update_sidebar()
+                    return
+
+        status_bar.update("")
+        self._update_sidebar()
+
+    def _fetch_model_info(self):
+        """Fetch model info from provider registry."""
+        try:
+            import asyncio
+
+            from nanocode.provider_registry import get_provider_registry
+
+            async def fetch():
+                registry = get_provider_registry()
+                await registry.initialize()
+                return registry
+
+            registry = asyncio.run(fetch())
+            if self.agent and hasattr(self.agent, "llm") and self.agent.llm:
+                model = self.agent.llm.model
+                if registry and model:
+                    model_spec = registry.get_model_by_full_id(model)
+                    if model_spec:
+                        return model_spec
+        except Exception:
+            pass
+        return None
+
+    def _add_context_info(self, lines):
+        from rich.text import Text
+
+        if not (self.agent and hasattr(self.agent, "context_manager")):
+            return
+        ctx = self.agent.context_manager
+        usage = ctx.get_token_usage()
+        current = usage.get("current_tokens", 0)
+        max_tok = usage.get("context_limit", 0)
+        if max_tok > 0:
+            lines.append(f"Context: {current:,} / {max_tok:,} ({current / max_tok * 100:.0f}%)")
+        else:
+            lines.append(f"Context: {current:,}")
+        lines.append(f"Msgs: {usage.get('message_count', 0)}")
+
+    def _add_agent_info(self, lines):
+        if self.agent and hasattr(self.agent, "current_agent"):
+            lines.append(f"Agent: {self.agent.current_agent.name}")
+
+    def _add_model_info(self, lines):
+        if not (self.agent and hasattr(self.agent, "llm") and self.agent.llm):
+            return
+        model = getattr(self.agent.llm, "model", "unknown")
+        lines.append(f"Model: {model}")
+        max_out = getattr(self.agent.llm, "max_tokens", None)
+        if max_out:
+            lines.append(f"Max out: {max_out:,}")
+
+    def _add_session_info(self, lines):
+        if hasattr(self, "_session_id") and self._session_id:
+            lines.append(f"Session: {self._session_id[:12]}")
+
+    def _add_active_tasks(self, lines):
+        if not (self.agent and hasattr(self.agent, "tool_registry")):
+            return
+        task_tool = self.agent.tool_registry.get("task")
+        if task_tool and hasattr(task_tool, "sessions"):
+            active = sum(1 for s in task_tool.sessions.values() if not s.completed)
+            if active > 0:
+                lines.append(f"Active tasks: {active}")
+
+    def _add_todo_line(self, lines, icon_markup, content):
+        from rich.text import Text
+
+        icon = Text.from_markup(icon_markup)
+        truncated = content[:30] + "..." if len(content) > 30 else content
+        lines.append(Text("  ") + icon + Text(f" {truncated}"))
+
+    def _add_todos_via_service(self, lines, todo_tool):
+        session_id = getattr(self.agent, "_session_id", None)
+        if not session_id:
+            return
+        todos = todo_tool.todo_service.get_todos(session_id)
+        if not todos:
+            return
+        from rich.text import Text
+
+        lines.append(Text.from_markup("[#d79921]─ Todos ─[/#d79921]"))
+        for t in todos:
+            icon_map = {
+                "completed": "[#98971f]✓[/#98971f]",
+                "in_progress": "[#83a598]◐[/#83a598]",
+                "cancelled": "[#fb4934]✗[/#fb4934]",
+            }
+            icon = icon_map.get(t.status, "[#928374]○[/#928374]")
+            self._add_todo_line(lines, icon, t.content)
+
+    def _add_todos_via_tasks(self, lines, todo_tool):
+        todo_items = todo_tool.tasks
+        if not todo_items:
+            return
+        from rich.text import Text
+
+        lines.append(Text.from_markup("[#d79921]─ Todos ─[/#d79921]"))
+        for tid, t in todo_items.items():
+            icon_map = {
+                "completed": "[#98971f]✓[/#98971f]",
+                "in_progress": "[#83a598]◐[/#83a598]",
+            }
+            icon = icon_map.get(t.get("status"), "[#928374]○[/#928374]")
+            self._add_todo_line(lines, icon, t.get("content", ""))
+
+    def _add_todos_info(self, lines):
+        if not (self.agent and hasattr(self.agent, "tool_registry")):
+            return
+        todo_tool = self.agent.tool_registry.get("todo")
+        if not todo_tool:
+            return
+        if hasattr(todo_tool, "todo_service"):
+            self._add_todos_via_service(lines, todo_tool)
+        elif hasattr(todo_tool, "tasks"):
+            self._add_todos_via_tasks(lines, todo_tool)
+
+    def _add_mcp_info(self, lines):
+        from rich.text import Text
+
+        if not (self.agent and hasattr(self.agent, "_mcp_available") and self.agent._mcp_available):
+            return
+        lines.append(Text("─ MCP ─", style="#d79921"))
+        for name, enabled in list(self.agent._mcp_available.items())[:15]:
+            dot = Text("●", style="#98971f") if enabled else Text("○", style="#928374")
+            lines.append(Text("  ") + dot + Text(f" {name}"))
+
+    def _add_lsp_info(self, lines):
+        from rich.text import Text
+
+        if not (self.agent and hasattr(self.agent, "lsp_manager") and self.agent.lsp_manager):
+            return
+        lsp_servers = (
+            list(self.agent.lsp_manager._servers.keys())
+            if hasattr(self.agent.lsp_manager, "_servers")
+            else []
+        )
+        if not lsp_servers:
+            return
+        lines.append(Text("─ LSP ─", style="#d79921"))
+        for server_id in lsp_servers[:10]:
+            lines.append(f"  {server_id}")
+        if len(lsp_servers) > 10:
+            lines.append(f"  ... and {len(lsp_servers) - 10} more")
+
+    def _add_modified_files(self, lines):
+        from rich.text import Text
+
+        if not (self.agent and hasattr(self.agent, "modified_files") and self.agent.modified_files):
+            return
+        try:
+            self.agent.modified_files.refresh_from_git()
+            modified = self.agent.modified_files.get_modified_files()
+            if not modified:
+                return
+            lines.append(Text("─ Modified ─", style="#d79921"))
+            for f in modified[:15]:
+                adds = Text(f"+{f.additions}", style="#98971f") if f.additions > 0 else Text("")
+                dels = Text(f"-{f.deletions}", style="#fb4934") if f.deletions > 0 else Text("")
+                stats_parts = [p for p in [adds, dels] if str(p)]
+                stats = Text(" ") + Text("").join(stats_parts) if stats_parts else Text("")
+                lines.append(Text("  ") + Text(f.relative_path, style="#83a598") + stats)
+            if len(modified) > 15:
+                lines.append(f"  ... and {len(modified) - 15} more")
+        except Exception:
+            pass
+
+    def _render_sidebar(self, lines):
+        from rich.text import Text
+
+        try:
+            sidebar_body = self.query_one("#sidebar-body", RichLog)
+            sidebar_body.clear()
+            for line in lines:
+                sidebar_body.write(Text(line) if not isinstance(line, Text) else line)
+        except Exception:
+            pass
+
+    def _update_sidebar(self) -> None:
+        """Update sidebar content with current state info."""
+        if not self._sidebar_visible:
+            return
+        lines = []
+        self._add_context_info(lines)
+        self._add_agent_info(lines)
+        self._add_model_info(lines)
+        self._add_session_info(lines)
+        self._add_active_tasks(lines)
+        self._add_todos_info(lines)
+        self._add_mcp_info(lines)
+        self._add_lsp_info(lines)
+        self._add_modified_files(lines)
+        self._render_sidebar(lines)
+
+    def action_toggle_sidebar(self) -> None:
+        """Toggle sidebar visibility."""
+        self._sidebar_visible = not self._sidebar_visible
+        try:
+            sidebar = self.query_one("#sidebar")
+            if self._sidebar_visible:
+                sidebar.display = "block"
+            else:
+                sidebar.display = "none"
+            self._update_sidebar()
+        except Exception:
+            pass
+
+    def _update_stream_display(self) -> None:
+        """Flush accumulated stream tokens to display."""
+        if not hasattr(self, "_stream_buffer") or not self._stream_buffer:
+            return
+
+        output_area = self.query_one("#output-area", RichLog)
+        _tui_logger.debug(f"_update_stream_display: writing {len(self._stream_buffer)} chars")
+        # Remove the timer so it can be rescheduled
+        if hasattr(self, "_stream_timer") and self._stream_timer:
+            self._stream_timer.stop()
+            self._stream_timer = None
+
+        # Write the accumulated tokens
+        if self._stream_buffer:
+            output_area.write(self._stream_buffer)
+            self._stream_buffer = ""
+
+    def _update_spinner(self) -> None:
+        """Update spinner animation."""
+        if not self._processing:
+            if hasattr(self, "_spinner_timer") and self._spinner_timer:
+                self._spinner_timer.stop()
+            return
+
+        self._spinner_index = (self._spinner_index + 1) % len(self._spinner_chars)
+        spinner = self.query_one("#spinner", Static)
+        spinner.update(self._spinner_chars[self._spinner_index])
+
+    def _show_welcome(self):
+        """Show welcome message matching opencode style."""
+        self._print_logo()
+        self._print_empty()
+        self._print_line("Type your task or 'help' for commands", Style.TEXT_DIM)
+        self._print_empty()
+
+    def _get_history_file(self):
+        """Get history file path."""
+        import os
+        from pathlib import Path
+
+        xdg_data = os.environ.get(
+            "XDG_DATA_HOME", str(Path.home() / ".local" / "share")
+        )
+        return Path(xdg_data) / "nanocode" / "storage" / "tui_history.json"
+
+    def _load_input_history(self):
+        """Load input history from file."""
+        history_file = self._history_file
+        if history_file.exists():
+            import json
+
+            try:
+                data = json.loads(history_file.read_text())
+                self._input_history = data.get("history", [])
+                self._history_index = (
+                    len(self._input_history) - 1 if self._input_history else -1
+                )
+            except Exception:
+                pass
+
+    def _save_input_history(self):
+        """Save input history to file."""
+        import json
+
+        self._history_file.parent.mkdir(parents=True, exist_ok=True)
+        self._history_file.write_text(
+            json.dumps({"history": self._input_history}, indent=2)
+        )
+
+    def _print_logo(self):
+        """Print simple banner."""
+        self._print_line("NanoCode", Style.TEXT_INFO_BOLD)
+
+    def _print_line(self, text: str, style: str = "") -> None:
+        """Print a line with optional style."""
+        try:
+            output = self.query_one("#output-area")
+        except Exception as e:
+            _tui_logger.debug(f"_print_line query failed: {e}")
+            raise
+
+        # Convert ANSI style to simple Rich style name
+        if style == Style.THINKING:
+            # Split: "Thinking:" gets yellow italic, rest gets normal
+            prefix = ""
+            rest = text
+            if "| Thinking:" in text:
+                parts = text.split("| Thinking:", 1)
+                prefix = parts[0] + "| Thinking:"
+                rest = parts[1] if len(parts) > 1 else ""
+
+            from rich.text import Text as RichText
+
+            if prefix and rest:
+                full_text = RichText()
+                full_text.append(prefix + " ", style=f"{RichColor.YELLOW.value} italic")
+                full_text.append(rest, style=RichColor.FG.value)
+            elif prefix:
+                full_text = RichText(prefix, style=f"{RichColor.YELLOW.value} italic")
+            else:
+                full_text = RichText.from_markup(text)
+
+            output.write(full_text)
+            output._lines.append(text)
+            return
+
+        output.add_line(text, style)
+
+    def _print_empty(self):
+        """Print an empty line."""
+        output = self.query_one("#output-area")
+        output.add_empty_line()
+
+    def _print_info(self, text: str, bold: bool = False):
+        """Print info text."""
+        style = Style.TEXT_INFO_BOLD if bold else Style.TEXT_INFO
+        self._print_line(text, style)
+
+    def _print_warning(self, text: str, bold: bool = False):
+        """Print warning text."""
+        style = Style.TEXT_WARNING_BOLD if bold else Style.TEXT_WARNING
+        self._print_line(text, style)
+
+    def _print_error(self, text: str, bold: bool = False):
+        """Print error text."""
+        style = Style.TEXT_DANGER_BOLD if bold else Style.TEXT_DANGER
+        self._print_line(text, style)
+
+    def _print_success(self, text: str, bold: bool = False):
+        """Print success text."""
+        style = Style.TEXT_SUCCESS_BOLD if bold else Style.TEXT_SUCCESS
+        self._print_line(text, style)
+
+    def _print_dim(self, text: str):
+        """Print dimmed text."""
+        self._print_line(text, Style.TEXT_DIM)
+
+    def _setup_permission_callback(self):
+        """Set up permission callback for the agent."""
+        if not self.agent or not hasattr(self.agent, 'permission_handler'):
+            return
+
+        self._pending_permission_screen = None
+
+        async def permission_callback(request):
+            """Permission callback - shows modal and waits for user response."""
+            _tui_logger.debug(f"Permission callback called: tool={request.tool_name}")
+
+            from nanocode.agents.permission import PermissionReply
+            from nanocode.tui.app import PermissionScreen
+
+            # Show modal and wait for response
+            result = await self.push_screen_wait(
+                PermissionScreen(request)
+            )
+
+            # Result is PermissionReply or None (dismissed/cancelled)
+            if result and hasattr(result, 'reply'):
+                _tui_logger.debug(f"Permission callback got reply: {result.reply}")
+                return result
+            else:
+                # Default to allow if dismissed
+                return PermissionReply(
+                    request_id=request.id,
+                    reply=None,
+                )
+
+        self.agent.permission_handler.set_callback(permission_callback)
+        _tui_logger.debug("Permission callback set up with modal")
+
+    def action_deny_permission(self) -> None:
+        """Deny the first pending permission."""
+        if not self._pending_permissions:
+            return
+        
+        perm = self._pending_permissions[0]
+        try:
+            from nanocode.agents.permission_bus import get_permission_bus
+            bus = get_permission_bus()
+            bus.reply_permission(perm["id"], "deny")
+            self._print_line(f"❌ Denied permission: {perm['tool']}", Style.TEXT_DANGER)
+        except Exception as e:
+            _tui_logger.error(f"Failed to deny permission: {e}")
+        
+        self._pending_permissions.pop(0)
+        self._update_permission_dock()
+    
+    def action_allow_permission(self) -> None:
+        """Allow the first pending permission."""
+        if not self._pending_permissions:
+            return
+        
+        perm = self._pending_permissions[0]
+        try:
+            from nanocode.agents.permission_bus import get_permission_bus
+            bus = get_permission_bus()
+            bus.reply_permission(perm["id"], "allow")
+            self._print_line(f"✅ Allowed permission: {perm['tool']}", Style.TEXT_SUCCESS)
+        except Exception as e:
+            _tui_logger.error(f"Failed to allow permission: {e}")
+        
+        self._pending_permissions.pop(0)
+        self._update_permission_dock()
+
+    def _print_tool(self, tool_call: ToolCall):
+        """Print a tool call matching opencode style."""
+        icon = tool_call.icon
+        title = tool_call.title
+        desc = tool_call.description
+
+        # Use opencode's ~ icon format
+        line = f"~ {icon} {title}"
+        if desc:
+            line = f"{line} {Style.TEXT_DIM}{desc}{Style.TEXT_NORMAL}"
+
+        self._print_line(line, Style.TEXT_NORMAL)
+
+        # Block tool style with left border for output
+        if tool_call.state == ToolState.COMPLETED and tool_call.output:
+            self._print_empty()
+            for output_line in tool_call.output.strip().split("\n"):
+                if output_line.strip():  # Skip empty lines
+                    self._print_line(f"| {output_line}", Style.TEXT_DIM)
+            self._print_empty()
+
+        if tool_call.state == ToolState.ERROR:
+            self._print_error(tool_call.output if tool_call.output else "Tool failed")
+
+    def _format_glob_call(self, tool_name, arguments) -> ToolCall:
+        root = arguments.get("path", "")
+        suffix = f"in {self._normalize_path(root)}" if root else ""
+        return ToolCall(tool=tool_name, title=f'Glob "{arguments.get("pattern", "")}"', description=suffix, icon="✱")
+
+    def _format_grep_call(self, tool_name, arguments) -> ToolCall:
+        root = arguments.get("path", "")
+        suffix = f"in {self._normalize_path(root)}" if root else ""
+        return ToolCall(tool=tool_name, title=f'Grep "{arguments.get("pattern", "")}"', description=suffix, icon="✱")
+
+    def _format_read_call(self, tool_name, arguments) -> ToolCall:
+        filepath = self._normalize_path(arguments.get("path", ""))
+        extra_args = {k: v for k, v in arguments.items() if k != "filePath" and isinstance(v, (str, int, bool))}
+        desc = f"[{', '.join(f'{k}={v}' for k, v in extra_args.items())}]" if extra_args else ""
+        return ToolCall(tool=tool_name, title=f"Read {filepath}", description=desc, icon="→")
+
+    def _format_write_call(self, tool_name, arguments) -> ToolCall:
+        return ToolCall(tool=tool_name, title=f"Write {self._normalize_path(arguments.get('path', ''))}", icon="←")
+
+    def _format_edit_call(self, tool_name, arguments) -> ToolCall:
+        return ToolCall(tool=tool_name, title=f"Edit {self._normalize_path(arguments.get('path', ''))}", icon="←")
+
+    def _format_webfetch_call(self, tool_name, arguments) -> ToolCall:
+        return ToolCall(tool=tool_name, title=f"WebFetch {arguments.get('url', '')}", icon="%")
+
+    def _format_codesearch_call(self, tool_name, arguments) -> ToolCall:
+        return ToolCall(tool=tool_name, title=f'Exa Code Search "{arguments.get("query", "")}"', icon="◇")
+
+    def _format_websearch_call(self, tool_name, arguments) -> ToolCall:
+        return ToolCall(tool=tool_name, title=f'Exa Web Search "{arguments.get("query", "")}"', icon="◈")
+
+    def _format_task_call(self, tool_name, arguments) -> ToolCall:
+        desc = arguments.get("description", "")
+        subagent = arguments.get("subagent_type", "")
+        agent_name = subagent if subagent else "unknown"
+        name = desc if desc else f"{agent_name} Task"
+        return ToolCall(tool=tool_name, title=name, description=f"{agent_name} Agent", icon="•")
+
+    def _format_skill_call(self, tool_name, arguments) -> ToolCall:
+        return ToolCall(tool=tool_name, title=f'Skill "{arguments.get("name", "")}"', icon="→")
+
+    def _format_bash_call(self, tool_name, arguments) -> ToolCall:
+        command = arguments.get("command", "")
+        workdir = arguments.get("workdir", "")
+        if workdir and workdir != ".":
+            try:
+                workdir = os.path.relpath(workdir, os.getcwd())
+            except ValueError:
+                pass
+            title = f"# {command} in {workdir}"
+        else:
+            title = f"# {command}"
+        return ToolCall(tool=tool_name, title=title, icon="$")
+
+    def _format_todowrite_call(self, tool_name, arguments) -> ToolCall:
+        return ToolCall(tool=tool_name, title="Todos", icon="#")
+
+    def _normalize_path(self, path: str) -> str:
+        if not path:
+            return ""
+        try:
+            return os.path.relpath(path, os.getcwd()) or "."
+        except ValueError:
+            return path
+
+    def _format_tool_call(self, tool_name: str, arguments: dict) -> ToolCall:
+        """Format a tool call based on its type, matching opencode's tool handlers."""
+        _format_handlers = {
+            "glob": self._format_glob_call,
+            "grep": self._format_grep_call,
+            "read": self._format_read_call,
+            "write": self._format_write_call,
+            "edit": self._format_edit_call,
+            "webfetch": self._format_webfetch_call,
+            "codesearch": self._format_codesearch_call,
+            "websearch": self._format_websearch_call,
+            "task": self._format_task_call,
+            "skill": self._format_skill_call,
+            "bash": self._format_bash_call,
+            "todowrite": self._format_todowrite_call,
+        }
+        handler = _format_handlers.get(tool_name)
+        if handler:
+            return handler(tool_name, arguments)
+        title = str(arguments) if arguments else "Unknown"
+        return ToolCall(tool=tool_name, title=f"{tool_name} {title}", icon="⚙")
+
+    def _get_tool_icon(self, tool_name: str) -> str:
+        """Get icon for a tool name."""
+        icons = {
+            "glob": "✱",
+            "grep": "✱",
+            "read": "→",
+            "write": "←",
+            "edit": "←",
+            "webfetch": "%",
+            "codesearch": "◇",
+            "websearch": "◈",
+            "task": "•",
+            "skill": "→",
+            "bash": "$",
+            "todowrite": "#",
+            "mcp-parigp": "∑",
+            "mcp-number-theory": "∫",
+            "mcp-numpy": "∎",
+            "mcp-sympy": "∂",
+            "mcp-qiskit": "⚛",
+        }
+        return icons.get(tool_name, "⚙")
+
+    async def action_submit(self):
+        """Handle send action."""
+        input_widget = self.query_one("#input", Input)
+        text = input_widget.value.strip()
+        if text:
+            input_widget.value = ""
+            await self._process_input(text)
+
+    def action_interrupt(self):
+        """Handle interrupt (Ctrl+C)."""
+        if self._processing:
+            self._print_warning("!", True)
+            self._print_line("Interrupted")
+            self._processing = False
+
+    def action_clear_output(self):
+        """Clear output."""
+        output = self.query_one("#output-area")
+        output.clear_lines()
+        self._show_welcome()
+
+    def action_show_cli_commands(self):
+        """Show command palette."""
+        sys.stderr.write("DEBUG: action_show_cli_commands called\n")
+        sys.stderr.write(f"CLI_COMMANDS = {self.CLI_COMMANDS}\n")
+        sys.stderr.flush()
+        output = self.query_one("#output-area")
+        output.add_line("\n=== Available Commands ===")
+        for cmd, desc in self.CLI_COMMANDS:
+            output.add_line(f"  {cmd:<20} {desc}")
+        output.add_line("\nPress Ctrl+P to show this menu")
+
+    @work()
+    async def action_show_command_palette(self):
+        """Show the command palette popup."""
+        screen = CommandPaletteScreen(self.CLI_COMMANDS)
+        result = await self.push_screen_wait(screen)
+        if result:
+            input_widget = self.query_one("#input", Input)
+            input_widget.value = result
+            input_widget.focus()
+
+    @work()
+    async def action_model_explorer(self):
+        """Show model explorer to select a new model."""
+        screen = ModelExplorerScreen()
+        result = await self.push_screen_wait(screen)
+        if result:
+            full_id, provider = result
+            # Save to config.yaml
+            try:
+                import yaml
+                from pathlib import Path
+
+                config_path = Path("config.yaml")
+                if config_path.exists():
+                    with open(config_path) as f:
+                        config = yaml.safe_load(f) or {}
+                else:
+                    config = {}
+                
+                # Set default provider (extracted from full_id)
+                if "llm" not in config:
+                    config["llm"] = {}
+                config["llm"]["default_connector"] = provider
+                
+                # Extract model name from full_id (e.g., "openai/gpt-4o" -> "gpt-4o")
+                model_name = full_id.split("/")[-1]
+                
+                # Set provider-specific model
+                if "providers" not in config["llm"]:
+                    config["llm"]["providers"] = {}
+                if provider not in config["llm"]["providers"]:
+                    config["llm"]["providers"][provider] = {}
+                config["llm"]["providers"][provider]["model"] = model_name
+                
+                # Save
+                with open(config_path, "w") as f:
+                    yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+                
+                # Also reload the LLM for the current session if agent exists
+                if self.agent and hasattr(self.agent, '_init_llm'):
+                    self.agent._init_llm()
+                
+                self._update_sidebar()
+                
+                self.notify(f"Model set to {full_id}", severity="success")
+            except Exception as e:
+                self.notify(f"Failed to save: {e}", severity="error")
+
+    @work()
+    async def action_agent_permissions(self):
+        """Show agent permissions management."""
+        screen = AgentPermissionsScreen()
+        result = await self.push_screen_wait(screen)
+        if result:
+            self.notify("Agent permissions updated", severity="success")
+
+    @work()
+    async def action_doom_permissions(self):
+        """Show doom loop permissions (Always granted tools)."""
+        if self.agent and hasattr(self.agent, 'permission_handler'):
+            screen = DoomPermissionsScreen(self.agent.permission_handler)
+            result = await self.push_screen_wait(screen)
+        else:
+            self.notify("No agent connected", severity="warning")
+
+    @work()
+    async def action_message_actions(self):
+        """Show message actions for the last user message."""
+        _tui_logger.debug(f"action_message_actions started")
+        output = self.query_one("#output-area", OutputArea)
+        _tui_logger.debug(f"output area found, user_messages: {output._user_messages}")
+        if output._user_messages:
+            # Get the last user message
+            index, text = output._user_messages[-1]
+            _tui_logger.debug(f"pushing MessageActionScreen for index={index}")
+            result = await self.push_screen_wait(MessageActionScreen(text, index))
+            _tui_logger.debug(f"push_screen_wait returned: {result}")
+            if result:
+                action, msg_text, msg_index = result
+                if action == "copy":
+                    import pyperclip
+
+                    pyperclip.copy(msg_text)
+                    self.notify("Copied to clipboard", severity="info")
+                elif action == "fork":
+                    self._input_history.append(msg_text)
+                    self._save_input_history()
+                    input_widget = self.query_one("#input", Input)
+                    input_widget.value = msg_text
+                    input_widget.focus()
+                elif action == "revert":
+                    # Revert state via agent's context manager
+                    if self.agent and hasattr(self.agent, "context_manager"):
+                        from nanocode.message_actions import MessageActionManager
+
+                        ctx = self.agent.context_manager
+                        if hasattr(ctx, "_messages"):
+                            msg_mgr = MessageActionManager(ctx._messages)
+                            worktree = str(self.agent.config.get("base_dir", "."))
+                            session_id = getattr(self.agent, "_session_id", "default")
+                            result = await msg_mgr.revert_with_snapshot(
+                                msg_index, worktree, session_id
+                            )
+                            if result.get("success"):
+                                # Update context
+                                ctx._messages = msg_mgr._messages
+                                self._input_history = self._input_history[
+                                    : msg_index + 1
+                                ]
+                                self._history_index = len(self._input_history)
+                                # Clear output by clearing the RichLog directly
+                                try:
+                                    output = self.query_one("#output-area", RichLog)
+                                    output.clear()
+                                    # Force refresh of the screen
+                                    self.screen.refresh()
+                                except Exception as e:
+                                    print(f"Clear error: {e}")
+                                self._show_welcome()
+                                self.notify(
+                                    f"Reverted to message {msg_index}",
+                                    severity="success",
+                                )
+                            else:
+                                self.notify(
+                                    f"Revert failed: {result.get('error')}",
+                                    severity="error",
+                                )
+                        else:
+                            self.notify(
+                                "Context manager not available", severity="error"
+                            )
+                    else:
+                        self.notify("No agent - cannot revert", severity="error")
+        else:
+            self.notify("No user messages yet", severity="info")
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Handle input changes."""
+        pass
+
+    async def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Handle input submission."""
+        text = event.value.strip()
+        if text:
+            self._input_history.append(text)
+            self._history_index = len(self._input_history)
+            self._save_input_history()
+            event.input.value = ""
+            await self._process_input(text)
+
+    def _history_up(self):
+        """Navigate history up (previous command)."""
+        input_widget = self.query_one("#input", Input)
+        if self._input_history and self._history_index > 0:
+            self._history_index -= 1
+            input_widget.value = self._input_history[self._history_index]
+            input_widget.cursor_position = len(input_widget.value)
+
+    def _history_down(self):
+        """Navigate history down (next command)."""
+        input_widget = self.query_one("#input", Input)
+        if self._history_index < len(self._input_history) - 1:
+            self._history_index += 1
+            input_widget.value = self._input_history[self._history_index]
+            input_widget.cursor_position = len(input_widget.value)
+        elif self._history_index == len(self._input_history) - 1:
+            self._history_index += 1
+            input_widget.value = ""
+            input_widget.cursor_position = 0
+
+    async def _setup_processing_state(self, text: str):
+        """Set up processing state before agent call."""
+        self._processing = True
+        spinner = self.query_one("#spinner", Static)
+        spinner.update("◐")
+        spinner.classes = "spinner-active"
+        self._spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+        self._spinner_index = 0
+        self._spinner_timer = self.set_interval(0.15, self._update_spinner)
+        input_widget = self.query_one("#input", Input)
+        input_widget.disabled = True
+        return input_widget
+
+    def _capture_io_setup(self):
+        import io
+        import logging
+        import sys
+
+        self._saved_stdout = sys.stdout
+        self._saved_stderr = sys.stderr
+        stdout_capture = io.StringIO()
+        stderr_capture = io.StringIO()
+        sys.stdout = stdout_capture
+        sys.stderr = stderr_capture
+        root_logger = logging.getLogger()
+        old_level = root_logger.level
+        root_logger.setLevel(logging.CRITICAL + 1)
+        import datetime
+        return stdout_capture, stderr_capture, root_logger, old_level, datetime
+
+    def _capture_io_restore(self, stdout_capture, stderr_capture, root_logger, old_level, datetime_mod):
+        import logging
+        import sys
+
+        sys.stdout = self._saved_stdout
+        sys.stderr = self._saved_stderr
+        root_logger.setLevel(old_level)
+        stdout_output = stdout_capture.getvalue()
+        stderr_output = stderr_capture.getvalue()
+        if stdout_output or stderr_output:
+            logger = logging.getLogger("nanocode.tui")
+            log_output = f"\n=== TUI Debug Output {datetime_mod.now().isoformat()} ===\n"
+            log_output += stdout_output
+            if stderr_output:
+                log_output += f"\nSTDERR:\n{stderr_output}"
+            logger.debug(log_output)
+
+    async def _call_agent_process(self, text: str):
+        """Call agent.process_input with capture and callbacks."""
+        import traceback
+
+        self._stream_buffer = ""
+        self._stream_timer = None
+        self._was_streamed = False
+        original_debug = self.agent.debug
+        self.agent.debug = False
+
+        try:
+            stdout_capture, stderr_capture, root_logger, old_level, datetime_mod = self._capture_io_setup()
+        except Exception:
+            return None
+
+        try:
+            try:
+                result = await self.agent.process_input(
+                    text,
+                    show_thinking=True,
+                    show_messages=False,
+                    on_token=self._on_token,
+                    on_tool_start=self._on_tool_start_callback,
+                    on_tool_complete=self._on_tool_complete_callback,
+                )
+            except asyncio.CancelledError as e:
+                _tui_logger.error(f"CANCELLED_ERROR: {e}")
+                self._print_error("Request timed out - please try again")
+                self.push_screen(TracebackScreen("Timeout Error", traceback.format_exc()))
+                result = None
+            except Exception as e:
+                import traceback
+                _tui_logger.debug(f"EXCEPTION in process_input: {e}")
+                _tui_logger.debug(f"TRACEBACK: {traceback.format_exc()}")
+                self._print_line(f"Error: {e}", Style.TEXT_DANGER)
+                result = None
+        finally:
+            self._capture_io_restore(stdout_capture, stderr_capture, root_logger, old_level, datetime_mod)
+
+        self.agent.debug = original_debug
+        _tui_logger.debug(f"_call_agent_process returning: result_type={type(result).__name__}, result_none={result is None}, result_len={len(result) if result else 0}, result_preview={result[:100] if result else ''!r}")
+        return result
+
+    def _on_token(self, token: str):
+        self._was_streamed = True
+        self._stream_buffer += token
+        _tui_logger.debug(f"_on_token: {token[:80]!r}")
+        if self._stream_timer is None:
+            self._stream_timer = self.set_interval(0.1, self._update_stream_display)
+
+    def _on_tool_start_callback(self, tool_name, args):
+        tool_call = self._format_tool_call(tool_name, args)
+        line = f"{tool_call.icon} {tool_call.title}"
+        if tool_call.description:
+            line += f" {tool_call.description}"
+        self._print_line(line, Style.TOOL_MESSAGE)
+
+    def _on_tool_complete_callback(self, tool_name, result):
+        if tool_name == "read":
+            self._on_tool_complete_read(result)
+        elif tool_name == "write":
+            self._on_tool_complete_write(result)
+        elif tool_name == "todowrite":
+            self._on_tool_complete_todowrite(result)
+        else:
+            self._on_tool_complete_default(tool_name, result)
+
+    def _on_tool_complete_read(self, result):
+        if isinstance(result, dict) and not result.get("success", True):
+            self._print_line(f"✗ read: {result.get('error', '')}", Style.TEXT_DANGER)
+        else:
+            line_count = len(result.strip().split("\n")) if result else 0
+            self._print_line(f"✓ read: [{line_count} lines in context]", Style.TOOL_MESSAGE)
+
+    def _on_tool_complete_write(self, result):
+        try:
+            result_str = str(result)
+            if not result_str.startswith("Written to "):
+                self._print_line("✓ write: (completed)", Style.TOOL_MESSAGE)
+                return
+            path_part = result_str.split("\n")[0].replace("Written to ", "").rstrip(":")
+            self._print_line(f"✓ write: {path_part}", Style.TOOL_MESSAGE)
+            for line in result_str.split("\n")[1:]:
+                if line.strip():
+                    self._print_line(f"  {line}", Style.TOOL_MESSAGE)
+        except Exception:
+            pass
+
+    def _on_tool_complete_todowrite(self, result):
+        try:
+            result_str = str(result)
+            if "added" in result_str.lower() or "updated" in result_str.lower():
+                self._print_line(f"✓ todos: {result_str[:100]}", Style.TOOL_MESSAGE)
+            else:
+                self._print_line("✓ todos updated", Style.TOOL_MESSAGE)
+        except Exception:
+            pass
+
+    def _on_tool_complete_default(self, tool_name, result):
+        preview = str(result) if result else ""
+        if len(preview) > 200:
+            preview = preview[:200] + "..."
+        self._print_line(f"✓ {tool_name}: {preview}", Style.TOOL_MESSAGE)
+
+    def _display_tool_results(self):
+        if not (hasattr(self.agent, "_last_tool_results")):
+            return
+        tool_results = getattr(self.agent, "_last_tool_results", [])
+        for tr in tool_results:
+            tool_name = tr.get("tool_name", "unknown")
+            arguments = tr.get("arguments", {})
+            success = tr.get("success", False)
+            tool_call = self._format_tool_call(tool_name, arguments)
+            result = tr.get("result", "")
+            if tool_name in ("grep", "glob") and result:
+                lines = result.strip().split("\n") if result else []
+                count = len([l for l in lines if l.strip()])
+                tool_call.description = f"({count} matches)"
+            elif tool_name == "read" and result:
+                lines = result.strip().split("\n")
+                count = len(lines)
+                offset = arguments.get("offset")
+                limit = arguments.get("limit")
+                if offset or limit:
+                    tool_call.description = f"[{count} lines, offset={offset}, limit={limit}]"
+                else:
+                    tool_call.description = f"[{count} lines]"
+            status = "✓" if success else "✗"
+            if result and result.startswith("→"):
+                continue
+            self._print_line(f"~ {tool_call.icon} {tool_call.title} {tool_call.description} {status}", Style.TOOL_MESSAGE)
+
+    def _display_thinking(self, result):
+        _tui_logger.debug(f"_display_thinking: show_thinking={self.show_thinking}, has_all_thinking={hasattr(self.agent, '_all_thinking')}")
+        if not (self.show_thinking and hasattr(self.agent, "_all_thinking")):
+            return
+        all_thinking = getattr(self.agent, "_all_thinking", [])
+        _tui_logger.debug(f"_display_thinking: {len(all_thinking)} thinking items")
+        for thinking in all_thinking:
+            if thinking and thinking not in (result or ""):
+                self._print_line(f"| Thinking: {thinking}", Style.THINKING)
+                self._print_empty()
+
+    def _display_response(self, result):
+        _tui_logger.debug(f"_display_response: _was_streamed={getattr(self, '_was_streamed', False)}, result={type(result).__name__}, len={len(result) if result else 0}")
+        if not getattr(self, '_was_streamed', False) and result and len(result) > 0:
+            _tui_logger.debug(f"Displaying result: len={len(result)}")
+            try:
+                output_area = self.query_one("#output-area")
+                output_area.add_line(result, "assistant")
+                output_area.refresh()
+            except Exception as e:
+                _tui_logger.debug(f"Output area error: {e}")
+                self._print_line(result, Style.ASSISTANT_MESSAGE)
+
+    def _display_summary(self):
+        summary = getattr(self.agent.state, "last_summary", None)
+        if not summary:
+            return
+        elapsed = summary.get("elapsed", 0)
+        files = summary.get("files", 0)
+        additions = summary.get("additions", 0)
+        deletions = summary.get("deletions", 0)
+        if not (files > 0 or elapsed > 0):
+            return
+        parts = []
+        if files > 0:
+            parts.append(f"{files} file(s)")
+            if additions > 0:
+                parts.append(f"+{additions}")
+            if deletions > 0:
+                parts.append(f"-{deletions}")
+        if elapsed > 0:
+            if elapsed < 60:
+                parts.append(f"{elapsed:.1f}s")
+            else:
+                mins = int(elapsed // 60)
+                secs = elapsed % 60
+                parts.append(f"{mins}m {secs:.0f}s")
+        self._print_line(f"│ {' | '.join(parts)}", Style.TEXT_DIM)
+
+    async def _process_input(self, text: str):
+        _tui_logger.debug(f"Processing input: {text[:50]!r}")
+
+        input_widget = await self._setup_processing_state(text)
+
+        try:
+            result = await self._call_agent_process(text)
+            _tui_logger.debug(f"_process_input: result_type={type(result).__name__}, result_len={len(result) if result else 0}")
+
+            self._display_tool_results()
+            self._display_thinking(result)
+            self._display_response(result)
+            self._display_summary()
+
+            try:
+                output_area = self.query_one("#output-area", RichLog)
+                _tui_logger.debug("Post-output refresh: refreshing output_area")
+                output_area.refresh()
+                _tui_logger.debug("Post-output refresh: refreshing self")
+                self.refresh()
+                output_area.scroll_end(animate=False)
+            except Exception as e:
+                _tui_logger.debug(f"Post-output refresh error: {e}")
+        except asyncio.CancelledError as e:
+            import traceback
+            _tui_logger.error(f"OUTER_CANCELLED_ERROR: {e}")
+            self._print_error("Request timed out - please try again")
+            self.push_screen(TracebackScreen("Timeout Error", traceback.format_exc()))
+        except Exception as e:
+            import traceback
+            _tui_logger.debug(f"OUTER_EXCEPTION: {e}")
+            self._print_error(f"Error: {e}")
+            self.push_screen(TracebackScreen("Error", traceback.format_exc()))
+        finally:
+            self._cleanup_after_processing(input_widget)
+
+    def _cleanup_after_processing(self, input_widget):
+        _tui_logger.debug("In finally block, cleaning up...")
+        if hasattr(self, "_spinner_timer") and self._spinner_timer:
+            _tui_logger.debug("Stopping spinner timer")
+            self._spinner_timer.stop()
+            self._spinner_timer = None
+            _tui_logger.debug("Spinner timer stopped")
+        else:
+            _tui_logger.debug("No spinner timer to stop")
+        try:
+            spinner = self.query_one("#spinner", Static)
+            spinner.update("")
+            spinner.classes = ""
+            _tui_logger.debug("Spinner cleaned up")
+        except Exception as e:
+            _tui_logger.debug(f"Spinner cleanup error: {e}")
+
+        _tui_logger.debug(f"_was_streamed={getattr(self, '_was_streamed', False)}, _stream_buffer_len={len(getattr(self, '_stream_buffer', ''))}")
+        if hasattr(self, "_stream_timer") and self._stream_timer:
+            _tui_logger.debug("Stopping stream timer")
+            self._stream_timer.stop()
+            self._stream_timer = None
+            _tui_logger.debug("Stream timer stopped")
+        if hasattr(self, "_stream_buffer") and self._stream_buffer:
+            _tui_logger.debug(f"Flushing stream buffer: {len(self._stream_buffer)} chars")
+            try:
+                output_area = self.query_one("#output-area", RichLog)
+                output_area.write(self._stream_buffer)
+                self._stream_buffer = ""
+                _tui_logger.debug("Stream buffer flushed")
+            except Exception as e:
+                _tui_logger.debug(f"Stream buffer flush error: {e}")
+
+        _tui_logger.debug("Setting _processing = False")
+        self._processing = False
+        _tui_logger.debug("Finally block part 1 complete")
+
+        self._refresh_output_area()
+
+        input_widget.focus()
+        _tui_logger.debug(f"Post-focus: focused={self.focused}, screen_visible={self.screen.visible}")
+        input_widget.disabled = False
+
+        try:
+            self.refresh()
+            self.screen.refresh()
+            if hasattr(self, 'layout') and self.layout:
+                self.layout.refresh()
+        except Exception as e:
+            _tui_logger.debug(f"Post-focus refresh error: {e}")
+
+        def force_repaint():
+            try:
+                self.refresh(repaint_children=True)
+            except Exception:
+                pass
+        if hasattr(self, 'app') and self.app:
+            self.app.call_later(force_repaint)
+
+        _tui_logger.debug("Input re-enabled after refresh")
+        _tui_logger.debug("Finally block part 2 complete - all cleanup done")
+
+    def _refresh_output_area(self):
+        has_app = hasattr(self, 'app') and self.app
+        _tui_logger.debug(f"Pre-refresh: has_app={has_app}")
+
+        def do_refresh():
+            _tui_logger.debug("do_refresh: starting")
+            try:
+                _tui_logger.debug("do_refresh: querying output_area")
+                output_area = self.query_one("#output-area", RichLog)
+                _tui_logger.debug("do_refresh: refreshing output_area")
+                output_area.refresh()
+                _tui_logger.debug("do_refresh: refreshing self")
+                self.refresh()
+                _tui_logger.debug("do_refresh: refreshing screen")
+                self.screen.refresh()
+                if hasattr(self, 'layout') and self.layout:
+                    _tui_logger.debug("do_refresh: refreshing layout")
+                    self.layout.refresh()
+                _tui_logger.debug("call_later refresh done")
+            except Exception as e:
+                _tui_logger.debug(f"call_later refresh error: {e}")
+
+        if has_app:
+            _tui_logger.debug("Using call_later for refresh")
+            _tui_logger.debug(f"Pre-call_later: _processing={self._processing}")
+            try:
+                _tui_logger.debug("SYNC refresh attempt")
+                output_area = self.query_one("#output-area", RichLog)
+                output_area.refresh()
+                self.refresh()
+                self.screen.refresh()
+                if hasattr(self, 'layout') and self.layout:
+                    self.layout.refresh()
+                _tui_logger.debug("SYNC refresh done")
+            except Exception as e:
+                _tui_logger.debug(f"SYNC refresh error: {e}")
+            self.app.call_later(do_refresh)
+            _tui_logger.debug("call_later scheduled")
+        else:
+            _tui_logger.debug("Using direct refresh (no app)")
+            try:
+                self.refresh()
+                self.screen.refresh()
+                if hasattr(self, 'layout') and self.layout:
+                    self.layout.refresh()
+            except Exception as e:
+                _tui_logger.debug(f"Screen refresh failed: {e}")
+
+    async def _handle_exit(self):
+        session_id = getattr(self.agent, "_session_id", "unknown") if self.agent else "unknown"
+        self.exit()
+        print()
+        from rich.console import Console
+        c = Console()
+        c.print("[cyan]░██████╗ ███████╗████████╗██████╗  ██████╗ ██████╗  █████╗ ██████╗ ██████╗ [/cyan]")
+        c.print("[cyan]██╔════╝ ██╔════╝╚══██╔══╝██╔══██╗██╔═══██╗██╔══██╗██╔══██╗██╔══██╗██╔══██╗[/cyan]")
+        c.print("[cyan]██║  ███╗█████╗     ██║   ██████╔╝██║   ██║██████╔╝███████║██████╔╝███████║[/cyan]")
+        c.print("[cyan]██║   ██║██╔══╝     ██║   ██╔══██╗██║   ██║██╔══██╗██╔══██║██╔══██╗██╔══██║[/cyan]")
+        c.print("[cyan]╚██████╔╝███████╗   ██║   ██║  ██║╚██████╔╝██████╔╝██║  ██║██║  ██║██║  ██║[/cyan]")
+        c.print("[cyan] ╚═════╝ ╚══════╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝[/cyan]")
+        print()
+        print(f"Session: {session_id}")
+
+    async def _handle_tools(self):
+        if self.agent and hasattr(self.agent, "tool_registry"):
+            tools = self.agent.tool_registry.list_tools()
+            self._print_line("Available tools:")
+            for t in tools:
+                name = t.name if hasattr(t, "name") else "unknown"
+                desc = t.description if hasattr(t, "description") else ""
+                self._print_line(f"  {name}: {desc}")
+        else:
+            self._print_line("No tools available")
+
+    async def _handle_skills(self):
+        if self.agent and hasattr(self.agent, "skills_manager"):
+            skills = self.agent.skills_manager.list_skills()
+            self._print_line("Available skills:")
+            for s in skills:
+                name = s.get("name", "unknown") if isinstance(s, dict) else getattr(s, "name", "unknown")
+                desc = s.get("description", "") if isinstance(s, dict) else getattr(s, "description", "")
+                self._print_line(f"  {name}: {desc}")
+        else:
+            self._print_line("No skills found")
+
+    async def _handle_agents(self):
+        if self.agent and hasattr(self.agent, "nanocode_registry"):
+            agents = self.agent.nanocode_registry.list_primary()
+            self._print_line("Available agents:")
+            for a in agents:
+                name = a.name if hasattr(a, "name") else "unknown"
+                desc = a.description if hasattr(a, "description") else ""
+                self._print_line(f"  {name}: {desc}")
+
+    async def _handle_agent_switch(self, parts):
+        agent_name = parts[1] if len(parts) > 1 else None
+        if agent_name and self.agent and hasattr(self.agent, "switch_agent"):
+            success = self.agent.switch_agent(agent_name)
+            if success:
+                self._print_line(f"Switched to agent: {agent_name}")
+            else:
+                self._print_error(f"Unknown agent: {agent_name}")
+        else:
+            self._print_line("Use /agents to list available agents")
+
+    async def _handle_tasks(self):
+        if not (self.agent and hasattr(self.agent, "tool_registry")):
+            return
+        task_tool = self.agent.tool_registry.get_tool("task")
+        if not (task_tool and hasattr(task_tool, "sessions")):
+            self._print_line("Task tool not available")
+            return
+        sessions = task_tool.sessions
+        if not sessions:
+            self._print_line("No active subagent sessions")
+            return
+        self._print_line("Active subagent sessions:")
+        for sid, sess in sessions.items():
+            status = "completed" if sess.completed else "running"
+            aname = sess.agent.name if hasattr(sess.agent, "name") else "?"
+            self._print_line(f"  {sid[:8]}: {aname} [{status}]")
+
+    async def _handle_kill(self, parts):
+        task_id = parts[1] if len(parts) > 1 else None
+        if not (task_id and self.agent and hasattr(self.agent, "tool_registry")):
+            self._print_error("Usage: /kill <session_id>")
+            return
+        task_tool = self.agent.tool_registry.get_tool("task")
+        if task_tool and hasattr(task_tool, "sessions") and task_id in task_tool.sessions:
+            del task_tool.sessions[task_id]
+            self._print_line(f"Killed session: {task_id[:8]}")
+        else:
+            self._print_error(f"Session not found: {task_id[:8]}")
+
+    async def _handle_debug_toggle(self):
+        if self.agent:
+            self.agent.debug = not getattr(self.agent, "debug", False)
+            self._print_line(f"Debug: {self.agent.debug}")
+
+    async def _handle_command(self, command: str):
+        """Handle slash-prefixed commands locally."""
+        cmd = command.lower()
+        parts = command.split()
+
+        if cmd in ("/exit", "/quit", "/q"):
+            return await self._handle_exit()
+
+        _message_cmds = {
+            "/history": "Use Ctrl+H for history",
+            "/provider": "Use --provider flag to set provider",
+            "/plan": "Planning not yet implemented in TUI",
+            "/checkpoint": "Checkpoints not yet implemented in TUI",
+            "/snapshot": "Snapshots not yet implemented in TUI",
+            "/snapshots": "Snapshots not yet implemented in TUI",
+            "/resume": "Use nanocode -r <session_id> to resume",
+        }
+        msg = _message_cmds.get(cmd)
+        if msg:
+            self._print_line(msg)
+            return
+        # Check /resume with argument
+        if cmd.startswith("/resume"):
+            self._print_line("Use nanocode -r <session_id> to resume")
+            return
+
+        _action_cmds = {
+            "/help": lambda: (self._print_line("Available commands:"), [self._print_line(f"  {c:<20} {d}") for c, d in self.CLI_COMMANDS]),
+            "/clear": lambda: (self.query_one("#output-area").clear_lines(), self._show_welcome()),
+            "/tools": lambda: self._handle_tools(),
+            "/skills": lambda: self._handle_skills(),
+            "/agents": lambda: self._handle_agents(),
+            "/tasks": lambda: self._handle_tasks(),
+            "/debug": lambda: self._handle_debug_toggle(),
+        }
+        handler = _action_cmds.get(cmd)
+        if handler:
+            result = handler()
+            if hasattr(result, "__await__"):
+                await result
+            return
+
+        if cmd == "/compact":
+            if self.agent and hasattr(self.agent, "context_manager"):
+                self.agent.context_manager._compact()
+                self._print_line("Context compacted")
+            return
+
+        if cmd == "/show_thinking":
+            self.show_thinking = not self.show_thinking
+            self._print_line(f"Show thinking: {self.show_thinking}")
+            return
+
+        if cmd == "/trace":
+            if self.agent:
+                self._print_line("Trace not yet implemented")
+            return
+
+        # Prefix-based commands
+        if cmd.startswith("/agent "):
+            return await self._handle_agent_switch(parts)
+        if cmd.startswith("/kill "):
+            return await self._handle_kill(parts)
+
+        self._print_error(f"Unknown command: {command}. Type /help for available commands.")
+
+
+async def run_tui(agent=None, show_thinking: bool = True):
+    """Run the TUI application."""
+    app = NanoCodeTUI(agent=agent, show_thinking=show_thinking)
+    await app.run_async()
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    asyncio.run(run_tui())

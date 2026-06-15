@@ -1,0 +1,170 @@
+---
+title: Button
+---
+
+# Button
+
+A button allows a user to perform an action, with mouse, touch, and keyboard interactions.
+
+<Example>
+  <Button variant="primary">Button</Button>
+
+  ```jsx
+  <Button variant="primary">Button</Button>
+  ```
+</Example>
+
+## Variants
+
+<Example direction="row">
+  <Button variant="primary">Primary</Button>
+  <Button>Default</Button>
+  <Button variant="outline">Outline</Button>
+  <Button variant="quiet">Quiet</Button>
+  <Button variant="danger">Danger</Button>
+  <Button variant="zero">Zero</Button>
+
+  ```jsx
+  <Button variant="primary">Primary</Button>
+  <Button>Default</Button>
+  <Button variant="outline">Outline</Button>
+  <Button variant="quiet">Quiet</Button>
+  <Button variant="danger">Danger</Button>
+  <Button variant="zero">Zero</Button>
+  ```
+</Example>
+
+## Sizes
+
+<Example direction="row">
+  <Button size="sm">Small</Button>
+  <Button size="md">Medium</Button>
+  <Button size="lg">Large</Button>
+  <Button size="xl">X-Large</Button>
+
+  ```jsx
+  <Button size="sm">Small</Button>
+  <Button size="md">Medium</Button>
+  <Button size="lg">Large</Button>
+  <Button size="xl">X-Large</Button>
+  ```
+</Example>
+
+## Disabled
+
+<Example direction="row">
+  <Button isDisabled variant="primary">Primary</Button>
+  <Button isDisabled>Default</Button>
+  <Button isDisabled variant="outline">Outline</Button>
+  <Button isDisabled variant="quiet">Quiet</Button>
+  <Button isDisabled variant="danger">Danger</Button>
+  <Button isDisabled variant="zero">Zero</Button>
+
+  ```jsx
+  <Button isDisabled variant="primary">Primary</Button>
+  <Button isDisabled>Default</Button>
+  <Button isDisabled variant="outline">Outline</Button>
+  <Button isDisabled variant="quiet">Quiet</Button>
+  <Button isDisabled variant="danger">Danger</Button>
+  <Button isDisabled variant="zero">Zero</Button>
+  ```
+</Example>
+
+## Icon
+
+<Example direction="row">
+  <Button variant="primary">
+    <Icon size="sm">
+      <Lucide.File />
+    </Icon>
+  </Button>
+  <Button>
+    <Icon size="sm">
+      <Lucide.File />
+    </Icon>
+  </Button>
+  <Button variant="outline">
+    <Icon size="sm">
+      <Lucide.File />
+    </Icon>
+  </Button>
+  <Button variant="quiet">
+    <Icon size="sm">
+      <Lucide.File />
+    </Icon>
+  </Button>
+  <Button variant="danger">
+    <Icon size="sm">
+      <Lucide.File />
+    </Icon>
+  </Button>
+  <Button variant="zero">
+    <Icon size="sm">
+      <Lucide.File />
+    </Icon>
+  </Button>
+
+  ```jsx
+  <Button variant="primary">
+    <Icon size="sm">
+      <Lucide.File />
+    </Icon>
+  </Button>
+  <Button>
+    <Icon size="sm">
+      <Lucide.File />
+    </Icon>
+  </Button>
+  <Button variant="outline">
+    <Icon size="sm">
+      <Lucide.File />
+    </Icon>
+  </Button>
+  <Button variant="quiet">
+    <Icon size="sm">
+      <Lucide.File />
+    </Icon>
+  </Button>
+  <Button variant="danger">
+    <Icon size="sm">
+      <Lucide.File />
+    </Icon>
+  </Button>
+  <Button variant="zero">
+    <Icon size="sm">
+      <Lucide.File />
+    </Icon>
+  </Button>
+  ```
+</Example>
+
+## Render as link
+
+<Example>
+  <Button render={<a href="#" />}>
+    Button as a link
+  </Button>
+
+  ```jsx
+  <Button render={<a href="#" />}>
+    Button as a link
+  </Button>
+  ```
+</Example>
+
+## Component props
+
+<Example>
+  <DataTable
+    data={[
+      { name: 'variant', value: 'ButtonVariant', description: '"default" | "primary" | "outline" | "quiet" | "danger" | "zero"' },
+      { name: 'size', value: 'ButtonSize', description: '"xs" | "sm" | "md" | "lg" | "xl" (default: "md")' },
+      { name: 'isDisabled', value: 'boolean', description: 'Disables the button' },
+      { name: 'render', value: 'RenderProp', description: 'Render prop for polymorphism (e.g., render as link)' },
+    ]}
+  >
+    <DataColumn id="name" label="Name" />
+    <DataColumn id="value" label="Type" />
+    <DataColumn id="description" label="Description" />
+  </DataTable>
+</Example>

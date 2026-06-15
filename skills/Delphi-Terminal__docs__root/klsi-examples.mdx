@@ -1,0 +1,48 @@
+---
+title: "KLSI examples"
+description: "Practical request patterns for Kalshi endpoints"
+---
+
+Use these examples as copy/paste starting points for KLSI endpoints.
+
+## Set your API key
+
+```bash
+export API_KEY="your_api_key_here"
+```
+
+## Get market details
+
+```bash
+curl -s -H "X-API-Key: $API_KEY" \
+  "https://api.delphiterminal.co/api/v1/klsi/KXNCAAFTOTAL-25NOV29NDSTAN-41/market" \
+  | jq
+```
+
+## Get trade history
+
+```bash
+curl -s -H "X-API-Key: $API_KEY" \
+  "https://api.delphiterminal.co/api/v1/klsi/KXNCAAFTOTAL-25NOV29NDSTAN-41/tradehistory?limit=50" \
+  | jq
+```
+
+## Get top of book
+
+```bash
+curl -s -H "X-API-Key: $API_KEY" \
+  "https://api.delphiterminal.co/api/v1/klsi/AMAZONFTC-29DEC31/top_of_book" \
+  | jq
+```
+
+## Get raw orderbook deltas
+
+```bash
+curl -s -H "X-API-Key: $API_KEY" \
+  "https://api.delphiterminal.co/api/v1/klsi/AMAZONFTC-29DEC31/raw_deltas?limit=10" \
+  | jq
+```
+
+<Note>
+  For bulk historical exports, use the dedicated guide at <a href="/data-extraction">/data-extraction</a>.
+</Note>

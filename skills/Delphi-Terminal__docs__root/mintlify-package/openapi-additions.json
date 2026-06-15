@@ -1,0 +1,852 @@
+{
+  "_comment": "Drop-in additions for your existing Mintlify openapi.json. Merge each top-level key (tags, paths, components.schemas) into your existing spec. The 9 endpoints below are served by api.delphiterminal.co/api/v1/* and are reverse-proxied to the internal Order Router. Source of truth for all schemas: github.com/piraterobot0/delphi-sdk/src/types.ts plus the per-exchange types under src/<exchange>/types.ts.",
+  "tags": [
+    {
+      "name": "Trading",
+      "description": "Place, query, and cancel orders across all supported prediction-market exchanges (Polymarket, Kalshi, Opinion Labs, Gemini, Limitless, Predict.fun). Requires an Admin or Enterprise Oddsmate plan.\n\n**Important — client-side signing required for on-chain exchanges.** Polymarket, Opinion Labs, Limitless, and Predict.fun use EIP-712 signed orders. The signature must be produced on your machine using your private key — the Delphi server never has access to it. Use the `@delphimarkets/sdk` `build*Order()` helpers to construct a valid `signed_order` payload. Raw HTTP calls to `POST /orders` will be rejected by the exchange unless `signed_order` contains a valid signature."
+    },
+    {
+      "name": "Credentials",
+      "description": "Register and inspect your stored exchange credentials. Each user has at most one credential set per exchange. Credentials are encrypted at rest and used by the server when forwarding orders to centralized exchanges (Kalshi, Gemini) or for credential-derivation flows (Polymarket)."
+    },
+    {
+      "name": "Polymarket Onboarding",
+      "description": "One-time helpers for Polymarket: derive CLOB HMAC credentials from an EOA private key, verify stored credentials are still valid, and look up the Gnosis Safe (proxy) address for an EOA. Use these once per user before placing your first Polymarket order."
+    }
+  ],
+  "paths": {
+    "/api/v1/orders": {
+      "post": {
+        "tags": ["Trading"],
+        "summary": "Place an order",
+        "description": "Submit a new order to an exchange. The shape of `signed_order` depends on `exchange`:\n\n- **polymarket** — `SignedPolymarketOrder` produced by `buildPolymarketOrder()`\n- **kalshi** — `KalshiLimitOrder` (server signs)\n- **opinionlabs** — `SignedOpinionLabsOrder` produced by `buildOpinionLabsOrder()`\n- **gemini** — `GeminiPredictionOrder` produced by `buildGeminiOrder()` (server signs)\n- **limitless** — `SignedLimitlessOrder` produced by `buildLimitlessOrder()`\n- **predictfun** — `PredictFunOrderPayload` produced by `buildPredictFunOrder()`\n\nReturns the order ID and current status. Use `GET /orders/{id}` to poll for fills.",
+        "operationId": "placeOrder",
+        "security": [{ "ApiKeyAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PlaceOrderRequest" },
+              "examples": {
+                "polymarket": {
+                  "summary": "Polymarket (signed EIP-712 on Polygon)",
+                  "value": {
+                    "exchange": "polymarket",
+                    "market_id": "0x123...",
+                    "order_type": "GTC",
+                    "signed_order": {
+                      "salt": "1234567890",
+                      "maker": "0xSafeAddress...",
+                      "signer": "0xEOAAddress...",
+                      "taker": "0x0000000000000000000000000000000000000000",
+                      "tokenId": "12345...",
+                      "makerAmount": "5000000",
+                      "takerAmount": "9090909",
+                      "expiration": "0",
+                      "nonce": "0",
+                      "feeRateBps": "0",
+                      "side": "BUY",
+                      "signatureType": 2,
+                      "signature": "0xabcdef..."
+                    }
+                  }
+                },
+                "kalshi": {
+                  "summary": "Kalshi (server-side RSA-PSS signing)",
+                  "value": {
+                    "exchange": "kalshi",
+                    "market_id": "KXNHLGAME-26MAR30PITNYI-NYI",
+                    "order_type": "GTC",
+                    "signed_order": {
+                      "ticker": "KXNHLGAME-26MAR30PITNYI-NYI",
+                      "side": "yes",
+                      "action": "buy",
+                      "type": "limit",
+                      "price_cents": "54",
+                      "count": "1"
+                    }
+                  }
+                },
+                "opinionlabs": {
+                  "summary": "Opinion Labs (signed EIP-712 on BNB Chain)",
+                  "value": {
+                    "exchange": "opinionlabs",
+                    "market_id": "8453",
+                    "order_type": "GTC",
+                    "signed_order": {
+                      "salt": "1234",
+                      "maker": "0xSafeAddress...",
+                      "signer": "0xEOAAddress...",
+                      "taker": "0x0000000000000000000000000000000000000000",
+                      "tokenId": "1087612329966...",
+                      "makerAmount": "3000000000000000000",
+                      "takerAmount": "6000000000000000000",
+                      "expiration": "1740000000",
+                      "nonce": "12345",
+                      "feeRateBps": "0",
+                      "side": "0",
+                      "signatureType": "2",
+                      "signature": "0xabcdef...",
+                      "sign": "0xabcdef...",
+                      "topicId": 8453,
+                      "contractAddress": "",
+                      "currencyAddress": "0x55d398326f99059fF775485246999027B3197955",
+                      "price": "0.50",
+                      "tradingMethod": 2,
+                      "timestamp": 1739000000,
+                      "safeRate": "0",
+                      "orderExpTime": "0"
+                    }
+                  }
+                },
+                "gemini": {
+                  "summary": "Gemini Predictions (server-side HMAC)",
+                  "value": {
+                    "exchange": "gemini",
+                    "market_id": "GEMI-FEDJAN26-DN25",
+                    "order_type": "GTC",
+                    "signed_order": {
+                      "symbol": "GEMI-FEDJAN26-DN25",
+                      "side": "buy",
+                      "outcome": "yes",
+                      "quantity": "1",
+                      "price": "0.55",
+                      "time_in_force": "good-til-cancel"
+                    }
+                  }
+                },
+                "limitless": {
+                  "summary": "Limitless (signed EIP-712 on Base)",
+                  "value": {
+                    "exchange": "limitless",
+                    "market_id": "trump-out-as-president-before-2027-1768933068297",
+                    "order_type": "GTC",
+                    "signed_order": {
+                      "order": {
+                        "salt": 1234,
+                        "maker": "0xEOAAddress...",
+                        "signer": "0xEOAAddress...",
+                        "taker": "0x0000000000000000000000000000000000000000",
+                        "tokenId": "56154308...",
+                        "makerAmount": 1000000,
+                        "takerAmount": 10000000,
+                        "feeRateBps": 300,
+                        "side": 0,
+                        "nonce": 0,
+                        "signature": "0xabcdef...",
+                        "signatureType": 0,
+                        "price": 0.10
+                      },
+                      "ownerId": 1292635,
+                      "orderType": "GTC",
+                      "marketSlug": "trump-out-as-president-before-2027-1768933068297"
+                    }
+                  }
+                },
+                "predictfun": {
+                  "summary": "Predict.fun (signed EIP-712 on BNB Chain, Kernel smart wallet)",
+                  "value": {
+                    "exchange": "predictfun",
+                    "market_id": "174032",
+                    "order_type": "GTC",
+                    "signed_order": {
+                      "pricePerShare": "0.50",
+                      "strategy": "LIMIT",
+                      "order": {
+                        "salt": "1234",
+                        "maker": "0xPredictAccount...",
+                        "signer": "0xPredictAccount...",
+                        "taker": "0x0000000000000000000000000000000000000000",
+                        "tokenId": "11050832...",
+                        "makerAmount": "25000000000000000000",
+                        "takerAmount": "50000000000000000000",
+                        "expiration": 0,
+                        "nonce": "0",
+                        "feeRateBps": "200",
+                        "side": 0,
+                        "signatureType": 2,
+                        "signature": "0xabcdef..."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Order placed successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PlaceOrderResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "402": { "description": "Plan tier does not include trading. Requires Admin or Enterprise Oddsmate." },
+          "502": { "description": "Upstream exchange returned an error" }
+        }
+      },
+      "get": {
+        "tags": ["Trading"],
+        "summary": "List tracked orders",
+        "description": "Returns all orders the server has tracked for your account. Optionally filter by exchange.",
+        "operationId": "listOrders",
+        "security": [{ "ApiKeyAuth": [] }],
+        "parameters": [
+          {
+            "name": "exchange",
+            "in": "query",
+            "required": false,
+            "schema": { "$ref": "#/components/schemas/Exchange" },
+            "description": "Filter to a single exchange. Omit to return orders across all exchanges."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Orders retrieved",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ListOrdersResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/orders/{id}": {
+      "get": {
+        "tags": ["Trading"],
+        "summary": "Get order status",
+        "description": "Look up a specific tracked order by its ID. If `exchange` is omitted, the server resolves it from the order store.",
+        "operationId": "getOrder",
+        "security": [{ "ApiKeyAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Order ID returned by `POST /orders`."
+          },
+          {
+            "name": "exchange",
+            "in": "query",
+            "required": false,
+            "schema": { "$ref": "#/components/schemas/Exchange" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OrderStatusResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "description": "Order not found" }
+        }
+      },
+      "delete": {
+        "tags": ["Trading"],
+        "summary": "Cancel an order",
+        "description": "Cancel a resting order. Already-filled or already-cancelled orders return an exchange-specific error.",
+        "operationId": "cancelOrder",
+        "security": [{ "ApiKeyAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "exchange",
+            "in": "query",
+            "required": false,
+            "schema": { "$ref": "#/components/schemas/Exchange" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cancellation submitted",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CancelOrderResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "description": "Order not found" },
+          "502": { "description": "Upstream exchange returned an error" }
+        }
+      }
+    },
+    "/api/v1/users/{userID}/credentials": {
+      "post": {
+        "tags": ["Credentials"],
+        "summary": "Register exchange credentials",
+        "description": "Store your exchange API credentials with the Delphi server. The server uses these when signing requests to centralized exchanges (Kalshi RSA, Gemini HMAC) or for credential-derivation flows.\n\n**The `{userID}` path segment is ignored.** The server always uses the authenticated user from your `X-API-Key` header. Pass `_` as a placeholder.\n\nFor Polymarket, prefer `POST /api/v1/polymarket/derive-credentials` which derives and stores CLOB credentials in one call.",
+        "operationId": "registerCredentials",
+        "security": [{ "ApiKeyAuth": [] }],
+        "parameters": [
+          {
+            "name": "userID",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Pass `_`. The server resolves the user from authentication.",
+            "example": "_"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RegisterCredentialsRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Credentials stored",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/RegisterCredentialsResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "get": {
+        "tags": ["Credentials"],
+        "summary": "List connected exchanges",
+        "description": "Returns the exchanges for which you have stored credentials. Does not return the credential values themselves.\n\n**The `{userID}` path segment is ignored.** Pass `_`.",
+        "operationId": "listCredentials",
+        "security": [{ "ApiKeyAuth": [] }],
+        "parameters": [
+          {
+            "name": "userID",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "example": "_"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of exchanges",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ListCredentialsResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/polymarket/derive-credentials": {
+      "post": {
+        "tags": ["Polymarket Onboarding"],
+        "summary": "Derive Polymarket CLOB credentials",
+        "description": "Given your EOA private key, the server hits Polymarket's auth endpoints to derive (or fetch) your CLOB HMAC credentials, stores them, and returns the public-safe metadata. Run this once per user before your first Polymarket order.\n\nYour private key is used in-memory by the server only to perform the derivation and is not persisted. For maximum trust, you can call `derivePolymarketCredentials()` from the SDK which is equivalent.",
+        "operationId": "derivePolymarketCredentials",
+        "security": [{ "ApiKeyAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DeriveCredentialsRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Credentials derived and stored",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DeriveCredentialsResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/polymarket/verify-credentials": {
+      "post": {
+        "tags": ["Polymarket Onboarding"],
+        "summary": "Verify Polymarket credentials",
+        "description": "Confirms your stored Polymarket credentials still work against the live CLOB. Optionally pass inline credentials in the body to test those instead of the stored set.",
+        "operationId": "verifyPolymarketCredentials",
+        "security": [{ "ApiKeyAuth": [] }],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/VerifyCredentialsRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Verification result",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/VerifyCredentialsResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/polymarket/safe-address": {
+      "post": {
+        "tags": ["Polymarket Onboarding"],
+        "summary": "Derive Polymarket Safe address",
+        "description": "Computes the deterministic Gnosis Safe (proxy wallet) address for a given EOA address. This is the address that holds your Polymarket positions and the address Polymarket displays in its UI.\n\nThis is a pure CREATE2 derivation — no on-chain state is read. The same computation is available client-side via `deriveSafeAddress()` from the SDK.",
+        "operationId": "getPolymarketSafeAddress",
+        "security": [{ "ApiKeyAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SafeAddressRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Safe address derived",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SafeAddressResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Exchange": {
+        "type": "string",
+        "enum": ["polymarket", "kalshi", "opinionlabs", "gemini", "limitless", "predictfun"],
+        "description": "Supported exchange identifier."
+      },
+      "OrderType": {
+        "type": "string",
+        "enum": ["GTC", "GTD", "FOK", "FAK"],
+        "description": "Order time-in-force. GTC = good-til-canceled, GTD = good-til-date, FOK = fill-or-kill, FAK = fill-and-kill."
+      },
+      "OrderSide": {
+        "type": "string",
+        "enum": ["BUY", "SELL"]
+      },
+
+      "SignedPolymarketOrder": {
+        "type": "object",
+        "description": "EIP-712 signed Polymarket CTF Exchange order. Produce with `buildPolymarketOrder()` from `@delphimarkets/sdk`.",
+        "required": [
+          "salt", "maker", "signer", "taker", "tokenId",
+          "makerAmount", "takerAmount", "expiration", "nonce",
+          "feeRateBps", "side", "signatureType", "signature"
+        ],
+        "properties": {
+          "salt": { "type": "string", "description": "Random uint256 (decimal string) for replay protection." },
+          "maker": { "type": "string", "description": "Asset owner. Gnosis Safe address for Safe-based orders, EOA for direct EOA orders." },
+          "signer": { "type": "string", "description": "EOA that produced the signature." },
+          "taker": { "type": "string", "description": "Counterparty restriction. Use `0x0000000000000000000000000000000000000000` for any taker." },
+          "tokenId": { "type": "string", "description": "Polymarket outcome token ID (uint256 decimal string)." },
+          "makerAmount": { "type": "string", "description": "Amount the maker is offering, in base units (USDC has 6 decimals)." },
+          "takerAmount": { "type": "string", "description": "Amount the maker is asking for, in base units." },
+          "expiration": { "type": "string", "description": "Unix seconds. `0` = no expiry." },
+          "nonce": { "type": "string", "description": "Per-maker monotonic nonce. `0` for first order." },
+          "feeRateBps": { "type": "string", "description": "Fee rate in basis points (1 bp = 0.01%)." },
+          "side": { "$ref": "#/components/schemas/OrderSide" },
+          "signatureType": {
+            "type": "integer",
+            "enum": [0, 1, 2],
+            "description": "0 = EOA, 1 = Polymarket proxy, 2 = Polymarket Gnosis Safe."
+          },
+          "signature": { "type": "string", "description": "65-byte ECDSA signature, hex-encoded with 0x prefix." }
+        }
+      },
+
+      "KalshiLimitOrder": {
+        "type": "object",
+        "description": "Kalshi limit order. Server signs with your registered RSA key — no client-side signature required.",
+        "required": ["ticker", "side", "price_cents", "count"],
+        "properties": {
+          "ticker": { "type": "string", "example": "KXNHLGAME-26MAR30PITNYI-NYI" },
+          "side": {
+            "type": "string",
+            "enum": ["yes", "no"],
+            "description": "Which Kalshi outcome to take."
+          },
+          "action": {
+            "type": "string",
+            "enum": ["buy", "sell"],
+            "default": "buy"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["limit"],
+            "default": "limit"
+          },
+          "price_cents": { "type": "string", "example": "54", "description": "Limit price in cents (1-99)." },
+          "count": { "type": "string", "example": "1", "description": "Number of contracts." }
+        }
+      },
+
+      "SignedOpinionLabsOrder": {
+        "type": "object",
+        "description": "EIP-712 signed Opinion Labs order on BNB Chain. Produce with `buildOpinionLabsOrder()` from `@delphimarkets/sdk`. Includes both the EIP-712 fields and Opinion-Labs-specific metadata.",
+        "required": [
+          "salt", "maker", "signer", "taker", "tokenId",
+          "makerAmount", "takerAmount", "expiration", "nonce",
+          "feeRateBps", "side", "signatureType", "signature", "sign",
+          "topicId", "contractAddress", "currencyAddress", "price",
+          "tradingMethod", "timestamp", "safeRate", "orderExpTime"
+        ],
+        "properties": {
+          "salt": { "type": "string" },
+          "maker": { "type": "string", "description": "Gnosis Safe address (asset owner)." },
+          "signer": { "type": "string", "description": "EOA that signs on behalf of the Safe." },
+          "taker": { "type": "string" },
+          "tokenId": { "type": "string" },
+          "makerAmount": { "type": "string", "description": "USDT amount in base units (18 decimals on BSC)." },
+          "takerAmount": { "type": "string" },
+          "expiration": { "type": "string", "description": "Unix seconds." },
+          "nonce": { "type": "string" },
+          "feeRateBps": { "type": "string" },
+          "side": { "type": "string", "enum": ["0", "1"], "description": "0 = BUY, 1 = SELL." },
+          "signatureType": { "type": "string", "enum": ["2"], "description": "Always 2 for Safe wallet (POLY_GNOSIS_SAFE)." },
+          "signature": { "type": "string" },
+          "sign": { "type": "string", "description": "Duplicate of `signature` required by the Opinion Labs API." },
+          "topicId": { "type": "integer", "description": "Opinion Labs market ID." },
+          "contractAddress": { "type": "string", "description": "Empty string per Opinion Labs convention." },
+          "currencyAddress": { "type": "string", "description": "USDT contract on BSC: 0x55d398326f99059fF775485246999027B3197955." },
+          "price": { "type": "string", "description": "Human-readable price (0.01 to 0.99)." },
+          "tradingMethod": { "type": "integer", "enum": [2], "description": "2 = limit order." },
+          "timestamp": { "type": "integer", "description": "Order creation Unix seconds." },
+          "safeRate": { "type": "string", "default": "0" },
+          "orderExpTime": { "type": "string", "default": "0" }
+        }
+      },
+
+      "GeminiPredictionOrder": {
+        "type": "object",
+        "description": "Gemini Predictions order. Server signs with your registered HMAC-SHA512 secret.",
+        "required": ["symbol", "side", "outcome", "quantity", "price"],
+        "properties": {
+          "symbol": { "type": "string", "example": "GEMI-FEDJAN26-DN25" },
+          "side": { "type": "string", "enum": ["buy", "sell"] },
+          "outcome": { "type": "string", "enum": ["yes", "no"] },
+          "quantity": { "type": "string", "example": "1" },
+          "price": { "type": "string", "example": "0.55", "description": "Limit price in 0-1 range." },
+          "time_in_force": { "type": "string", "default": "good-til-cancel" }
+        }
+      },
+
+      "SignedLimitlessOrder": {
+        "type": "object",
+        "description": "EIP-712 signed Limitless order on Base chain. Produce with `buildLimitlessOrder()` from `@delphimarkets/sdk`.",
+        "required": ["order", "ownerId", "orderType", "marketSlug"],
+        "properties": {
+          "order": {
+            "type": "object",
+            "required": [
+              "salt", "maker", "signer", "taker", "tokenId",
+              "makerAmount", "takerAmount", "feeRateBps", "side",
+              "nonce", "signature", "signatureType", "price"
+            ],
+            "properties": {
+              "salt": { "type": "integer" },
+              "maker": { "type": "string" },
+              "signer": { "type": "string" },
+              "taker": { "type": "string" },
+              "tokenId": { "type": "string" },
+              "makerAmount": { "type": "integer", "description": "USDC base units (6 decimals)." },
+              "takerAmount": { "type": "integer" },
+              "feeRateBps": { "type": "integer", "default": 300 },
+              "side": { "type": "integer", "enum": [0, 1], "description": "0 = BUY, 1 = SELL." },
+              "nonce": { "type": "integer" },
+              "signature": { "type": "string" },
+              "signatureType": { "type": "integer", "enum": [0], "description": "0 = EOA wallet." },
+              "price": { "type": "number", "description": "Human-readable price (0.01 to 0.99)." }
+            }
+          },
+          "ownerId": { "type": "integer", "description": "Limitless owner ID. Fetch from /profiles." },
+          "orderType": { "type": "string", "example": "GTC" },
+          "marketSlug": { "type": "string" }
+        }
+      },
+
+      "SignedPredictFunOrder": {
+        "type": "object",
+        "description": "Inner EIP-712 signed Predict.fun CTF Exchange order on BNB Chain.",
+        "required": [
+          "salt", "maker", "signer", "taker", "tokenId",
+          "makerAmount", "takerAmount", "expiration", "nonce",
+          "feeRateBps", "side", "signatureType", "signature"
+        ],
+        "properties": {
+          "hash": { "type": "string", "description": "Optional EIP-712 digest." },
+          "salt": { "type": "string" },
+          "maker": { "type": "string", "description": "Predict Account (Kernel smart wallet) or EOA." },
+          "signer": { "type": "string" },
+          "taker": { "type": "string" },
+          "tokenId": { "type": "string" },
+          "makerAmount": { "type": "string", "description": "Token base units (18 decimals on BSC)." },
+          "takerAmount": { "type": "string" },
+          "expiration": { "type": "integer", "description": "Unix seconds. 0 = no expiry." },
+          "nonce": { "type": "string" },
+          "feeRateBps": { "type": "string", "description": "From `market.feeRateBps`." },
+          "side": { "type": "integer", "enum": [0, 1], "description": "0 = BUY, 1 = SELL." },
+          "signatureType": { "type": "integer", "enum": [0, 1, 2], "description": "0 = EOA, 1 = POLY_PROXY, 2 = POLY_GNOSIS_SAFE." },
+          "signature": { "type": "string" }
+        }
+      },
+
+      "PredictFunOrderPayload": {
+        "type": "object",
+        "description": "Predict.fun CreateOrderData envelope. Wrap a `SignedPredictFunOrder` with strategy/slippage flags. Produce with `buildPredictFunOrder()`.",
+        "required": ["pricePerShare", "strategy", "order"],
+        "properties": {
+          "pricePerShare": { "type": "string", "example": "0.50" },
+          "strategy": { "type": "string", "enum": ["LIMIT", "MARKET"] },
+          "slippageBps": { "type": "string" },
+          "isFillOrKill": { "type": "boolean" },
+          "isPostOnly": { "type": "boolean" },
+          "order": { "$ref": "#/components/schemas/SignedPredictFunOrder" }
+        }
+      },
+
+      "PlaceOrderRequest": {
+        "type": "object",
+        "required": ["exchange", "market_id", "order_type", "signed_order"],
+        "properties": {
+          "exchange": { "$ref": "#/components/schemas/Exchange" },
+          "market_id": { "type": "string", "description": "Informational; used for order tracking on the Delphi server." },
+          "order_type": { "$ref": "#/components/schemas/OrderType" },
+          "signed_order": {
+            "description": "Order payload. Shape depends on `exchange` — see the per-exchange examples.",
+            "oneOf": [
+              { "$ref": "#/components/schemas/SignedPolymarketOrder" },
+              { "$ref": "#/components/schemas/KalshiLimitOrder" },
+              { "$ref": "#/components/schemas/SignedOpinionLabsOrder" },
+              { "$ref": "#/components/schemas/GeminiPredictionOrder" },
+              { "$ref": "#/components/schemas/SignedLimitlessOrder" },
+              { "$ref": "#/components/schemas/PredictFunOrderPayload" }
+            ]
+          },
+          "credentials": {
+            "$ref": "#/components/schemas/ExchangeCredentials",
+            "description": "Optional inline credentials that override stored credentials for this single request. Rarely needed."
+          }
+        }
+      },
+
+      "PlaceOrderResponse": {
+        "type": "object",
+        "required": ["order_id", "exchange", "status"],
+        "properties": {
+          "order_id": { "type": "string" },
+          "exchange": { "$ref": "#/components/schemas/Exchange" },
+          "status": {
+            "type": "string",
+            "description": "Exchange-reported status, e.g. `live`, `matched`, `cancelled`."
+          }
+        }
+      },
+
+      "OrderStatusResponse": {
+        "type": "object",
+        "required": ["order_id", "exchange", "status"],
+        "properties": {
+          "order_id": { "type": "string" },
+          "exchange": { "$ref": "#/components/schemas/Exchange" },
+          "status": { "type": "string" },
+          "size_matched": { "type": "string" },
+          "price": { "type": "string" },
+          "side": { "type": "string" }
+        }
+      },
+
+      "ListOrdersResponse": {
+        "type": "object",
+        "required": ["orders"],
+        "properties": {
+          "orders": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/OrderStatusResponse" }
+          }
+        }
+      },
+
+      "CancelOrderResponse": {
+        "type": "object",
+        "required": ["order_id", "status"],
+        "properties": {
+          "order_id": { "type": "string" },
+          "status": { "type": "string" }
+        }
+      },
+
+      "ExchangeCredentials": {
+        "type": "object",
+        "required": ["api_key", "api_secret", "api_passphrase"],
+        "description": "Generic credential envelope. Field meaning differs per exchange:\n\n- **kalshi** — `api_key` = Kalshi API key ID, `api_secret` = RSA private key PEM, `api_passphrase` = `''`.\n- **gemini** — `api_key` = Gemini key, `api_secret` = HMAC-SHA512 secret, `api_passphrase` = `''`.\n- **opinionlabs** — `api_key` = Opinion Labs API key, others empty. Pass `signer_address`.\n- **limitless** — `api_key` = Limitless key, `api_secret` = HMAC secret. Pass `signer_address`.\n- **predictfun** — `api_key` = Predict.fun key, `api_secret` = Privy wallet hex private key. Pass `signer_address` = Predict Account.\n- **polymarket** — prefer `POST /polymarket/derive-credentials` instead.",
+        "properties": {
+          "api_key": { "type": "string" },
+          "api_secret": { "type": "string", "format": "password" },
+          "api_passphrase": { "type": "string", "format": "password" },
+          "signer_address": { "type": "string", "description": "Optional. EVM address of the wallet that will sign orders (required for opinionlabs, limitless, predictfun)." }
+        }
+      },
+
+      "RegisterCredentialsRequest": {
+        "type": "object",
+        "required": ["exchange", "credentials"],
+        "properties": {
+          "exchange": { "$ref": "#/components/schemas/Exchange" },
+          "credentials": { "$ref": "#/components/schemas/ExchangeCredentials" }
+        }
+      },
+
+      "RegisterCredentialsResponse": {
+        "type": "object",
+        "required": ["exchange", "status"],
+        "properties": {
+          "exchange": { "type": "string" },
+          "status": { "type": "string" }
+        }
+      },
+
+      "ListCredentialsResponse": {
+        "type": "object",
+        "required": ["exchanges"],
+        "properties": {
+          "exchanges": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Exchange" }
+          }
+        }
+      },
+
+      "DeriveCredentialsRequest": {
+        "type": "object",
+        "required": ["private_key"],
+        "properties": {
+          "private_key": {
+            "type": "string",
+            "format": "password",
+            "description": "EOA private key, hex without 0x prefix. Used in-memory only; not persisted."
+          }
+        }
+      },
+
+      "DeriveCredentialsResponse": {
+        "type": "object",
+        "required": ["status", "eoa_address", "safe_address", "api_key"],
+        "properties": {
+          "status": { "type": "string" },
+          "eoa_address": { "type": "string" },
+          "safe_address": { "type": "string", "description": "Polymarket Gnosis Safe (proxy) address." },
+          "api_key": { "type": "string", "description": "CLOB HMAC API key ID. The HMAC secret is stored server-side and never returned." }
+        }
+      },
+
+      "VerifyCredentialsRequest": {
+        "type": "object",
+        "properties": {
+          "credentials": {
+            "$ref": "#/components/schemas/ExchangeCredentials",
+            "description": "Optional. If omitted, verifies the stored credentials."
+          }
+        }
+      },
+
+      "VerifyCredentialsResponse": {
+        "type": "object",
+        "required": ["valid"],
+        "properties": {
+          "valid": { "type": "boolean" },
+          "eoa_address": { "type": "string" },
+          "safe_address": { "type": "string" },
+          "error": { "type": "string" }
+        }
+      },
+
+      "SafeAddressRequest": {
+        "type": "object",
+        "required": ["eoa_address"],
+        "properties": {
+          "eoa_address": { "type": "string" }
+        }
+      },
+
+      "SafeAddressResponse": {
+        "type": "object",
+        "required": ["eoa_address", "safe_address"],
+        "properties": {
+          "eoa_address": { "type": "string" },
+          "safe_address": { "type": "string" }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Malformed request body or missing required fields",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "integer", "example": 400 },
+                    "message": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Missing or invalid X-API-Key header",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "integer", "example": 401 },
+                    "message": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

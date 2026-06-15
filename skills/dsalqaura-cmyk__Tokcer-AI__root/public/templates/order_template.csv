@@ -1,0 +1,3 @@
+Order Number,Customer Name,Platform,Total Amount,Status,Order Date
+"ORD-001","Budi Santoso","Shopee",150000,"completed","2026-04-27"
+"ORD-002","Siti Aminah","TikTok",250000,"pending","2026-04-28"

@@ -1,0 +1,163 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  APP_NAME: squix
+  GO_VERSION: '1.25'
+
+jobs:
+  build-darwin:
+    strategy:
+      matrix:
+        include:
+          - goarch: amd64
+            runner: macos-15-intel
+          - goarch: arm64
+            runner: macos-latest
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Build
+        env:
+          CGO_ENABLED: 1
+          GOOS: darwin
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          mkdir -p dist
+          go build -buildvcs=false -ldflags="-s -w -X main.Version=${{ github.ref_name }}" -o dist/${{ env.APP_NAME }}-darwin-${{ matrix.goarch }} ./cmd/squix
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: darwin-${{ matrix.goarch }}
+          path: dist/${{ env.APP_NAME }}-darwin-${{ matrix.goarch }}
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Build
+        env:
+          CGO_ENABLED: 1
+          GOOS: windows
+          GOARCH: amd64
+        run: |
+          mkdir dist
+          go build -buildvcs=false -ldflags="-s -w -X main.Version=${{ github.ref_name }}" -o dist/${{ env.APP_NAME }}-windows-amd64.exe ./cmd/squix
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-amd64
+          path: dist/${{ env.APP_NAME }}-windows-amd64.exe
+
+  build-linux:
+    strategy:
+      matrix:
+        include:
+          - goarch: amd64
+            packages: ""
+          - goarch: arm64
+            cc: aarch64-linux-gnu-gcc
+            packages: "gcc-aarch64-linux-gnu g++-aarch64-linux-gnu"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install cross-compiler
+        if: matrix.packages != ''
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.packages }}
+
+      - name: Build
+        env:
+          CGO_ENABLED: 1
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+          CC: ${{ matrix.cc }}
+        run: |
+          mkdir -p dist
+          go build -buildvcs=false -ldflags="-s -w -X main.Version=${{ github.ref_name }}" -o dist/${{ env.APP_NAME }}-linux-${{ matrix.goarch }} ./cmd/squix
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.goarch }}
+          path: dist/${{ env.APP_NAME }}-linux-${{ matrix.goarch }}
+
+  create-release:
+    needs:
+      - build-darwin
+      - build-windows
+      - build-linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name '${{ env.APP_NAME }}-*' -o -name '${{ env.APP_NAME }}-*.exe' \) -exec cp {} release/ \;
+          cd release && sha256sum * > checksums.txt
+
+      - uses: softprops/action-gh-release@v1
+        with:
+          files: release/*
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute checksums for homebrew
+        id: checksums
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "darwin_amd64_sha=$(sha256sum release/${{ env.APP_NAME }}-darwin-amd64 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "darwin_arm64_sha=$(sha256sum release/${{ env.APP_NAME }}-darwin-arm64 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "linux_amd64_sha=$(sha256sum release/${{ env.APP_NAME }}-linux-amd64 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "linux_arm64_sha=$(sha256sum release/${{ env.APP_NAME }}-linux-arm64 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Update homebrew tap
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          repository: eduardofuncao/homebrew-squix
+          event-type: update-formula
+          client-payload: |
+            {
+              "version": "${{ steps.checksums.outputs.version }}",
+              "darwin_amd64_sha": "${{ steps.checksums.outputs.darwin_amd64_sha }}",
+              "darwin_arm64_sha": "${{ steps.checksums.outputs.darwin_arm64_sha }}",
+              "linux_amd64_sha": "${{ steps.checksums.outputs.linux_amd64_sha }}",
+              "linux_arm64_sha": "${{ steps.checksums.outputs.linux_arm64_sha }}"
+            }

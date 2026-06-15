@@ -1,0 +1,64 @@
+---
+title: "Extract parquet data"
+description: "Download dataset exports and analyze them locally with DuckDB or Polars"
+---
+
+Use the data export endpoints to fetch presigned download URLs, then download and query the files locally.
+
+## Supported datasets
+
+- `rfqs`
+- `mve_trades`
+
+## Step 1: request export metadata
+
+```bash
+curl -s -H "X-API-Key: $API_KEY" \
+  "https://api.delphiterminal.co/api/v1/data/rfqs?date=2026-02-13" \
+  > export.json
+```
+
+This response includes `parts`, where each part contains a temporary presigned `url`.
+
+## Step 2: extract the presigned URL
+
+```bash
+URL=$(jq -r '.parts[0].url' export.json)
+echo "$URL"
+```
+
+## Step 3: download the parquet file
+
+```bash
+curl -L "$URL" -o rfqs_2026-02-13.parquet
+```
+
+<Note>
+  Presigned URLs expire quickly (typically 5 minutes). If the download fails, request fresh metadata and retry.
+</Note>
+
+## Step 4a: query with DuckDB
+
+```bash
+duckdb -c "SELECT * FROM read_parquet('rfqs_2026-02-13.parquet') LIMIT 20;"
+```
+
+## Step 4b: query with Python (Polars)
+
+```python
+import polars as pl
+
+df = pl.read_parquet("rfqs_2026-02-13.parquet")
+print(df.head())
+print(df.shape)
+```
+
+## Latest data endpoint
+
+To fetch today's dataset without passing a date:
+
+```bash
+curl -s -H "X-API-Key: $API_KEY" \
+  "https://api.delphiterminal.co/api/v1/data/rfqs/latest" \
+  > latest.json
+```

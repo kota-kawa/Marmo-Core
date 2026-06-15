@@ -1,0 +1,15 @@
+{
+  "name": "tokcer-aeo-engine",
+  "version": "1.0.0",
+  "description": "Custom AEO/GEO Engine for Tokcer AI",
+  "main": "src/main.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "dotenv": "^16.3.1",
+    "fs-extra": "^11.1.1"
+  }
+}

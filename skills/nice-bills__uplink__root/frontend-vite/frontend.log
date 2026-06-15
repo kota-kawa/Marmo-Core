@@ -1,0 +1,18 @@
+
+> genesis-frontend@1.0.0 dev
+> vite --port 3000 --host 0.0.0.0 --port 3000
+
+
+  VITE v6.4.1  ready in 2267 ms
+
+  ➜  Local:   http://localhost:3000/
+  ➜  Network: http://10.10.26.173:3000/
+  ➜  Network: http://100.113.17.53:3000/
+8:10:55 AM [vite] (client) hmr update /src/pages/LeaderboardPage.tsx, /src/index.css
+8:11:06 AM [vite] (client) hmr update /src/pages/LeaderboardPage.tsx, /src/index.css
+8:11:21 AM [vite] (client) hmr update /src/pages/LeaderboardPage.tsx, /src/index.css
+8:11:35 AM [vite] (client) hmr update /src/pages/LeaderboardPage.tsx, /src/index.css
+8:13:16 AM [vite] (client) hmr update /src/pages/LeaderboardPage.tsx, /src/index.css
+8:36:11 AM [vite] (client) hmr update /src/pages/HomePage.tsx, /src/index.css, /src/pages/EmbedPage.tsx, /src/pages/CampaignDetailPage.tsx, /src/pages/CreateCampaignPage.tsx, /src/pages/UserProfilePage.tsx, /src/pages/LeaderboardPage.tsx, /src/pages/CampaignsPage.tsx, /src/components/CampaignCard.tsx
+8:36:20 AM [vite] (client) hmr update /src/pages/LeaderboardPage.tsx, /src/index.css
+8:36:45 AM [vite] (client) hmr update /src/pages/LeaderboardPage.tsx, /src/index.css

@@ -1,0 +1,153 @@
+---
+title: Grid
+---
+
+# Grid
+
+A CSS Grid layout component for creating two-dimensional layouts with rows and columns. Ideal for building responsive page layouts, card grids, dashboards, and any design requiring precise control over both horizontal and vertical alignment.
+
+<Example>
+  <Grid gap="3" columns="3">
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+  </Grid>
+
+  ```jsx
+  <Grid gap="3" columns="3">
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+  </Grid>
+  ```
+</Example>
+
+## Responsive columns
+
+Use responsive objects to change the grid layout at different breakpoints.
+
+<Example>
+  <Grid gap="3" columns={{ base: '1', sm: '2', lg: '4' }}>
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+  </Grid>
+
+  ```jsx
+  <Grid gap="3" columns={{ base: '1', sm: '2', lg: '4' }}>
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+  </Grid>
+  ```
+</Example>
+
+## Custom templates
+
+For complex layouts, pass a custom CSS grid-template string.
+
+<Example>
+  <Grid gap="3" columns="200px 1fr 1fr">
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+  </Grid>
+
+  ```jsx
+  <Grid gap="3" columns="200px 1fr 1fr">
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+    <ExampleBox />
+  </Grid>
+  ```
+</Example>
+
+## Responsive custom templates
+
+Custom CSS templates can also be responsive by passing an object with breakpoint keys.
+
+<Example>
+  <Grid gap="3" columns={{ base: '1fr', lg: 'auto 1fr' }}>
+    <ExampleBox />
+    <ExampleBox />
+  </Grid>
+
+  ```jsx
+  <Grid gap="3" columns={{ base: '1fr', lg: 'auto 1fr' }}>
+    <ExampleBox />
+    <ExampleBox />
+  </Grid>
+  ```
+</Example>
+
+## Grid item placement
+
+<Example>
+  <Grid gap="3" columns="3" rows="3">
+    <ExampleBox width="auto" gridRow="1 / 2" gridColumn="1 / 3" />
+    <ExampleBox width="auto" height="auto" gridRow="2 / 4" gridColumn="1 / 3" />
+    <ExampleBox height="auto" gridRow="1 / 4" gridColumn="3 / 4" />
+  </Grid>
+
+  ```jsx
+  <Grid gap="3" columns="3" rows="3">
+    <ExampleBox width="auto" gridRow="1 / 2" gridColumn="1 / 3" />
+    <ExampleBox width="auto" height="auto" gridRow="2 / 4" gridColumn="1 / 3" />
+    <ExampleBox height="auto" gridRow="1 / 4" gridColumn="3 / 4" />
+  </Grid>
+  ```
+</Example>
+
+## Component props
+
+Grid extends [Box](/docs/layout/box) and accepts all Box props.
+
+<Example>
+  <DataTable
+    data={[
+      { name: 'display', value: 'Responsive<GridDisplay>', description: '"grid" | "inline-grid" | "none"' },
+      { name: 'columns', value: 'Responsive<GridColumns | string>', description: '"1"-"12" | "none" | "subgrid" | custom CSS template' },
+      { name: 'rows', value: 'Responsive<GridRows | string>', description: '"1"-"12" | "none" | "subgrid" | custom CSS template' },
+      { name: 'autoFlow', value: 'Responsive<GridAutoFlow>', description: '"row" | "column" | "dense" | "row-dense" | "column-dense"' },
+      { name: 'justifyContent', value: 'Responsive<JustifyContent>', description: '"center" | "start" | "end" | "space-between" | "space-around" | ...' },
+      { name: 'justifyItems', value: 'Responsive<JustifyItems>', description: '"center" | "start" | "end" | "stretch" | "baseline" | ...' },
+      { name: 'alignContent', value: 'Responsive<AlignContent>', description: '"center" | "start" | "end" | "space-between" | "stretch" | ...' },
+      { name: 'alignItems', value: 'Responsive<AlignItems>', description: '"center" | "start" | "end" | "stretch" | "baseline" | ...' },
+      { name: 'gap', value: 'Responsive<Gap>', description: 'true | Spacing scale' },
+      { name: 'gapX', value: 'Responsive<Gap>', description: 'true | Spacing scale' },
+      { name: 'gapY', value: 'Responsive<Gap>', description: 'true | Spacing scale' },
+    ]}
+  >
+    <DataColumn id="name" label="Name" />
+    <DataColumn id="value" label="Type" />
+    <DataColumn id="description" label="Values" />
+  </DataTable>
+</Example>

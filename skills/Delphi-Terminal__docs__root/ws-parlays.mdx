@@ -1,0 +1,165 @@
+---
+title: "Parlays WebSocket"
+description: "Real-time streaming of Kalshi RFQ events and MVE parlay trades"
+---
+
+## Connection
+
+Connect to the Parlays WebSocket endpoint:
+
+```
+wss://api.delphiterminal.co/ws/parlays?api_key=YOUR_API_KEY
+```
+
+Authentication is **required** via the `api_key` query parameter. WebSocket access requires a Pro, Max, or Admin API key.
+
+| Property | Value |
+|----------|-------|
+| Protocol | WebSocket (wss://) |
+| Authentication | Required (Pro, Max, or Admin key) |
+| Keepalive | Ping every 54 seconds |
+| Timeout | 60 seconds without pong |
+| Max Message Size | 512 KB |
+
+## Subscribing to markets
+
+Once connected, send a JSON message to subscribe using Kalshi market tickers:
+
+```json
+{
+  "action": "subscribe",
+  "market_ids": ["KXATPMATCH-26FEB13FRIKOR-FRI"],
+  "message_types": ["rfq", "mve_trades"]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `action` | string | Yes | `subscribe` or `unsubscribe` |
+| `market_ids` | array | Yes | Array of Kalshi market tickers |
+| `message_types` | array | No | `["rfq"]`, `["mve_trades"]`, or both. Defaults to `["rfq", "mve_trades"]` if omitted |
+
+## Unsubscribing
+
+```json
+{
+  "action": "unsubscribe",
+  "market_ids": ["KXATPMATCH-26FEB13FRIKOR-FRI"]
+}
+```
+
+## Message types
+
+All messages are wrapped with a `type` field indicating the message category.
+
+### RFQ events
+
+Real-time Request for Quote lifecycle events (created, quoted, deleted, etc.):
+
+```json
+{
+  "type": "rfq",
+  "data": {
+    "type": "rfq_created",
+    "sid": 1,
+    "seq": 1103440,
+    "id": "822dcdee-e5c1-47da-9ddf-15287fb37c44",
+    "creator_id": "995f286b...",
+    "market_ticker": "KXATPMATCH-26FEB13FRIKOR-FRI",
+    "event_ticker": "KXATPMATCH-26FEB13FRIKOR",
+    "quote_creator_id": "",
+    "msg": "{...}"
+  }
+}
+```
+
+### MVE trade events
+
+Real-time Multi-Value Event parlay trade executions:
+
+```json
+{
+  "type": "mve_trades",
+  "data": {
+    "market_ticker": "KXMVESPORTSMULTIGAMEEXTENDED-S202613EAE13A377-ED7156B203E",
+    "yes_price": 51,
+    "no_price": 49,
+    "count": 10,
+    "taker_side": "yes",
+    "mve_collection_ticker": "KXMVESPORTSMULTIGAMEEXTENDED",
+    "trade_ts": "2026-02-13T21:19:30Z"
+  }
+}
+```
+
+## Subscription limits
+
+| Plan | Max Subscriptions | Max Items Per Subscription |
+|------|-------------------|---------------------------|
+| Pro | 10 | 10 |
+| Max | 100 | 500 |
+| Admin | Unlimited | Unlimited |
+
+## Full example (JavaScript)
+
+```javascript
+const ws = new WebSocket("wss://api.delphiterminal.co/ws/parlays?api_key=dphi_live_your_key_here");
+
+ws.onopen = () => {
+  console.log("Connected to Parlays WebSocket");
+
+  ws.send(JSON.stringify({
+    action: "subscribe",
+    market_ids: ["KXATPMATCH-26FEB13FRIKOR-FRI"],
+    message_types: ["rfq", "mve_trades"]
+  }));
+};
+
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
+  if (msg.type === "rfq") {
+    console.log("RFQ event:", msg.data);
+  } else if (msg.type === "mve_trades") {
+    console.log("MVE trade:", msg.data);
+  }
+};
+
+ws.onclose = () => console.log("Disconnected");
+ws.onerror = (error) => console.error("WebSocket error:", error);
+```
+
+## Full example (Python)
+
+```python
+import websocket
+import json
+
+def on_message(ws, message):
+    msg = json.loads(message)
+    if msg["type"] == "rfq":
+        print("RFQ event:", msg["data"])
+    elif msg["type"] == "mve_trades":
+        print("MVE trade:", msg["data"])
+
+def on_open(ws):
+    ws.send(json.dumps({
+        "action": "subscribe",
+        "market_ids": ["KXATPMATCH-26FEB13FRIKOR-FRI"],
+        "message_types": ["rfq", "mve_trades"]
+    }))
+
+ws = websocket.WebSocketApp(
+    "wss://api.delphiterminal.co/ws/parlays?api_key=dphi_live_your_key_here",
+    on_message=on_message,
+    on_open=on_open,
+)
+ws.run_forever()
+```
+
+## Important notes
+
+- **Authentication required** -- pass your API key via the `api_key` query parameter
+- **Pro plan or higher** is required for WebSocket access (not available on Free)
+- Uses Kalshi **market tickers** (e.g. `KXATPMATCH-26FEB13FRIKOR-FRI`) to subscribe
+- Messages are only sent for markets you have explicitly subscribed to
+- Both RFQ and MVE trade messages are included by default if `message_types` is omitted

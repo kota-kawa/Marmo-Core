@@ -1,0 +1,43 @@
+"No";"Modul";"Tipe Test";"Skenario Test";"Langkah-langkah";"Hasil yang Diharapkan";"Status"
+"1";"Auth & Reg";"Positive";"Pendaftaran Partner Baru dengan Data Valid";"1. Buka form registrasi partner
+2. Isi data lengkap & valid
+3. Klik Daftar";"1. Muncul alert sukses
+2. Di DB: Cek tabel 'partner_applications', baris baru harus tercipta dengan status 'pending'.";"[ ] Pass / [ ] Fail"
+"2";"Auth & Reg";"Negative";"Pendaftaran dengan Email Duplikat";"1. Input data dengan email yang sudah ada di sistem
+2. Klik Daftar";"1. Sistem menolak di level frontend
+2. Di DB: Tabel 'partner_applications' tidak boleh bertambah barisnya.";"[ ] Pass / [ ] Fail"
+"3";"Auth & Reg";"Negative";"Race Condition: Klik Daftar 2x Sangat Cepat";"1. Isi data valid
+2. Klik tombol Daftar 2 kali berturut-turut secara sangat cepat";"1. Tombol harus otomatis disabled setelah klik pertama
+2. Di DB: Tidak boleh ada 2 data ganda yang masuk dengan email yang sama.";"[ ] Pass / [ ] Fail"
+"4";"Payment";"Positive";"Simulasi Midtrans Webhook: Settlement (Sukses)";"1. Kirim payload JSON notifikasi 'settlement' dari Midtrans ke robot webhook kita.";"1. Status di tabel 'transactions' berubah jadi 'settlement'
+2. Fungsi rpc_activate_account terpanggil otomatis.";"[ ] Pass / [ ] Fail"
+"5";"Payment";"Negative";"Simulasi Midtrans Webhook: Expire (Kadaluarsa)";"1. Kirim payload JSON notifikasi 'expire' dari Midtrans.";"1. Status di tabel 'transactions' berubah jadi 'expire'
+2. Akun TIDAK boleh aktif di tabel 'profiles'.";"[ ] Pass / [ ] Fail"
+"6";"Payment";"Negative";"Idempotency: Notifikasi Webhook Ganda (Double Post)";"1. Kirim payload notifikasi sukses yang sama persis sebanyak 2 kali berturut-turut.";"1. Sistem harus mengabaikan kiriman kedua (Idempotent)
+2. Saldo token/komisi tidak boleh bertambah 2 kali.";"[ ] Pass / [ ] Fail"
+"7";"Activation";"Positive";"Aktivasi Akun via RPC (Validasi Kuota Token)";"1. Jalankan rpc_activate_account untuk paket 'Elite'.";"1. Di DB: Tabel 'profiles' kolom 'ai_tokens' harus bertambah tepat 15.000 token
+2. Kolom 'subscription_plan' terisi 'elite'.";"[ ] Pass / [ ] Fail"
+"8";"Activation";"Positive";"Validasi Sistem Kadaluarsa (Expires At) - Bulanan";"1. Aktifkan akun dengan paket bulanan (Monthly).";"1. Di DB: Tabel 'clients' kolom 'expires_at' harus terisi tanggal hari ini + 30 hari ke depan.";"[ ] Pass / [ ] Fail"
+"9";"Activation";"Positive";"Validasi Sistem Kadaluarsa (Expires At) - Tahunan";"1. Aktifkan akun dengan paket tahunan (Yearly).";"1. Di DB: Tabel 'clients' kolom 'expires_at' harus terisi tanggal hari ini + 365 hari ke depan.";"[ ] Pass / [ ] Fail"
+"10";"Onboarding";"Positive";"Partner Input Pembeli Baru";"1. Partner input data pembeli di Dashboard. Paket: 'Pro' (Bulanan).";"1. Di DB: Tabel 'clients' mencatat data baru dengan partner_id milik partner tersebut.";"[ ] Pass / [ ] Fail"
+"11";"Onboarding";"Negative";"Partner Input Email Pembeli yang Sudah Terdaftar";"1. Partner input pembeli dengan email yang sudah ada di tabel clients.";"1. Sistem menolak dan memunculkan eror
+2. Tidak boleh ada data ganda di tabel clients.";"[ ] Pass / [ ] Fail"
+"12";"Komisi";"Positive";"Perhitungan Komisi Tahunan (Yearly Upfront)";"1. Aktifkan klien paket Ultimate Tahunan di bawah Partner X.";"1. Di DB: Tabel 'partners' kolom 'total_omzet' bertambah sebesar (Base Rate x 11) + Bonus Tahunan (Rp 3.246.700).";"[ ] Pass / [ ] Fail"
+"13";"Komisi";"Positive";"Pemicu Bonus Volume Milestone (Closing ke-5)";"1. Daftarkan dan aktifkan klien ke-5 untuk Partner X.";"1. Robot di RPC mendeteksi ini closing ke-5
+2. Di DB: Partner mendapat bonus tambahan Rp 150.000 di total_omzet.";"[ ] Pass / [ ] Fail"
+"14";"Komisi";"Negative";"Pencegahan Bonus Milestone Ganda";"1. Daftarkan klien ke-6 untuk Partner X yang sama.";"1. Sistem tidak boleh memberikan bonus Rp 150.000 lagi karena milestone 5 sudah terlewati.";"[ ] Pass / [ ] Fail"
+"15";"Komisi";"Positive";"Kenaikan Tier Otomatis (Auto-Promote)";"1. Partner X mencapai total 5 active closing dan 2 di antaranya paket Elite.";"1. Di DB: Kolom 'tier' di tabel 'partners' otomatis berubah dari 'bronze' menjadi 'silver'.";"[ ] Pass / [ ] Fail"
+"16";"Dashboard";"Positive";"Validasi Angka di Leaderboard vs Database";"1. Hitung manual total omzet Partner X di tabel clients
+2. Buka Dashboard Partner -> Leaderboard";"1. Angka yang tampil di Leaderboard harus sama persis dengan hasil hitung manual di database.";"[ ] Pass / [ ] Fail"
+"17";"Dashboard";"Positive";"Validasi Angka Komisi di Subscribers vs Database";"1. Buka tab Subscribers
+2. Cek angka komisi per pelanggan";"1. Angka komisi harus sesuai dengan tier partner saat ini dikali harga paket pelanggan tersebut.";"[ ] Pass / [ ] Fail"
+"18";"Dashboard";"Negative";"Ketahanan Sistem: Database Supabase Down saat Buka Leaderboard";"1. Simulasikan kueri Supabase mengembalikan eror atau timeout saat membuka tab Leaderboard.";"1. Layar TIDAK BOLEH menjadi hitam
+2. Muncul fallback UI atau data kosong secara aman (sudah kita amankan tadi!).";"[ ] Pass / [ ] Fail"
+"19";"UI/UX";"Positive";"Akurasi Hitung Mundur (Countdown)";"1. Buka tab Leaderboard
+2. Tunggu 10 detik";"1. Angka detik harus berkurang secara konsisten dan akurat.";"[ ] Pass / [ ] Fail"
+"20";"UI/UX";"Positive";"Tombol Ganti Bahasa (ID/EN)";"1. Klik tombol EN di pojok kiri bawah (Mobile) atau di sidebar.";"1. Semua teks label menu berubah menjadi Bahasa Inggris secara instan.";"[ ] Pass / [ ] Fail"
+"21";"Accounting";"Positive";"Pencatatan Transaksi Masuk (Income)";"1. Setiap kali ada klien aktif.";"1. Di DB: Tabel 'income_transactions' otomatis terisi data nominal kotor dan potongan Midtrans.";"[ ] Pass / [ ] Fail"
+"22";"Security";"Negative";"Akses Halaman Partner Tanpa Login (Bypass URL)";"1. Coba buka langsung URL 'staging.tokcer-ai.com/partner-dashboard' di tab incognito.";"1. Sistem harus menolak dan otomatis me-redirect paksa ke halaman login.";"[ ] Pass / [ ] Fail"
+"23";"Security";"Negative";"SQL Injection pada Form Onboard";"1. Input teks ' OR 1=1 --' pada kolom nama toko di form onboard.";"1. Teks harus dianggap sebagai string biasa dan tidak merusak kueri database.";"[ ] Pass / [ ] Fail"
+"24";"Edge Case";"Negative";"User Cancel Langganan di Tengah Bulan";"1. Ubah status klien dari 'active' menjadi 'cancelled' di tabel clients.";"1. Di DB: Komisi partner untuk bulan depan harus otomatis terhenti.";"[ ] Pass / [ ] Fail"
+"25";"Edge Case";"Positive";"Zero Clawback Guarantee";"1. Klien Budi melakukan refund / chargeback di Midtrans.";"1. Di DB: Komisi yang sudah masuk ke dompet Partner X tidak boleh berkurang sepeser pun.";"[ ] Pass / [ ] Fail"

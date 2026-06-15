@@ -1,0 +1,526 @@
+[
+    {
+      "id": "quickbooks-online",
+      "name": "QuickBooks Online",
+      "category": "\ud83d\udc8c Finanzas & ERP",
+      "pricing": {"basic": 15, "premium": 90, "perUser": false},
+      "alternatives": [
+        "facturascripts",
+        "invoiceninja",
+        "akaunting",
+        "fossbilling",
+        "dolibarr",
+        "odoo",
+        "erpnext",
+        "fireflyiii"
+      ],
+      "descripcion": "Software popular de contabilidad, facturación y gestión financiera para pymes."
+    },
+    {
+      "id": "xero",
+      "name": "Xero",
+      "category": "\ud83d\udc8c Finanzas & ERP",
+      "pricing": {"basic": 13, "premium": 70, "perUser": false},
+      "alternatives": [
+        "facturascripts",
+        "invoiceninja",
+        "akaunting",
+        "fossbilling",
+        "dolibarr",
+        "odoo",
+        "erpnext",
+        "fireflyiii"
+      ],
+      "descripcion": "Contabilidad y facturación online centrada en pequeñas empresas y autónomos."
+    },
+    {
+      "id": "confluence",
+      "name": "Atlassian Confluence",
+      "category": "\ud83d\udfe6 Documentación & Wiki",
+      "pricing": {"basic": 5, "premium": 11, "perUser": true},
+      "alternatives": [
+        "bookstack",
+        "wikijs",
+        "documize",
+        "hedgedoc",
+        "siyuan",
+        "memos"
+      ],
+      "descripcion": "Plataforma de colaboración y gestión del conocimiento para equipos."
+    },
+    {
+      "id": "notion",
+      "name": "Notion",
+      "category": "\ud83d\udfe6 Documentación & Wiki",
+      "pricing": {"basic": 8, "premium": 15, "perUser": true},
+      "alternatives": [
+        "bookstack",
+        "wikijs",
+        "documize",
+        "hedgedoc",
+        "siyuan",
+        "memos",
+        "appsmith",
+        "nocodb",
+        "baserow"
+      ],
+      "descripcion": "Espacio de trabajo todo-en-uno para notas, documentos, bases de datos y gestión de proyectos."
+    },
+    {
+      "id": "slack",
+      "name": "Slack",
+      "category": "\ud83d\udc8e Comunicación & Chat",
+      "pricing": {"basic": 7, "premium": 15, "perUser": true},
+      "alternatives": [
+        "mattermost",
+        "RocketChat",
+        "element-web",
+        "element",
+        "mastodon",
+        "discourse"
+      ],
+      "descripcion": "Plataforma de mensajería y colaboración para equipos basada en canales."
+    },
+    {
+      "id": "microsoft-teams",
+      "name": "Microsoft Teams",
+      "category": "\ud83d\udc8e Comunicación & Chat",
+      "pricing": {"basic": 4, "premium": 12.50, "perUser": true},
+      "alternatives": [
+        "mattermost",
+        "RocketChat",
+        "element-web",
+        "element",
+        "jitsi"
+      ],
+      "descripcion": "Plataforma de comunicación y colaboración integrada en el ecosistema Microsoft 365."
+    },
+    {
+      "id": "zoom",
+      "name": "Zoom",
+      "category": "\ud83d\udc8e Comunicación & Chat",
+      "pricing": {"basic": 14, "premium": 20, "perUser": true},
+      "alternatives": [
+        "jitsi",
+        "wirow",
+        "briefing",
+        "screego"
+      ],
+      "descripcion": "Servicio líder de videoconferencia y reuniones online."
+    },
+    {
+      "id": "github",
+      "name": "GitHub (SaaS)",
+      "category": "\ud83d\udc9f DevOps Tools",
+      "pricing": {"basic": 4, "premium": 21, "perUser": true},
+      "alternatives": [
+        "gitlab",
+        "onedev",
+        "gogs"
+      ],
+      "descripcion": "Plataforma líder para hosting de código Git, CI/CD, colaboración y desarrollo."
+    },
+    {
+      "id": "gitlab-saas",
+      "name": "GitLab (SaaS)",
+      "category": "\ud83d\udc9f DevOps Tools",
+      "pricing": {"basic": 29, "premium": 99, "perUser": true},
+      "alternatives": [
+        "gitlab",
+        "onedev",
+        "gogs"
+      ],
+      "descripcion": "Plataforma completa de DevOps que cubre todo el ciclo de vida del software."
+    },
+    {
+      "id": "trello",
+      "name": "Trello",
+      "category": "\ud83d\udc9f DevOps Tools",
+      "pricing": {"basic": 5, "premium": 10, "perUser": true},
+      "alternatives": [
+        "vikunja",
+        "taiga",
+        "Focalboard",
+        "planka",
+        "wekan",
+        "leantime",
+        "plane"
+      ],
+      "descripcion": "Herramienta visual de gestión de proyectos basada en tableros Kanban."
+    },
+    {
+      "id": "asana",
+      "name": "Asana",
+      "category": "\ud83d\udc9f DevOps Tools",
+      "pricing": {"basic": 11, "premium": 25, "perUser": true},
+      "alternatives": [
+        "vikunja",
+        "taiga",
+        "Focalboard",
+        "redmine",
+        "leantime",
+        "plane"
+      ],
+      "descripcion": "Plataforma de gestión del trabajo y proyectos para equipos."
+    },
+    {
+      "id": "jira",
+      "name": "Atlassian Jira",
+      "category": "\ud83d\udc9f DevOps Tools",
+      "pricing": {"basic": 7.75, "premium": 15.25, "perUser": true},
+      "alternatives": [
+        "taiga",
+        "redmine",
+        "gitlab",
+        "onedev",
+        "plane",
+        "leantime"
+      ],
+      "descripcion": "Herramienta popular para seguimiento de incidencias y gestión de proyectos ágiles."
+    },
+    {
+      "id": "google-drive",
+      "name": "Google Drive / Workspace",
+      "category": "\ud83d\udcbe Gestión de archivos",
+      "pricing": {"basic": 6, "premium": 18, "perUser": true},
+      "alternatives": [
+        "nextcloud",
+        "seafile",
+        "filebrowser",
+        "sftpgo",
+        "PaperlessNG"
+      ],
+      "descripcion": "Almacenamiento en la nube, sincronización de archivos y suite de ofimática online."
+    },
+    {
+      "id": "dropbox",
+      "name": "Dropbox Business",
+      "category": "\ud83d\udcbe Gestión de archivos",
+      "pricing": {"basic": 12, "premium": 20, "perUser": true},
+      "alternatives": [
+        "nextcloud",
+        "seafile",
+        "filebrowser",
+        "sftpgo"
+      ],
+      "descripcion": "Servicio de almacenamiento en la nube y sincronización de archivos enfocado en la colaboración."
+    },
+    {
+      "id": "google-photos",
+      "name": "Google Photos",
+      "category": "\ud83d\udcbe Gestión de archivos",
+      "pricing": {"basic": 0, "premium": 2, "perUser": false},
+      "alternatives": [
+        "photoprism",
+        "immich",
+        "nextcloud"
+      ],
+      "descripcion": "Servicio para almacenar, organizar y compartir fotos y vídeos."
+    },
+    {
+      "id": "bitwarden-saas",
+      "name": "Bitwarden (SaaS)",
+      "category": "\ud83d\udc9e Seguridad & Backup",
+      "pricing": {"basic": 0, "premium": 1, "perUser": true},
+      "alternatives": [
+        "Vaultwarden",
+        "passbolt"
+      ],
+      "descripcion": "Gestor de contraseñas de código abierto con opción de hosting en la nube."
+    },
+    {
+      "id": "1password",
+      "name": "1Password",
+      "category": "\ud83d\udc9e Seguridad & Backup",
+      "pricing": {"basic": 3, "premium": 8, "perUser": true},
+      "alternatives": [
+        "Vaultwarden",
+        "passbolt"
+      ],
+      "descripcion": "Gestor de contraseñas popular y seguro con enfoque en la usabilidad."
+    },
+    {
+      "id": "cloudflare",
+      "name": "Cloudflare",
+      "category": "\ud83d\udc9f Infraestructura & Redes",
+      "pricing": {"basic": 0, "premium": 20, "perUser": false},
+      "alternatives": [
+        "nginx-proxy-manager",
+        "traefik",
+        "powerdns"
+      ],
+      "descripcion": "Servicios de CDN, seguridad (WAF, DDoS), DNS y rendimiento web."
+    },
+    {
+      "id": "datadog",
+      "name": "Datadog",
+      "category": "\ud83d\udc9f DevOps Tools",
+      "pricing": {"basic": 15, "premium": 23, "perUser": false},
+      "alternatives": [
+        "UptimeKuma",
+        "checkmk",
+        "zabbix",
+        "netdata",
+        "grafana"
+      ],
+      "descripcion": "Plataforma de monitorización y observabilidad para infraestructura, aplicaciones y logs."
+    },
+    {
+      "id": "uptimerobot",
+      "name": "UptimeRobot",
+      "category": "\ud83d\udc9f DevOps Tools",
+      "pricing": {"basic": 0, "premium": 7, "perUser": false},
+      "alternatives": [
+        "UptimeKuma",
+        "healthchecks",
+        "statping"
+      ],
+      "descripcion": "Servicio de monitorización de disponibilidad (uptime) de sitios web."
+    },
+    {
+      "id": "mailchimp",
+      "name": "Mailchimp",
+      "category": "\ud83d\udc8d CRM & Marketing",
+      "pricing": {"basic": 13, "premium": 20, "perUser": false},
+      "alternatives": [
+        "mautic",
+        "keila",
+        "listmonk"
+      ],
+      "descripcion": "Plataforma popular de email marketing y automatización."
+    },
+    {
+      "id": "hubspot",
+      "name": "HubSpot CRM",
+      "category": "\ud83d\udc8d CRM & Marketing",
+      "pricing": {"basic": 0, "premium": 45, "perUser": true},
+      "alternatives": [
+        "suitecrm",
+        "espocrm",
+        "yetiForce",
+        "erxes"
+      ],
+      "descripcion": "CRM líder mundial para ventas, marketing y atención al cliente."
+    },
+    {
+      "id": "salesforce",
+      "name": "Salesforce Sales Cloud",
+      "category": "\ud83d\udc8d CRM & Marketing",
+      "pricing": {"basic": 25, "premium": 300, "perUser": true},
+      "alternatives": [
+        "suitecrm",
+        "espocrm",
+        "odoo",
+        "erpnext"
+      ],
+      "descripcion": "Plataforma CRM líder en el mercado para ventas, servicios y marketing."
+    },
+    {
+      "id": "zendesk",
+      "name": "Zendesk",
+      "category": "\ud83d\udc8d CRM & Marketing",
+      "pricing": {"basic": 19, "premium": 99, "perUser": true},
+      "alternatives": [
+        "chatwoot",
+        "freescout",
+        "zammad"
+      ],
+      "descripcion": "Software de servicio al cliente y plataforma de ticketing."
+    },
+    {
+      "id": "google-analytics",
+      "name": "Google Analytics",
+      "category": "\ud83d\udc9c Analítica & BI",
+      "pricing": {"basic": 0, "premium": 150000, "perUser": false},
+      "alternatives": [
+        "plausible",
+        "Matomo",
+        "umami"
+      ],
+      "descripcion": "Servicio estándar de la industria para analítica web."
+    },
+    {
+      "id": "tableau",
+      "name": "Tableau",
+      "category": "\ud83d\udc9c Analítica & BI",
+      "pricing": {"basic": 70, "premium": 70, "perUser": true},
+      "alternatives": [
+        "metabase",
+        "superset",
+        "lincebi",
+        "redash"
+      ],
+      "descripcion": "Plataforma líder de visualización de datos y Business Intelligence."
+    },
+    {
+      "id": "powerbi",
+      "name": "Microsoft Power BI",
+      "category": "\ud83d\udc9c Analítica & BI",
+      "pricing": {"basic": 10, "premium": 20, "perUser": true},
+      "alternatives": [
+        "metabase",
+        "superset",
+        "lincebi",
+        "redash"
+      ],
+      "descripcion": "Herramienta de Business Intelligence de Microsoft para visualización y análisis de datos."
+    },
+    {
+      "id": "airtable",
+      "name": "Airtable",
+      "category": "\ud83d\udc9c Analítica & BI",
+      "pricing": {"basic": 10, "premium": 20, "perUser": true},
+      "alternatives": [
+        "NocoDB",
+        "baserow",
+        "grist",
+        "seatable"
+      ],
+      "descripcion": "Plataforma híbrida entre hoja de cálculo y base de datos para crear aplicaciones y flujos."
+    },
+    {
+      "id": "wordpress-com",
+      "name": "WordPress.com",
+      "category": "\ud83d\udc9e Web & CMS",
+      "pricing": {"basic": 4, "premium": 25, "perUser": false},
+      "alternatives": [
+        "ghost",
+        "directus",
+        "strapi",
+        "wordpress.org"
+      ],
+      "descripcion": "Plataforma de hosting gestionado para crear sitios web y blogs con WordPress."
+    },
+    {
+      "id": "shopify",
+      "name": "Shopify",
+      "category": "\ud83d\udc9e Web & CMS",
+      "pricing": {"basic": 29, "premium": 299, "perUser": false},
+      "alternatives": [
+        "woocommerce",
+        "prestashop",
+        "magento",
+        "odoo"
+      ],
+      "descripcion": "Plataforma líder para crear tiendas online y gestionar eCommerce."
+    },
+    {
+      "id": "netflix",
+      "name": "Netflix / Spotify / Plex Pass",
+      "category": "\ud83d\udc9e Streaming & Medios",
+      "pricing": {"basic": 7, "premium": 20, "perUser": false},
+      "alternatives": [
+        "JellyFin",
+        "audiobookshelf",
+        "Navidrome",
+        "Polaris",
+        "funkwhale",
+        "azuracast",
+        "peertube"
+      ],
+      "descripcion": "Servicios comerciales de streaming de vídeo, música o gestión de medios personales."
+    },
+    {
+      "id": "zapier",
+      "name": "Zapier",
+      "category": "\ud83d\udc9e IA & Automatización",
+      "pricing": {"basic": 20, "premium": 49, "perUser": false},
+      "alternatives": [
+        "n8n",
+        "huginn"
+      ],
+      "descripcion": "Herramienta líder para conectar aplicaciones web y automatizar flujos de trabajo."
+    },
+    {
+      "id": "make-com",
+      "name": "Make (formerly Integromat)",
+      "category": "\ud83d\udc9e IA & Automatización",
+      "pricing": {"basic": 9, "premium": 29, "perUser": false},
+      "alternatives": [
+        "n8n",
+        "huginn"
+      ],
+      "descripcion": "Plataforma visual para conectar aplicaciones y automatizar flujos de trabajo complejos."
+    },
+    {
+      "id": "openai-chatgpt",
+      "name": "ChatGPT / OpenAI API",
+      "category": "\ud83d\udc9e IA & Automatización",
+      "pricing": {"basic": 0, "premium": 20, "perUser": true},
+      "alternatives": [
+        "flowiseai",
+        "dify",
+        "lobechat",
+        "ollama + UI",
+        "libretranslate"
+      ],
+      "descripcion": "Modelos de lenguaje avanzados para conversación, generación de texto y otras tareas de IA."
+    },
+    {
+      "id": "docusign",
+      "name": "DocuSign",
+      "category": "Firma electrónica",
+      "pricing": {"basic": 15, "premium": 45, "perUser": true},
+      "alternatives": [
+        "docuseal"
+      ],
+      "descripcion": "Firma electrónica de documentos."
+    },
+    {
+      "id": "calendly",
+      "name": "Calendly",
+      "category": "\ud83d\udc8e Comunicación & Chat",
+      "pricing": {"basic": 8, "premium": 16, "perUser": true},
+      "alternatives": [
+        "calcom",
+        "rallly"
+      ],
+      "descripcion": "Herramienta para agendar reuniones y citas de forma sencilla."
+    },
+    {
+      "id": "typeform",
+      "name": "Typeform",
+      "category": "\ud83d\udc8d CRM & Marketing",
+      "pricing": {"basic": 25, "premium": 83, "perUser": false},
+      "alternatives": [
+        "ohmyform",
+        "LimeSurvey"
+      ],
+      "descripcion": "Plataforma para crear formularios y encuestas interactivas y conversacionales."
+    },
+    {
+      "id": "surveymonkey",
+      "name": "SurveyMonkey",
+      "category": "\ud83d\udc8d CRM & Marketing",
+      "pricing": {"basic": 25, "premium": 75, "perUser": true},
+      "alternatives": [
+        "LimeSurvey",
+        "ohmyform"
+      ],
+      "descripcion": "Herramienta popular para crear y distribuir encuestas online."
+    },
+    {
+      "id": "figma",
+      "name": "Figma",
+      "category": "\ud83d\udc9e Herramientas Dev",
+      "pricing": {"basic": 12, "premium": 45, "perUser": true},
+      "alternatives": [
+        "penpot",
+        "QuantUX"
+      ],
+      "descripcion": "Herramienta líder de diseño de interfaces (UI/UX) y prototipado colaborativo."
+    },
+    {
+      "id": "teamviewer",
+      "name": "TeamViewer",
+      "category": "\ud83d\udc9f Infraestructura & Redes",
+      "pricing": {"basic": 25, "premium": 100, "perUser": false},
+      "alternatives": [
+        "rustdesk",
+        "meshcentral",
+        "Remotely",
+        "guacamole"
+      ],
+      "descripcion": "Software popular para control remoto, acceso a escritorio y soporte técnico."
+    }
+  ]

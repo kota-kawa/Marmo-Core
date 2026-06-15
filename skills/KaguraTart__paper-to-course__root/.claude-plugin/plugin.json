@@ -1,0 +1,10 @@
+{
+  "name": "paper-to-course",
+  "description": "Transform any academic paper into an interactive HTML course, Markdown notes, and PPTX slides. Converts research papers into self-contained courses with formula breakdowns, literature timelines, comparison tables, ablation diagrams, method chats, and comprehension quizzes.",
+  "version": "1.0.0",
+  "author": {
+    "name": "KaguraTart"
+  },
+  "homepage": "https://github.com/KaguraTart/paper-to-course",
+  "repository": "https://github.com/KaguraTart/paper-to-course"
+}

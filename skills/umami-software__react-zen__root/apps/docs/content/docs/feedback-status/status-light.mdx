@@ -1,0 +1,48 @@
+---
+title: Status Light
+---
+
+# Status Light
+
+Status lights are used to color code categories and labels commonly found in data visualization.
+
+<Example>
+  <StatusLight>Status</StatusLight>
+
+  ```jsx
+  <StatusLight>Status</StatusLight>
+  ```
+</Example>
+
+## Variants
+
+<Example direction="column">
+  <StatusLight variant="success">Success</StatusLight>
+  <StatusLight variant="error">Error</StatusLight>
+  <StatusLight variant="warning">Warning</StatusLight>
+  <StatusLight variant="active">Active</StatusLight>
+  <StatusLight variant="inactive">Inactive</StatusLight>
+
+  ```jsx
+  <StatusLight variant="success">Success</StatusLight>
+  <StatusLight variant="error">Error</StatusLight>
+  <StatusLight variant="warning">Warning</StatusLight>
+  <StatusLight variant="active">Active</StatusLight>
+  <StatusLight variant="inactive">Inactive</StatusLight>
+  ```
+</Example>
+
+## Component props
+
+<Example>
+  <DataTable
+    data={[
+      { name: 'variant', value: 'StatusVariant', description: '"success" | "warning" | "error" | "active" | "inactive" | "none"' },
+      { name: 'color', value: 'string', description: 'Custom color (overrides variant)' },
+    ]}
+  >
+    <DataColumn id="name" label="Name" />
+    <DataColumn id="value" label="Type" />
+    <DataColumn id="description" label="Description" />
+  </DataTable>
+</Example>

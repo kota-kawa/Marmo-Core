@@ -1,0 +1,135 @@
+---
+title: Changelog
+description: API and platform updates
+---
+
+# Changelog
+
+<Update label="2026-05-01" description="Trading API: place orders across six prediction-market exchanges">
+
+**New: Trading API**
+
+Place, query, and cancel orders across six prediction-market exchanges through a single unified API.
+
+- `POST /api/v1/orders` -- place an order on any supported exchange
+- `GET /api/v1/orders` -- list tracked orders (optional `exchange` filter)
+- `GET /api/v1/orders/{id}` -- get current status, fill data, and price for a specific order
+- `DELETE /api/v1/orders/{id}` -- cancel a resting order
+
+Supported exchanges:
+
+- **Polymarket** -- EIP-712 signed orders on Polygon
+- **Kalshi** -- server-side RSA-PSS signing
+- **Opinion Labs** -- EIP-712 signed orders on BNB Chain
+- **Gemini Predictions** -- server-side HMAC-SHA512 signing
+- **Limitless** -- EIP-712 signed orders on Base
+- **Predict.fun** -- EIP-712 signed orders on BNB Chain (Kernel smart wallet)
+
+For on-chain exchanges, signatures are produced client-side using the `@delphimarkets/sdk` `build*Order()` helpers -- your private key never leaves your machine. The Delphi server forwards the signed payload to the exchange and tracks the order on your behalf.
+
+**New: Credential Management**
+
+- `POST /api/v1/users/{userID}/credentials` -- register exchange credentials (Kalshi RSA, Gemini HMAC, etc.)
+- `GET /api/v1/users/{userID}/credentials` -- list which exchanges you've connected (values not returned)
+
+Credentials are encrypted at rest. Each user has at most one credential set per exchange. The `{userID}` path segment is ignored -- the server always resolves the user from your `X-API-Key`. Pass `_` as a placeholder.
+
+**New: Polymarket Onboarding helpers**
+
+One-time helpers to set up a Polymarket trading account:
+
+- `POST /api/v1/polymarket/derive-credentials` -- derive and store CLOB HMAC credentials from your EOA private key in one call
+- `POST /api/v1/polymarket/verify-credentials` -- confirm stored credentials are still valid against the live CLOB
+- `POST /api/v1/polymarket/safe-address` -- compute the deterministic Gnosis Safe (proxy) address for an EOA via CREATE2 (no on-chain calls)
+
+**Docs**
+
+- Full OpenAPI spec coverage with switchable per-exchange examples on `POST /orders`
+- Three new tag groups in the API reference: `Trading`, `Credentials`, `Polymarket Onboarding`
+- Hand-written guides for each supported exchange covering signing flow, prerequisites, and end-to-end examples
+
+</Update>
+
+<Update label="2026-04-16" description="Semantic search, market matching for all exchanges">
+
+**New: Semantic Market Search (Max+ plans)**
+
+- `POST /api/v1/search/semantic` — AI-powered hybrid search using natural language queries
+- Combines semantic similarity (embeddings) with keyword matching for best-of-both-worlds results
+- Searches across all 9 exchanges: Kalshi, Polymarket, Limitless, Predict.fun, Opinion Labs, Gemini, Manifold, ForecastEx, and PredictIt
+- Supports filters: `exchange`, `category`, `active_only`, `limit`
+- Returns ranked results with similarity scores and delphi_id cross-references
+
+**New: Market Matching expanded to all exchanges**
+
+- Delphi ID matching and cluster lookups now include Gemini, Manifold, ForecastEx, and PredictIt (previously only Kalshi, Polymarket, Limitless, Pfun, Opinion Labs)
+- `GET /api/v1/delphi/{delphi_id}/markets` now returns matched markets across all 9 exchanges
+- New cluster lookup endpoints:
+  - `GET /api/v1/gemini/{market_id}/cluster`
+  - `GET /api/v1/manifold/{market_id}/cluster`
+  - `GET /api/v1/fex/{market_id}/cluster`
+  - `GET /api/v1/predictit/{market_id}/cluster`
+- `delphi_id` and `cluster_id` fields added to Gemini, Manifold, ForecastEx, and PredictIt market details
+- `GET /api/v1/search/markets` now returns market references from all 9 exchanges
+
+</Update>
+
+<Update label="2026-02-17" description="Delphi ID market matching, new exchanges, and test tickers">
+
+**New: Delphi ID Market Matching (Pro+ plans)**
+
+- `GET /api/v1/delphi/{delphi_id}/cluster` -- look up cluster metadata (title, canonical reference, market count)
+- `GET /api/v1/delphi/{delphi_id}/markets` -- find equivalent markets across Kalshi, Polymarket, Limitless, Pfun, and Opinion Labs
+- Both endpoints require Pro, Max, or Admin plan
+- `delphi_id` field added to Limitless, Pfun, and Opinion Labs market details responses
+
+**New: ForecastEx Exchange**
+
+- `GET /api/v1/fex/{market_id}/market` -- market details
+- `GET /api/v1/fex/markets` -- list all markets
+- `GET /api/v1/fex/{market_id}/tradehistory` -- trade history
+
+**New: PredictIt Exchange**
+
+- `GET /api/v1/predictit/{market_id}/market` -- market details
+- `GET /api/v1/predictit/markets` -- list all markets
+- `GET /api/v1/predictit/{market_id}/prices` -- price history
+
+**New: Manifold Exchange**
+
+- `GET /api/v1/manifold/{market_id}/market` -- market details
+- `GET /api/v1/manifold/markets` -- list all markets
+- `GET /api/v1/manifold/{market_id}/orderbook` -- orderbook snapshots
+- `GET /api/v1/manifold/{market_id}/prices` -- price/ticker history
+- `GET /api/v1/manifold/{market_id}/tradehistory` -- trade history
+
+**New: Gemini Exchange**
+
+- `GET /api/v1/gemini/{market_id}/market` -- market details
+- `GET /api/v1/gemini/markets` -- list all markets
+- `GET /api/v1/gemini/{market_id}/orderbook` -- orderbook snapshots
+- `GET /api/v1/gemini/{market_id}/prices` -- price/ticker history
+- `GET /api/v1/gemini/{market_id}/tradehistory` -- trade history
+
+**New: Opinion Labs Exchange**
+
+- `GET /api/v1/opinion/{market_id}/market` -- market details
+- `GET /api/v1/opinion/markets` -- list all markets
+- `GET /api/v1/opinion/{market_id}/orderbook` -- orderbook snapshots
+- `GET /api/v1/opinion/{market_id}/prices` -- price/ticker history
+- `GET /api/v1/opinion/{market_id}/tradehistory` -- trade history
+
+**Docs: Test tickers added for all new exchanges**
+
+- Opinion Labs: `10014`
+- ForecastEx: `ACD_1226_429.0`
+- Gemini: `GEMI-BTC15M2603170230-HI75245D64`
+- Manifold: `0AqEut9qzZ`
+- PredictIt: `34088`
+- Delphi ID: `delphi_0016d5d59aae`
+
+</Update>
+
+<Update label="Initial" description="Starting changelog">
+Initial tracking of API and documentation updates.
+</Update>

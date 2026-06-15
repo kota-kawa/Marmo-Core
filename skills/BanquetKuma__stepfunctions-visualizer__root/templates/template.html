@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{TITLE}}</title>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+        }
+
+        h1 {
+            font-size: 28px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .controls {
+            padding: 20px 30px;
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        button {
+            background-color: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: #5568d3;
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        .legend {
+            display: flex;
+            gap: 20px;
+            margin-left: auto;
+            font-size: 13px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .legend-box {
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+            border: 1px solid #ccc;
+        }
+
+        #mynetwork {
+            width: 100%;
+            height: 800px;
+            background-color: #fafafa;
+        }
+
+        .info-panel {
+            padding: 20px 30px;
+            background-color: #f8f9fa;
+            border-top: 1px solid #e9ecef;
+        }
+
+        .info-panel h3 {
+            font-size: 16px;
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .info-item {
+            background-color: white;
+            padding: 15px;
+            border-radius: 4px;
+            border-left: 3px solid #667eea;
+        }
+
+        .info-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .info-value {
+            font-size: 20px;
+            font-weight: 600;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>{{TITLE}}</h1>
+            <div class="subtitle">AWS Step Functions State Machine Visualization</div>
+        </header>
+
+        <div class="controls">
+            <button onclick="network.fit()">Fit to Screen</button>
+            <button onclick="network.focus(getStartNode(), {scale: 1.0})">Focus Start</button>
+            <button onclick="resetZoom()">Reset Zoom</button>
+
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-box" style="background-color: #2B7CE9;"></div>
+                    <span>Task</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-box" style="background-color: #FFA500;"></div>
+                    <span>Choice</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-box" style="background-color: #00FF00;"></div>
+                    <span>Pass/Succeed</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-box" style="background-color: #FF0000;"></div>
+                    <span>Fail</span>
+                </div>
+            </div>
+        </div>
+
+        <div id="mynetwork"></div>
+
+        <div class="info-panel">
+            <h3>State Machine Statistics</h3>
+            <div class="info-grid">
+                <div class="info-item">
+                    <div class="info-label">Total States</div>
+                    <div class="info-value" id="total-states">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Task States</div>
+                    <div class="info-value" id="task-states">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Choice States</div>
+                    <div class="info-value" id="choice-states">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Terminal States</div>
+                    <div class="info-value" id="terminal-states">-</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Data from Python
+        var nodesData = {{NODES_DATA}};
+        var edgesData = {{EDGES_DATA}};
+
+        // Create DataSet
+        var nodes = new vis.DataSet(nodesData);
+        var edges = new vis.DataSet(edgesData);
+
+        var container = document.getElementById('mynetwork');
+
+        var data = {
+            nodes: nodes,
+            edges: edges
+        };
+
+        var options = {
+            layout: {
+                hierarchical: {
+                    direction: 'UD',  // Top to Down
+                    sortMethod: 'directed',
+                    levelSeparation: 150,
+                    nodeSpacing: 200,
+                    treeSpacing: 250,
+                    blockShifting: true,
+                    edgeMinimization: false,  // 循環エッジの表示を有効化
+                    parentCentralization: true,
+                    shakeTowards: 'leaves'  // ループの処理を改善
+                }
+            },
+            physics: {
+                enabled: false
+            },
+            edges: {
+                arrows: {
+                    to: {
+                        enabled: true,
+                        scaleFactor: 1.2
+                    }
+                },
+                smooth: {
+                    type: 'cubicBezier',
+                    forceDirection: 'vertical',
+                    roundness: 0.4
+                },
+                font: {
+                    size: 12,
+                    align: 'middle'
+                },
+                color: {
+                    inherit: false
+                }
+            },
+            nodes: {
+                font: {
+                    size: 14,
+                    face: 'Segoe UI'
+                },
+                borderWidth: 2,
+                shadow: {
+                    enabled: true,
+                    size: 5,
+                    x: 2,
+                    y: 2
+                },
+                margin: 10
+            },
+            interaction: {
+                hover: true,
+                tooltipDelay: 100,
+                zoomView: true,
+                dragView: true
+            }
+        };
+
+        var network = new vis.Network(container, data, options);
+
+        // Calculate statistics
+        function updateStats() {
+            var totalStates = nodesData.length;
+            var taskStates = nodesData.filter(n => n.shape === 'box').length;
+            var choiceStates = nodesData.filter(n => n.shape === 'diamond').length;
+            var terminalStates = nodesData.filter(n => n.shape === 'ellipse').length;
+
+            document.getElementById('total-states').textContent = totalStates;
+            document.getElementById('task-states').textContent = taskStates;
+            document.getElementById('choice-states').textContent = choiceStates;
+            document.getElementById('terminal-states').textContent = terminalStates;
+        }
+
+        function getStartNode() {
+            // Assume first node is start node
+            return nodesData.length > 0 ? nodesData[0].id : null;
+        }
+
+        function resetZoom() {
+            network.moveTo({
+                scale: 1.0,
+                animation: {
+                    duration: 500,
+                    easingFunction: 'easeInOutQuad'
+                }
+            });
+        }
+
+        // Initialize
+        network.on('stabilizationIterationsDone', function() {
+            network.setOptions({physics: false});
+        });
+
+        updateStats();
+
+        // Fit network on load
+        network.once('stabilized', function() {
+            network.fit({
+                animation: {
+                    duration: 1000,
+                    easingFunction: 'easeInOutQuad'
+                }
+            });
+        });
+    </script>
+</body>
+</html>

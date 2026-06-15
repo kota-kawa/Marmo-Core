@@ -1,0 +1,18 @@
+graph TD
+    A[Landing Page] -->|Klik Daftar| B(Form Pendaftaran)
+    B -->|Isi Data & Pilih Paket| C{Pilih Pembayaran}
+    C -->|Midtrans / Otomatis| D[Bayar via Snap]
+    C -->|Transfer Manual| E[Upload Bukti Transfer]
+    D -->|Sukses| F[Auto-Approve / Active]
+    E -->|Dicek Admin| G{Disetujui?}
+    G -->|Ya| F
+    G -->|Tidak| H[Ditolak]
+    F -->|Kirim Email| I[User Terima Password]
+    I -->|Login| J[Dashboard User]
+    
+    subgraph Fitur Dashboard User
+    J --> K[Integrasi Toko]
+    J --> L[HPP Calculator]
+    J --> M[AI Content Generator]
+    J --> N[Sistem Kredit/Koin]
+    end

@@ -1,0 +1,140 @@
+/* Estilos para la sección de Casos de Uso */
+.use-cases-section {
+  max-width: 1200px;
+  margin: 3rem auto;
+  padding: 2rem;
+  background: linear-gradient(125deg, rgba(12, 23, 18, 0.95) 0%, rgba(9, 19, 27, 0.95) 100%);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  position: relative;
+}
+
+.use-cases-section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #0a9c5a, #17ff80, #0a9c5a);
+  z-index: 1;
+}
+
+.use-cases-section h3 {
+  color: #17ff80;
+  font-size: 2rem;
+  text-align: center;
+  margin-bottom: 2rem;
+  position: relative;
+}
+
+.use-cases-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 2rem;
+}
+
+.use-case-card {
+  background: rgba(10, 15, 20, 0.5);
+  border-radius: 10px;
+  padding: 1.5rem;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  border: 1px solid rgba(23, 255, 128, 0.1);
+}
+
+.use-case-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px rgba(23, 255, 128, 0.1);
+}
+
+.use-case-icon {
+  font-size: 2.5rem;
+  color: #17ff80;
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+.use-case-title {
+  color: #ffffff;
+  font-size: 1.3rem;
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+.use-case-description {
+  color: #bcc9c3;
+  font-size: 1rem;
+  line-height: 1.6;
+  margin-bottom: 1rem;
+}
+
+.use-case-benefits {
+  list-style-type: none;
+  padding: 0;
+  margin: 0;
+}
+
+.use-case-benefits li {
+  color: #bcc9c3;
+  font-size: 0.95rem;
+  margin-bottom: 0.5rem;
+  padding-left: 1.5rem;
+  position: relative;
+  line-height: 1.4;
+}
+
+.use-case-benefits li::before {
+  content: '✓';
+  color: #17ff80;
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.use-case-cta {
+  margin-top: 1.5rem;
+  text-align: center;
+}
+
+.use-case-cta a {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  background: linear-gradient(90deg, #12c26d, #17ff80);
+  color: #071a11;
+  text-decoration: none;
+  border-radius: 5px;
+  font-weight: bold;
+  transition: all 0.3s ease;
+}
+
+.use-case-cta a:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(23, 255, 128, 0.2);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .use-cases-section {
+    padding: 1.5rem;
+    margin: 2rem auto;
+  }
+  
+  .use-cases-section h3 {
+    font-size: 1.8rem;
+  }
+  
+  .use-cases-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .use-cases-section {
+    padding: 1rem;
+    margin: 1.5rem auto;
+  }
+  
+  .use-cases-section h3 {
+    font-size: 1.6rem;
+  }
+}

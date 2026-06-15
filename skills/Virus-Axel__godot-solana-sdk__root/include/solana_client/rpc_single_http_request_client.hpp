@@ -1,0 +1,97 @@
+#ifndef SOLANA_SDK_RPC_SINGLE_HTTP_REQUEST_CLIENT_HPP
+#define SOLANA_SDK_RPC_SINGLE_HTTP_REQUEST_CLIENT_HPP
+
+#include <queue>
+
+#include "godot_cpp/classes/global_constants.hpp"
+#include "godot_cpp/classes/http_client.hpp"
+#include "godot_cpp/classes/web_socket_peer.hpp"
+#include "godot_cpp/variant/callable.hpp"
+#include "godot_cpp/variant/dictionary.hpp"
+
+#include "solana_utils.hpp"
+
+const float DEFAULT_REQUEST_TIMEOUT = 20.0F;
+
+namespace godot {
+
+/**
+ * @brief Specifies information about a request.
+ */
+typedef struct { // NOLINT(modernize-use-using,cppcoreguidelines-pro-type-member-init,hicpp-member-init)
+	Dictionary request; ///< Request to send.
+	Dictionary parsed_url; ///< URL Dictionary.
+	double timeout; ///< timeout of request.
+	int request_identifier; ///< ID to pass with the RPC request.
+	Callable callback; ///< Callback that will be called when request response received.
+	Callable error_callback; ///< Callback that will be called when an error occurred.
+} RequestData;
+
+/**
+ * @class RpcSingleHttpRequestClient
+ * @brief Handles requests synchronously in a queue.
+ */
+class RpcSingleHttpRequestClient : public HTTPClient {
+	GDCLASS_CUSTOM(RpcSingleHttpRequestClient, HTTPClient)
+private:
+	bool skip_id = false;
+
+	std::queue<RequestData> request_queue;
+	PackedByteArray response_data;
+
+	void process_message_sending();
+	void process_body();
+	void initiate_connection();
+	void update_timeouts(double delta);
+	[[nodiscard]] bool is_pending() const;
+	[[nodiscard]] bool has_request() const;
+	[[nodiscard]] bool is_response_valid(const Dictionary &response) const;
+	[[nodiscard]] bool is_timed_out() const;
+
+	Error connect_to();
+	Error send_next_request();
+	void finalize_faulty(Error error);
+	void finalize_request(const Dictionary &response);
+
+protected:
+	/**
+	 * @bindmethods{RpcSingleHttpRequestClient, Node}
+	 */
+	static void _bind_methods();
+
+public:
+	/**
+	 * @brief Check if request queue is empty.
+	 *
+	 * @return true If request queue is empty.
+	 * @return false If request is queued.
+	 */
+	[[nodiscard]] bool is_completed() const;
+
+	/**
+	 * @setter{skip_id, skip_id}
+	 */
+	void set_skip_id(bool skip_id);
+
+	/**
+	 * @brief Process the request.
+	 *
+	 * @param delta Elapsed time since last process.
+	 */
+	void process(double delta);
+
+	/**
+	 * @brief Initiate an asynchronous request.
+	 *
+	 * @param request_body Request Dictionary.
+	 * @param parsed_url URL to send request to.
+	 * @param callback Callback to call on response received.
+	 * @param error_callback Callable to call if an error occur.
+	 * @param timeout Timeout of request.
+	 */
+	void asynchronous_request(const Dictionary &request_body, const Dictionary &parsed_url, const Callable &callback, const Callable &error_callback, float timeout = DEFAULT_REQUEST_TIMEOUT);
+};
+
+} //namespace godot
+
+#endif

@@ -1,0 +1,148 @@
+---
+title: "Gemini WebSocket"
+description: "Real-time price, orderbook, and trade streaming for Gemini prediction markets"
+---
+
+## Connection
+
+Connect to the Gemini WebSocket endpoint:
+
+```
+wss://api.delphiterminal.co/ws/gemi?api_key=YOUR_API_KEY
+```
+
+| Property | Value |
+|----------|-------|
+| Protocol | WebSocket (wss://) |
+| Authentication | `api_key` query parameter |
+| Keepalive | Ping every 54 seconds |
+| Timeout | 60 seconds without pong |
+| Max Message Size | 16 KB |
+
+## Subscribing to markets
+
+Once connected, send a JSON message to subscribe using `market_id`:
+
+```json
+{
+  "action": "subscribe",
+  "market_ids": ["GEMI-BTC15M-HI70000", "GEMI-FEDJAN26-DN25"],
+  "message_types": ["prices", "orderbook", "trades"]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `action` | string | Yes | `subscribe` or `unsubscribe` |
+| `market_ids` | array | Yes | Array of Gemini market identifiers |
+| `message_types` | array | No | `["prices"]`, `["orderbook"]`, `["trades"]`, or any combination. Defaults to prices and orderbook if omitted |
+
+## Unsubscribing
+
+```json
+{
+  "action": "unsubscribe",
+  "market_ids": ["GEMI-BTC15M-HI70000"]
+}
+```
+
+## Message types
+
+### Price messages
+
+```json
+{
+  "type": "prices",
+  "data": {
+    "venue": "GEMI",
+    "market_id": "GEMI-BTC15M-HI70000",
+    "server_time": 1774762511552,
+    "ingest_time": 1774762511553,
+    "payload": {
+      "type": "Ticker",
+      "Ticker": {
+        "best_bid": 0.45,
+        "best_bid_qty": 100,
+        "best_ask": 0.55,
+        "best_ask_qty": 80
+      }
+    }
+  }
+}
+```
+
+### Orderbook messages
+
+```json
+{
+  "type": "orderbook",
+  "data": {
+    "exchange": "GEMI",
+    "market_id": "GEMI-BTC15M-HI70000",
+    "yes_side": [0, 0, 100, 200],
+    "no_side": [150, 100, 0, 0],
+    "server_time": "2026-03-29T12:00:00Z"
+  }
+}
+```
+
+### Trade messages
+
+```json
+{
+  "type": "trades",
+  "data": {
+    "venue": "GEMI",
+    "market_id": "GEMI-BTC15M-HI70000",
+    "server_time": 1774762511552,
+    "payload": {
+      "type": "Trade",
+      "Trade": {
+        "trade_id": 12345,
+        "price": 0.50,
+        "quantity": 100,
+        "is_maker": false
+      }
+    }
+  }
+}
+```
+
+## Full example
+
+```javascript
+const ws = new WebSocket("wss://api.delphiterminal.co/ws/gemi?api_key=YOUR_API_KEY");
+
+ws.onopen = () => {
+  console.log("Connected to Gemini WebSocket");
+
+  ws.send(JSON.stringify({
+    action: "subscribe",
+    market_ids: ["GEMI-BTC15M-HI70000"],
+    message_types: ["prices", "orderbook", "trades"]
+  }));
+};
+
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+
+  if (data.type === "prices") {
+    console.log("Price update:", data.data);
+  } else if (data.type === "orderbook") {
+    console.log("Orderbook update:", data.data);
+  } else if (data.type === "trades") {
+    console.log("Trade:", data.data);
+  }
+};
+
+ws.onclose = () => console.log("Disconnected");
+ws.onerror = (error) => console.error("WebSocket error:", error);
+```
+
+## Important notes
+
+- **Authentication required** via `api_key` query parameter
+- Use `market_id` (Gemini market identifier) to subscribe
+- Messages are only sent for markets you have explicitly subscribed to
+- Multiple markets can be subscribed in a single message
+- Trades must be explicitly requested (not included in the default subscription)

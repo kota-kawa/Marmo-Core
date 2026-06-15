@@ -1,0 +1,47 @@
+---
+title: Shadows
+---
+
+# Shadows
+
+Shadows are a set of `box-shadow` values that give the element a sense of depth.
+
+<Example gap="5">
+  <Label>sm</Label>
+  <ExampleBox shadow="sm" />
+  <Label>md</Label>
+  <ExampleBox shadow="md" />
+  <Label>lg</Label>
+  <ExampleBox shadow="lg" />
+  <Label>xl</Label>
+  <ExampleBox shadow="xl" />
+  <Label>2xl</Label>
+  <ExampleBox shadow="2xl" />
+
+  ```jsx
+  <Label>sm</Label>
+  <ExampleBox shadow="sm" />
+  <Label>md</Label>
+  <ExampleBox shadow="md" />
+  <Label>lg</Label>
+  <ExampleBox shadow="lg" />
+  <Label>xl</Label>
+  <ExampleBox shadow="xl" />
+  <Label>2xl</Label>
+  <ExampleBox shadow="2xl" />
+  ```
+</Example>
+
+## Component props
+
+<Example>
+  <DataTable
+    data={[
+      { name: 'shadow', value: 'Responsive<BoxShadow>', description: 'true | "none" | "sm" | "md" | "lg" | "xl" | "2xl" | "inner"' },
+    ]}
+  >
+    <DataColumn id="name" label="Name" />
+    <DataColumn id="value" label="Type" />
+    <DataColumn id="description" label="Values" />
+  </DataTable>
+</Example>

@@ -1,0 +1,360 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import yaml from "yaml";
+import { Config, ConfigSchema, SanitizationConfig, BudgetConfig } from "./types.js";
+import { fileExists, warn, atomicWrite, expandPath, normalizeYamlKeys, resolveRepoDir, resolveGlobalDir } from "./utils.js";
+
+// --- Defaults ---
+
+/**
+ * Get default configuration by parsing an empty object through ConfigSchema.
+ * This ensures ConfigSchema is the single source of truth for all defaults.
+ *
+ * The schema defines all defaults via .default() modifiers. By parsing {},
+ * we get a fully populated Config object with all schema-defined defaults.
+ */
+export function getDefaultConfig(): Config {
+  return ConfigSchema.parse({});
+}
+
+/**
+ * Cached default config for internal use.
+ * Lazily initialized on first access.
+ */
+let _cachedDefaults: Config | null = null;
+
+function getCachedDefaults(): Config {
+  if (_cachedDefaults === null) {
+    _cachedDefaults = getDefaultConfig();
+  }
+  return _cachedDefaults;
+}
+
+/**
+ * @deprecated Use getDefaultConfig() instead.
+ * This export is retained for backward compatibility but now delegates to ConfigSchema.
+ */
+export const DEFAULT_CONFIG: Config = ConfigSchema.parse({});
+
+export function getSanitizeConfig(config?: Config): SanitizationConfig {
+  const defaults = getCachedDefaults();
+  const conf = config?.sanitization ?? defaults.sanitization;
+  return {
+    ...defaults.sanitization,
+    ...conf,
+  };
+}
+
+// --- LLM Config Migration ---
+
+/**
+ * Track if we've already warned about deprecated llm.* config shape.
+ * We only warn once per process to avoid spam.
+ */
+let _llmMigrationWarned = false;
+
+/**
+ * Migrate deprecated llm.* config to canonical top-level provider/model.
+ * If llm.provider or llm.model is set, copy to top-level and warn once.
+ *
+ * Canonical shape (as of v0.1.0):
+ *   { provider: "anthropic", model: "claude-sonnet-4-20250514", ... }
+ *
+ * Deprecated shape:
+ *   { llm: { provider: "anthropic", model: "..." }, ... }
+ *
+ * After migration, the llm field is removed from the config.
+ */
+function migrateLlmConfig(config: Partial<any>): Partial<any> {
+  if (!config.llm) return config;
+
+  const { llm, ...rest } = config;
+
+  // Migrate provider if set in llm and not at top-level
+  if (llm.provider && !rest.provider) {
+    rest.provider = llm.provider;
+  }
+
+  // Migrate model if set in llm and not at top-level
+  if (llm.model && !rest.model) {
+    rest.model = llm.model;
+  }
+
+  // Migrate LLM timeouts (#53). `llm.timeoutMs` is the documented config knob;
+  // surface it as the resolved top-level `llmTimeoutMs` consumed by the LLM layer.
+  if (llm.timeoutMs !== undefined && rest.llmTimeoutMs === undefined) {
+    rest.llmTimeoutMs = llm.timeoutMs;
+  }
+  if (llm.totalTimeoutMs !== undefined && rest.llmTotalTimeoutMs === undefined) {
+    rest.llmTotalTimeoutMs = llm.totalTimeoutMs;
+  }
+
+  // Warn once about deprecated config shape — only for the deprecated
+  // provider/model keys. `llm.timeoutMs`/`llm.totalTimeoutMs` are the
+  // canonical, documented home for the LLM timeouts (#53), so their presence
+  // alone must not trigger the migration warning.
+  if (!_llmMigrationWarned && (llm.provider || llm.model)) {
+    _llmMigrationWarned = true;
+    warn(
+      `Config uses deprecated 'llm.provider/llm.model' shape. ` +
+      `Please migrate to top-level 'provider' and 'model' fields. ` +
+      `Run 'cm doctor' for details.`
+    );
+  }
+
+  return rest;
+}
+
+// --- Loading ---
+
+async function loadConfigFile(filePath: string): Promise<Partial<Config>> {
+  const expanded = expandPath(filePath);
+  if (!(await fileExists(expanded))) return {};
+
+  try {
+    const content = await fs.readFile(expanded, "utf-8");
+    const ext = path.extname(expanded);
+
+    if (ext === ".yaml" || ext === ".yml") {
+      return normalizeYamlKeys(yaml.parse(content));
+    } else {
+      return JSON.parse(content);
+    }
+  } catch (error: any) {
+    warn(`Failed to load config from ${expanded}: ${error.message}`);
+    return {};
+  }
+}
+
+/**
+ * Load repo-level config with format parity.
+ * Supports both .cass/config.json and .cass/config.yaml (.yml).
+ * Precedence: JSON preferred if both exist (deterministic behavior).
+ *
+ * @returns Loaded config and which source was used (for diagnostics)
+ */
+async function loadRepoConfig(repoCassDir: string): Promise<{
+  config: Partial<Config>;
+  source: string | null;
+}> {
+  const jsonPath = path.join(repoCassDir, "config.json");
+  const yamlPath = path.join(repoCassDir, "config.yaml");
+  const ymlPath = path.join(repoCassDir, "config.yml");
+
+  // Check which files exist
+  const [jsonExists, yamlExists, ymlExists] = await Promise.all([
+    fileExists(jsonPath),
+    fileExists(yamlPath),
+    fileExists(ymlPath),
+  ]);
+
+  // Prefer JSON if it exists (deterministic precedence)
+  if (jsonExists) {
+    const config = await loadConfigFile(jsonPath);
+    return { config, source: jsonPath };
+  }
+
+  // Fall back to YAML
+  if (yamlExists) {
+    const config = await loadConfigFile(yamlPath);
+    return { config, source: yamlPath };
+  }
+
+  // Fall back to YML
+  if (ymlExists) {
+    const config = await loadConfigFile(ymlPath);
+    return { config, source: ymlPath };
+  }
+
+  return { config: {}, source: null };
+}
+
+export async function loadConfig(cliOverrides: Partial<Config> = {}): Promise<Config> {
+  const defaults = getCachedDefaults();
+  const globalConfigPath = path.join(resolveGlobalDir(), "config.json");
+  const globalConfigRaw = await loadConfigFile(globalConfigPath);
+
+  // Migrate deprecated llm.* shape to top-level
+  const globalConfig = migrateLlmConfig(globalConfigRaw);
+
+  // Repo-level config is user-owned and may be committed to source control. We intentionally
+  // restrict which settings a repo can override to prevent leaking secrets or weakening
+  // sanitization/budget protections.
+  let repoConfig: Partial<Config> = {};
+  let repoSanitizationExtraPatterns: string[] = [];
+  const repoCassDir = await resolveRepoDir();
+
+  if (repoCassDir) {
+    const { config: repoConfigRaw } = await loadRepoConfig(repoCassDir);
+
+    // Migrate deprecated llm.* shape to top-level
+    repoConfig = migrateLlmConfig(repoConfigRaw);
+
+    // Allow repos to *add* extra sanitization patterns, but never disable sanitization.
+    const maybeExtra = (repoConfig as any)?.sanitization?.extraPatterns;
+    if (Array.isArray(maybeExtra)) {
+      repoSanitizationExtraPatterns = maybeExtra
+        .filter((p: unknown): p is string => typeof p === "string")
+        .map((p) => p.trim())
+        .filter(Boolean);
+    } else if (maybeExtra !== undefined) {
+      warn(`Ignoring repo sanitization.extraPatterns: expected string[] (repo config cannot override sanitization settings)`);
+    }
+
+    // Security: Prevent repo from overriding sensitive user-level settings
+    delete repoConfig.cassPath;
+    delete repoConfig.playbookPath;
+    delete repoConfig.diaryDir;
+    delete repoConfig.crossAgent;
+    delete repoConfig.remoteCass;
+    delete repoConfig.apiKey;
+    delete repoConfig.baseUrl; // Prevent repo from redirecting API calls to exfiltration endpoints
+    delete repoConfig.ollamaBaseUrl; // Same concern — controls where model calls are sent
+    delete repoConfig.cliCommand; // Prevent repo from redirecting CLI calls to arbitrary executables
+    delete (repoConfig as any).budget;
+    delete (repoConfig as any).sanitization;
+  }
+
+  // Migrate CLI overrides as well (unlikely but complete)
+  const migratedOverrides = migrateLlmConfig(cliOverrides);
+
+  // Environment variable overrides
+  const envOverrides: Partial<Config> = {};
+  if (process.env.CASS_PATH) {
+    envOverrides.cassPath = process.env.CASS_PATH;
+  }
+  if (process.env.OLLAMA_BASE_URL) {
+    envOverrides.ollamaBaseUrl = process.env.OLLAMA_BASE_URL;
+  }
+
+  // Base URL env var fallback: provider-specific env vars override config.
+  // Checked in order: OPENAI_BASE_URL, ANTHROPIC_BASE_URL, GOOGLE_BASE_URL.
+  // Only applied when no config-level baseUrl is already set from any source.
+  if (!(globalConfig as any).baseUrl && !(migratedOverrides as any).baseUrl && !(repoConfig as any).baseUrl) {
+    const baseUrlFromEnv =
+      process.env.OPENAI_BASE_URL ||
+      process.env.ANTHROPIC_BASE_URL ||
+      process.env.GOOGLE_BASE_URL;
+    if (baseUrlFromEnv) {
+      envOverrides.baseUrl = baseUrlFromEnv;
+    }
+  }
+
+  const globalExtra = (globalConfig as any)?.sanitization?.extraPatterns;
+  const cliExtra = (cliOverrides as any)?.sanitization?.extraPatterns;
+  const canOverrideExtraPatterns =
+    (globalExtra === undefined || Array.isArray(globalExtra)) &&
+    (cliExtra === undefined || Array.isArray(cliExtra));
+
+  // Only override `sanitization.extraPatterns` when upstream types are valid. This preserves
+  // strict config validation (mis-typed config should fail fast instead of being silently coerced).
+  const mergedSanitizationExtraPatterns: string[] | undefined = (() => {
+    if (!canOverrideExtraPatterns) return undefined;
+
+    const merged: string[] = [];
+    const seen = new Set<string>();
+    const pushPattern = (p: unknown) => {
+      if (typeof p !== "string") return;
+      const trimmed = p.trim();
+      if (!trimmed) return;
+      if (seen.has(trimmed)) return;
+      seen.add(trimmed);
+      merged.push(trimmed);
+    };
+
+    for (const p of defaults.sanitization.extraPatterns) pushPattern(p);
+    if (Array.isArray(globalExtra)) for (const p of globalExtra) pushPattern(p);
+    for (const p of repoSanitizationExtraPatterns) pushPattern(p);
+    if (Array.isArray(cliExtra)) for (const p of cliExtra) pushPattern(p);
+
+    return merged;
+  })();
+
+  const merged = {
+    ...defaults,
+    ...globalConfig,
+    ...envOverrides,
+    ...repoConfig,
+    ...migratedOverrides,
+    sanitization: {
+      ...defaults.sanitization,
+      ...(globalConfig.sanitization || {}),
+      ...(cliOverrides.sanitization || {}),
+      ...(mergedSanitizationExtraPatterns ? { extraPatterns: mergedSanitizationExtraPatterns } : {}),
+    },
+    crossAgent: {
+      ...defaults.crossAgent,
+      ...(globalConfig.crossAgent || {}),
+      ...(repoConfig.crossAgent || {}),
+      ...(cliOverrides.crossAgent || {}),
+    },
+    scoring: {
+      ...defaults.scoring,
+      ...(globalConfig.scoring || {}),
+      ...(repoConfig.scoring || {}),
+      ...(cliOverrides.scoring || {}),
+    },
+    budget: {
+      ...defaults.budget,
+      ...(globalConfig.budget || {}),
+      ...(cliOverrides.budget || {}),
+    },
+  };
+
+  const result = ConfigSchema.safeParse(merged);
+  if (!result.success) {
+    warn(`Invalid configuration detected: ${result.error.message}`);
+    throw new Error(`Configuration validation failed: ${result.error.message}`);
+  }
+
+  if (process.env.CASS_MEMORY_VERBOSE === "1" || process.env.CASS_MEMORY_VERBOSE === "true") {
+    result.data.verbose = true;
+  }
+
+  // Resolve legacy hardcoded defaults to the dynamic global dir *only* when
+  // the user has explicitly opted into a non-default global location via
+  // CASS_MEMORY_HOME or XDG_DATA_HOME. Without an explicit override we must
+  // preserve the portable "~/.cass-memory/..." literal so:
+  //   - security tests can assert that repo configs cannot override sensitive
+  //     paths (the returned value must equal DEFAULT_CONFIG.playbookPath /
+  //     .diaryDir exactly, not a $HOME-expanded absolute path), and
+  //   - saveConfig/loadConfig round-trips remain stable.
+  // Downstream callers all run the value through expandPath(), which handles
+  // the "~" expansion at use-time.
+  const hasExplicitGlobalDir =
+    !!process.env.CASS_MEMORY_HOME || !!process.env.XDG_DATA_HOME;
+  if (hasExplicitGlobalDir) {
+    const globalDir = resolveGlobalDir();
+    const legacyDefaults: Record<string, string> = {
+      playbookPath: "~/.cass-memory/playbook.yaml",
+      diaryDir: "~/.cass-memory/diary",
+    };
+    for (const [key, legacyDefault] of Object.entries(legacyDefaults)) {
+      const val = (result.data as any)[key];
+      if (val === legacyDefault) {
+        (result.data as any)[key] = path.join(globalDir, key === "playbookPath" ? "playbook.yaml" : "diary");
+      }
+    }
+  }
+
+  return result.data;
+}
+
+export async function saveConfig(config: Config): Promise<void> {
+  const globalConfigPath = path.join(resolveGlobalDir(), "config.json");
+
+  // Normalize dynamically resolved paths back to portable defaults before
+  // persisting. loadConfig() expands "~/.cass-memory/playbook.yaml" to an
+  // absolute path at runtime; if we saved that absolute path, it would
+  // become stale when CASS_MEMORY_HOME or XDG_DATA_HOME changes.
+  const globalDir = resolveGlobalDir();
+  const toSave = { ...config };
+  if (toSave.playbookPath === path.join(globalDir, "playbook.yaml")) {
+    toSave.playbookPath = "~/.cass-memory/playbook.yaml";
+  }
+  if (toSave.diaryDir === path.join(globalDir, "diary")) {
+    toSave.diaryDir = "~/.cass-memory/diary";
+  }
+
+  await atomicWrite(globalConfigPath, JSON.stringify(toSave, null, 2));
+}

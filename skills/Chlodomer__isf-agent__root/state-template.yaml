@@ -1,0 +1,159 @@
+# ISF Grant Agent - Session State Template
+# Copy this file to .grant-session.yaml when starting a new session
+
+session:
+  id: null
+  started: null
+  last_updated: null
+  current_phase: 1
+
+requirements:
+  fetched: false
+  source_url: null
+  fetch_date: null
+  eligibility:
+    position_requirement: null
+    years_since_appointment: null
+    institution_requirement: null
+    prior_funding_restriction: null
+  budget:
+    annual_maximum: null
+    total_maximum: null
+    currency: "NIS"
+  duration: null
+  deadline: null
+  page_limits:
+    total: null
+    background: null
+    methods: null
+    cv: null
+  required_sections: []
+  formatting:
+    language: null
+    font: null
+    margins: null
+    file_format: null
+
+researcher_info:
+  name: null
+  institution: null
+  department: null
+  position: null
+  appointment_date: null
+  prior_positions: []
+  prior_isf_funding: null
+  email: null
+
+project_info:
+  title: null
+  central_question: null
+  aims:
+    - number: 1
+      title: null
+      hypothesis: null
+      approach: null
+    - number: 2
+      title: null
+      hypothesis: null
+      approach: null
+  innovation: null
+  preliminary_data: null
+  methodology: null
+  expected_outcomes: null
+  risks:
+    - risk: null
+      likelihood: null
+      mitigation: null
+  duration: null
+  milestones:
+    year_1: []
+    year_2: []
+    year_3: []
+    year_4: []
+
+resources:
+  personnel:
+    - role: null
+      percentage: null
+      years: null
+      annual_cost: null
+      justification: null
+  equipment:
+    - item: null
+      cost: null
+      justification: null
+  consumables:
+    - category: null
+      annual_cost: null
+      justification: null
+  travel:
+    - type: null
+      annual_cost: null
+      justification: null
+  other: []
+  budget_totals:
+    year_1: null
+    year_2: null
+    year_3: null
+    year_4: null
+    total: null
+
+track_record:
+  publications: []
+  relevant_publications:
+    - citation: null
+      relevance: null
+  prior_grants:
+    - agency: null
+      title: null
+      amount: null
+      period: null
+      role: null
+  collaborators:
+    - name: null
+      institution: null
+      expertise: null
+      role: null
+      letter_of_support: false
+
+proposal_sections:
+  abstract:
+    draft: null
+    approved: false
+    word_count: null
+  background:
+    draft: null
+    approved: false
+    page_count: null
+  aims:
+    draft: null
+    approved: false
+  methods:
+    draft: null
+    approved: false
+    page_count: null
+  innovation:
+    draft: null
+    approved: false
+  budget:
+    draft: null
+    approved: false
+  risks:
+    draft: null
+    approved: false
+  bibliography:
+    entries: []
+
+interview:
+  current_section: null
+  current_question: null
+  completed_sections: []
+  skipped_questions: []
+
+validation:
+  last_run: null
+  passed: []
+  failed: []
+  warnings: []
+  manual_review: []
+  ready_for_submission: false

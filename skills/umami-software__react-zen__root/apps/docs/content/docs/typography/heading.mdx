@@ -1,0 +1,64 @@
+---
+title: Heading
+---
+
+# Heading
+
+A semantic heading component for titles and section headers. Supports multiple sizes and semantic HTML levels (h1-h6) for proper document structure and accessibility.
+
+<Example>
+  <Heading>Hello.</Heading>
+
+  ```jsx
+  <Heading>Hello.</Heading>
+  ```
+</Example>
+
+## Sizes
+
+<Example>
+  <Heading size="sm">Heading sm</Heading>
+  <Heading size="base">Heading base</Heading>
+  <Heading size="lg">Heading lg</Heading>
+  <Heading size="xl">Heading xl</Heading>
+  <Heading size="2xl">Heading 2xl</Heading>
+  <Heading size="3xl">Heading 3xl</Heading>
+  <Heading size="4xl">Heading 4xl</Heading>
+  <Heading size="5xl">Heading 5xl</Heading>
+  <Heading size="6xl">Heading 6xl</Heading>
+  <Heading size="7xl">Heading 7xl</Heading>
+  <Heading size="8xl">Heading 8xl</Heading>
+  <Heading size="9xl">Heading 9xl</Heading>
+
+  ```jsx
+  <Heading size="sm">Heading sm</Heading>
+  <Heading size="base">Heading base</Heading>
+  <Heading size="lg">Heading lg</Heading>
+  <Heading size="xl">Heading xl</Heading>
+  <Heading size="2xl">Heading 2xl</Heading>
+  <Heading size="3xl">Heading 3xl</Heading>
+  <Heading size="4xl">Heading 4xl</Heading>
+  <Heading size="5xl">Heading 5xl</Heading>
+  <Heading size="6xl">Heading 6xl</Heading>
+  <Heading size="7xl">Heading 7xl</Heading>
+  <Heading size="8xl">Heading 8xl</Heading>
+  <Heading size="9xl">Heading 9xl</Heading>
+  ```
+</Example>
+
+## Component props
+
+Heading extends [Text](/docs/typography/text) and accepts all Text props. Default values are `size="2xl"`, `weight="semibold"`, and `spacing="tight"`.
+
+<Example>
+  <DataTable
+    data={[
+      { name: 'size', value: 'Responsive<HeadingSize>', description: '"sm" | "base" | "lg" | "xl" | "2xl" | ... | "9xl"' },
+      { name: 'as', value: 'HeadingElement', description: '"h1" | "h2" | "h3" | "h4" | "h5" | "h6" (default: "h2")' },
+    ]}
+  >
+    <DataColumn id="name" label="Name" />
+    <DataColumn id="value" label="Type" />
+    <DataColumn id="description" label="Values" />
+  </DataTable>
+</Example>

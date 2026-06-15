@@ -1,0 +1,81 @@
+---
+title: Breakpoints
+---
+
+# Breakpoints
+
+Breakpoints allow you to build responsive layouts by reacting to screen size changes.
+Zen uses Tailwind's default breakpoints with a **mobile-first** approach. Styles are applied
+from the smallest screen up, and breakpoints specify the **minimum width** at which styles take effect.
+
+<Example>
+  <DataTable
+    data={[
+      { name: 'base', device: 'All devices', width: '0px' },
+      { name: 'sm', device: 'Small devices', width: '640px' },
+      { name: 'md', device: 'Medium devices', width: '768px' },
+      { name: 'lg', device: 'Large devices', width: '1024px' },
+      { name: 'xl', device: 'Extra large devices', width: '1280px' },
+      { name: '2xl', device: 'Extra extra large devices', width: '1536px' },
+    ]}
+  >
+    <DataColumn id="name" label="Breakpoint" />
+    <DataColumn id="device" label="Device" />
+    <DataColumn id="width" label="Min Width" />
+  </DataTable>
+</Example>
+
+## Usage
+
+Certain properties of layout components accept a `Responsive` object, which specifies what value
+to apply at a given breakpoint. Use `'base'` for the mobile-first value that applies to all screen sizes.
+
+For example, the [Heading](/docs/typography/heading) component takes a `size` prop. If we pass in a
+`Responsive` object, we can specify which sizes to display at different breakpoints.
+
+<Example>
+  <Heading
+    size={{
+      base: 'lg',
+      sm: 'xl',
+      md: '2xl',
+      lg: '3xl',
+      xl: '4xl',
+    }}
+  >
+    {`This text will shrink/grow as the screen resizes.`}
+  </Heading>
+</Example>
+
+```jsx
+<Heading
+  size={{
+    base: 'lg',    // Base size for all screens
+    sm: 'xl',      // 640px and up
+    md: '2xl',     // 768px and up
+    lg: '3xl',     // 1024px and up
+    xl: '4xl',     // 1280px and up
+  }}
+>
+  This text will shrink/grow as the screen resizes.
+</Heading>
+```
+
+## useBreakpoint Hook
+
+The `useBreakpoint` hook returns the current breakpoint based on screen width.
+
+```jsx
+import { useBreakpoint } from '@umami/react-zen';
+
+function MyComponent() {
+  const breakpoint = useBreakpoint();
+
+  // breakpoint will be: 'base' | 'sm' | 'md' | 'lg' | 'xl' | '2xl'
+  return <Text>Current breakpoint: {breakpoint}</Text>;
+}
+```
+
+<Example>
+  <BreakpointExample />
+</Example>

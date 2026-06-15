@@ -1,0 +1,111 @@
+---
+title: Borders
+---
+
+# Borders
+
+Borders are always solid with a default border color. You can control the `position`, `radius`, and `color` of borders.
+
+## Border position
+
+<Example gap="5">
+  <Label>Default</Label>
+  <ExampleBox border backgroundColor="surface-raised" borderRadius="none" />
+  <Label>Top</Label>
+  <ExampleBox border="top" backgroundColor="surface-raised" borderRadius="none" />
+  <Label>Right</Label>
+  <ExampleBox border="right" backgroundColor="surface-raised" borderRadius="none" />
+  <Label>Bottom</Label>
+  <ExampleBox border="bottom" backgroundColor="surface-raised" borderRadius="none" />
+  <Label>Left</Label>
+  <ExampleBox border="left" backgroundColor="surface-raised" borderRadius="none" />
+
+  ```jsx
+  <ExampleBox border backgroundColor="surface-raised" borderRadius="none" />
+  <ExampleBox border="top" backgroundColor="surface-raised" borderRadius="none" />
+  <ExampleBox border="right" backgroundColor="surface-raised" borderRadius="none" />
+  <ExampleBox border="bottom" backgroundColor="surface-raised" borderRadius="none" />
+  <ExampleBox border="left" backgroundColor="surface-raised" borderRadius="none" />
+  ```
+</Example>
+
+## Border radius
+
+<Example gap="5">
+  <Label>sm</Label>
+  <ExampleBox borderRadius="sm" />
+  <Label>md</Label>
+  <ExampleBox borderRadius="md" />
+  <Label>lg</Label>
+  <ExampleBox borderRadius="lg" />
+  <Label>xl</Label>
+  <ExampleBox borderRadius="xl" />
+  <Label>2xl</Label>
+  <ExampleBox borderRadius="2xl" />
+  <Label>full</Label>
+  <ExampleBox borderRadius="full" />
+
+  ```jsx
+  <ExampleBox borderRadius="sm" />
+  <ExampleBox borderRadius="md" />
+  <ExampleBox borderRadius="lg" />
+  <ExampleBox borderRadius="xl" />
+  <ExampleBox borderRadius="2xl" />
+  <ExampleBox borderRadius="full" />
+  ```
+</Example>
+
+## Border width
+
+<Example gap="5">
+  <Label>sm</Label>
+  <ExampleBox borderWidth="sm" />
+  <Label>md</Label>
+  <ExampleBox borderWidth="md" />
+  <Label>lg</Label>
+  <ExampleBox borderWidth="lg" />
+  <Label>xl</Label>
+  <ExampleBox borderWidth="xl" />
+
+  ```jsx
+  <ExampleBox borderWidth="sm" />
+  <ExampleBox borderWidth="md" />
+  <ExampleBox borderWidth="lg" />
+  <ExampleBox borderWidth="xl" />
+  ```
+</Example>
+
+## Border color
+
+<Example gap="5" direction="row">
+  <ExampleBox />
+  <ExampleBox borderColor="primary" />
+  <ExampleBox borderColor="red" />
+  <ExampleBox borderColor="blue" />
+  <ExampleBox borderColor="green" />
+
+  ```jsx
+  <ExampleBox />
+  <ExampleBox borderColor="primary" />
+  <ExampleBox borderColor="red" />
+  <ExampleBox borderColor="blue" />
+  <ExampleBox borderColor="green" />
+  ```
+</Example>
+
+## Component props
+
+<Example>
+  <DataTable
+    data={[
+      { name: 'border', value: 'Responsive<Border>', description: 'true | "top" | "right" | "bottom" | "left" | "none"' },
+      { name: 'borderWidth', value: 'Responsive<BorderWidth>', description: '"sm" | "md" | "lg" | "xl"' },
+      { name: 'borderRadius', value: 'Responsive<BorderRadius>', description: 'true | "none" | "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "full"' },
+      { name: 'borderColor', value: 'BorderColor', description: 'SemanticColor | ColorName | TailwindColor' },
+    ]}
+  >
+    <DataColumn id="name" label="Name" />
+    <DataColumn id="value" label="Type" />
+    <DataColumn id="description" label="Values" />
+  </DataTable>
+</Example>

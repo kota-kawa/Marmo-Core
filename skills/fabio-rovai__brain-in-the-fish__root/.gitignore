@@ -1,0 +1,14 @@
+/target/
+*.swp
+.env
+docs/plans/
+
+# Large raw datasets (keep only processed samples)
+data/*.parquet
+data/*.tsv
+data/*.csv
+.worktrees/
+*.db
+evaluation-*
+orchestration.json
+verification-*

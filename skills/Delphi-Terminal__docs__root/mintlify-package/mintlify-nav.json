@@ -1,0 +1,111 @@
+{
+  "_comment": "Drop-in navigation snippet for your Mintlify docs.json (v3) or mint.json (v2). Merge the new groups under your existing 'navigation' key. Two top-level entries are added: 'Trading SDK' (hand-written guides under trading/) and three new groups under 'API Reference' (auto-generated from openapi-additions.json once you've merged it into your OpenAPI spec).",
+
+  "v3_docs_json_example": {
+    "navigation": {
+      "tabs": [
+        {
+          "tab": "Guides",
+          "groups": [
+            {
+              "group": "Trading SDK",
+              "pages": [
+                "trading/index",
+                {
+                  "group": "Exchanges",
+                  "pages": [
+                    "trading/polymarket",
+                    "trading/kalshi",
+                    "trading/opinion-labs",
+                    "trading/gemini",
+                    "trading/limitless",
+                    "trading/predict-fun"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tab": "API Reference",
+          "groups": [
+            {
+              "group": "Trading",
+              "pages": [
+                "api-reference/trading/place-order",
+                "api-reference/trading/list-orders",
+                "api-reference/trading/get-order",
+                "api-reference/trading/cancel-order"
+              ]
+            },
+            {
+              "group": "Credentials",
+              "pages": [
+                "api-reference/credentials/register-credentials",
+                "api-reference/credentials/list-credentials"
+              ]
+            },
+            {
+              "group": "Polymarket Onboarding",
+              "pages": [
+                "api-reference/polymarket-onboarding/derive-polymarket-credentials",
+                "api-reference/polymarket-onboarding/verify-polymarket-credentials",
+                "api-reference/polymarket-onboarding/get-polymarket-safe-address"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+
+  "v2_mint_json_example": {
+    "navigation": [
+      {
+        "group": "Trading SDK",
+        "pages": [
+          "trading/index",
+          {
+            "group": "Exchanges",
+            "pages": [
+              "trading/polymarket",
+              "trading/kalshi",
+              "trading/opinion-labs",
+              "trading/gemini",
+              "trading/limitless",
+              "trading/predict-fun"
+            ]
+          }
+        ]
+      },
+      {
+        "group": "Trading API",
+        "pages": [
+          "api-reference/orders/place-order",
+          "api-reference/orders/list-orders",
+          "api-reference/orders/get-order",
+          "api-reference/orders/cancel-order"
+        ]
+      },
+      {
+        "group": "Credentials API",
+        "pages": [
+          "api-reference/credentials/register-credentials",
+          "api-reference/credentials/list-credentials"
+        ]
+      },
+      {
+        "group": "Polymarket Onboarding API",
+        "pages": [
+          "api-reference/polymarket-onboarding/derive-polymarket-credentials",
+          "api-reference/polymarket-onboarding/verify-polymarket-credentials",
+          "api-reference/polymarket-onboarding/get-polymarket-safe-address"
+        ]
+      }
+    ]
+  },
+
+  "auto_generation_note": "If you use Mintlify's auto-generated API Reference pages from your OpenAPI spec, the page slugs above (e.g. 'api-reference/trading/place-order') are derived from the operationId and tag in openapi-additions.json. Mintlify CLI command: `mintlify openapi-spec ./openapi.json -o api-reference/`. The exact slug pattern depends on your Mintlify settings; adjust the page paths in this nav to match what `mintlify dev` actually generates.",
+
+  "exchange_id_note": "Mintlify slugs use kebab-case for the URL but read camelCase in `operationId`. The 6 trading endpoints have operationIds: placeOrder, listOrders, getOrder, cancelOrder, registerCredentials, listCredentials, derivePolymarketCredentials, verifyPolymarketCredentials, getPolymarketSafeAddress. Mintlify will typically slugify these to: place-order, list-orders, get-order, cancel-order, register-credentials, list-credentials, derive-polymarket-credentials, verify-polymarket-credentials, get-polymarket-safe-address."
+}

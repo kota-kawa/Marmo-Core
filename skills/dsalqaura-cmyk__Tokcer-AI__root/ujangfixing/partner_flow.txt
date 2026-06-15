@@ -1,0 +1,16 @@
+graph TD
+    A[Landing Page] -->|Klik Daftar Partner| B(Form Pendaftaran Partner)
+    B -->|Kirim Data| C[Robot Kirim Email Link PKS]
+    C -->|Klik Link| D[Halaman Tanda Tangan PKS]
+    D -->|Klik Saya Setuju| E[Layar Sukses + Kode Referral]
+    E -->|Menunggu| F[Approval Admin di Internal]
+    F -->|Disetujui| G[Robot Kirim Email Password]
+    G -->|Login| H[Dashboard Partner]
+    
+    subgraph Fitur Dashboard Partner
+    H --> I[Dashboard & Statistik Komisi]
+    H --> J[Academy / Tutorial]
+    H --> K[Onboarding Tambah Klien]
+    H --> L[Skema Komisi]
+    H --> M[Lapor Bug / Saran Fitur]
+    end

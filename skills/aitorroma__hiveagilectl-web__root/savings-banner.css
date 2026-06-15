@@ -1,0 +1,234 @@
+/* Estilos para el Banner de Ahorro - Versión Final */
+.hero-benefits {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 10px 0;
+}
+
+/* Estilos principales del banner */
+.savings-banner {
+  background: linear-gradient(125deg, rgba(12, 23, 18, 0.95) 0%, rgba(9, 19, 27, 0.95) 100%);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  position: relative;
+  transition: all 0.4s ease;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+/* Barra superior verde */
+.savings-banner::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #0a9c5a, #17ff80, #0a9c5a);
+  z-index: 1;
+}
+
+/* Contenedor interno */
+.savings-banner .savings-inner {
+  padding: 20px 15px 20px 30px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  z-index: 2;
+}
+
+/* Fila superior con título y botón */
+.savings-banner .top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  position: relative;
+  width: 100%;
+  padding-right: 0;
+}
+
+/* Área de contenido principal */
+.savings-banner .savings-content {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Título con icono */
+.savings-banner .savings-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 0;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* Icono del título */
+.savings-banner .savings-title i {
+  font-size: 2rem;
+  color: #17ff80 !important;
+  margin-right: 5px;
+}
+
+/* Texto del título */
+.savings-banner .savings-title h2 {
+  color: #17ff80 !important;
+  font-size: 1.7rem;
+  font-weight: 600;
+  margin: 0;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+/* Descripción */
+.savings-banner .savings-desc {
+  color: #bcc9c3 !important;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  margin-top: 0;
+  margin-bottom: 15px;
+  max-width: 550px;
+}
+
+/* Métricas */
+.savings-banner .savings-metrics {
+  display: flex;
+  gap: 40px;
+}
+
+/* Cada métrica individual */
+.savings-banner .metric {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Icono de métrica */
+.savings-banner .metric i {
+  color: #17ff80 !important;
+  font-size: 0.85rem;
+}
+
+/* Texto de métrica */
+.savings-banner .metric span {
+  color: #ffffff !important;
+  font-size: 0.85rem;
+}
+
+/* Área de botones */
+.savings-banner .action-area {
+  position: absolute;
+  right: 0;
+  top: 0;
+  z-index: 10;
+}
+
+/* Estilo base de botón */
+.savings-banner .btn {
+  padding: 9px 16px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  text-align: center;
+  white-space: nowrap;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  letter-spacing: 0.3px;
+}
+
+/* Botón principal */
+.savings-banner .btn-primary {
+  background: #17ff80 !important;
+  color: #071a11 !important;
+  box-shadow: 0 5px 15px rgba(23, 255, 128, 0.25);
+}
+
+/* Hover del botón principal */
+.savings-banner .btn-primary:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(23, 255, 128, 0.35);
+}
+
+/* Botón de texto */
+.savings-banner .btn-text {
+  background: none;
+  border: none;
+  color: #8bb8ff !important;
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  margin-top: 2px;
+}
+
+/* Hover del botón de texto */
+.savings-banner .btn-text:hover {
+  color: #afd0ff !important;
+  text-decoration: underline;
+}
+
+/* Efecto hover del banner */
+.savings-banner:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 15px 35px rgba(23, 255, 128, 0.15);
+}
+
+/* Responsive */
+@media (max-width: 880px) {
+  .savings-banner .top-row {
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+  }
+  
+  .savings-banner .savings-inner {
+    padding: 20px 15px;
+  }
+  
+  .savings-banner .savings-content {
+    width: 100%;
+    text-align: center;
+  }
+  
+  .savings-banner .savings-title {
+    justify-content: center;
+  }
+  
+  .savings-banner .savings-desc {
+    text-align: center;
+    margin: 0 auto 15px auto;
+  }
+  
+  .savings-banner .savings-metrics {
+    justify-content: center;
+    margin: 0 auto;
+    gap: 20px;
+  }
+  
+  .savings-banner .action-area {
+    align-items: center;
+    width: 100%;
+  }
+  
+  .savings-banner .btn {
+    width: 100%;
+    max-width: 280px;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 580px) {
+  .savings-banner .savings-metrics {
+    flex-direction: column;
+    gap: 10px;
+  }
+}

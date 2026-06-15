@@ -1,0 +1,76 @@
+# 🦞 ClawCareer — LinkedIn Job Push → Telegram (OpenClaw Skill)
+
+> **v1** — Currently supports **LinkedIn → Telegram** only. More job sources and notification channels planned for future versions.
+
+✨ ClawCareer is an OpenClaw skill that helps your AI agent monitor LinkedIn job listings and send filtered opportunities directly to your Telegram chat — hands-free, daily.
+
+## Quick Start (One Command)
+
+Tell your OpenClaw agent:
+
+```
+Read https://aubrey-m-ops.github.io/ClawCareer/skill.md and follow the instructions to set it up
+```
+
+✅ That's it! The agent will guide you through:
+1. Installing the skill
+2. Configuring your job search filters
+3. Setting up Telegram credentials
+4. Registering the skill in `HEARTBEAT.md`
+
+## Quick Update (One Command)
+
+Already have ClawCareer installed? Update with one command:
+
+```
+Read https://aubrey-m-ops.github.io/ClawCareer/skill.md and follow the "Updating" section to update the skill
+```
+
+✅ Your OpenClaw agent will handle the update and preserve your configuration files.
+
+For more details, see [Update Guide](docs/Update.md).
+
+
+## Configuration
+
+### `config.json`
+
+| Field                              | Description                                                          | Default      |
+| ---------------------------------- | -------------------------------------------------------------------- | ------------ |
+| `schedule.time` | Daily trigger time (HH:MM, 24h format) | `09:00` |
+| `schedule.timezone` | IANA timezone (e.g., `America/Toronto`) | `UTC` |
+| `filters.keywords` | Job search keywords (array of strings) | — (required) |
+| `filters.country` | Target country for job search | `Canada` |
+| `filters.excludeProvinces` | Province/state codes to skip (e.g., `["QC", "AB"]`) | `[]` |
+| `filters.excludeLocationKeywords` | Location keywords to skip (e.g., `["Quebec", "Montreal"]`) | `[]` |
+| `filters.maxExperienceYears` | Exclude jobs requiring more than N years; omit or set `null` to disable | `3` |
+| `filters.excludeKeyWords` | Keywords to exclude (case-insensitive); checked against title at search stage and title+description at content stage (e.g., `["Senior", "II", "Mercor"]`) | `[]` |
+| `filters.maxResults` | Max jobs to fetch per run | `30` |
+| `filters.maxSend` | Max jobs to send per Telegram message | `10` |
+
+### `secrets.json`
+
+| Field                | Description                |
+| -------------------- | -------------------------- |
+| `TELEGRAM_BOT_TOKEN` | Bot token from @BotFather |
+| `TELEGRAM_CHAT_ID` | Your Telegram chat ID |
+
+Alternatively, set these as environment variables.
+
+For detailed features and how the heartbeat trigger works, see [Features and Architecture](docs/Features%20and%20Architecture.md).
+
+## Compatibility
+
+| Requirement       | Version                            |
+| ----------------- | ---------------------------------- |
+| OpenClaw | >= 2026.2.x (with heartbeat support) |
+| Python | >= 3.8 |
+| Telegram Bot API | — |
+
+## Security
+
+- `secrets.json` is gitignored and should have `chmod 600` (Your keys are stored in here.)
+
+## License
+
+MIT

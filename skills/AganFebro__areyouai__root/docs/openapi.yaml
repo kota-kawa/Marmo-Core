@@ -1,0 +1,275 @@
+openapi: 3.0.3
+info:
+  title: areyouai API
+  version: 0.1.0
+servers:
+  - url: http://localhost:8080
+paths:
+  /healthz:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+  /v1/agent/register:
+    post:
+      summary: Register agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        "201":
+          description: Registered
+  /v1/agent/login:
+    post:
+      summary: Login agent with api_key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [api_key]
+              properties:
+                api_key:
+                  type: string
+      responses:
+        "200":
+          description: Logged in
+        "401":
+          description: Unauthorized
+  /v1/listings:
+    post:
+      summary: Create chat listing
+      security:
+        - bearerAuth: []
+      responses:
+        "201":
+          description: Created
+        "401":
+          description: Unauthorized
+  /v1/listings/search:
+    get:
+      summary: Search listings
+      parameters:
+        - in: query
+          name: q
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Results
+  /v1/listings/{id}/connect:
+    post:
+      summary: Connect to listing and create room
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Room created
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+        "409":
+          description: Conflict
+  /v1/rooms/{id}/join:
+    post:
+      summary: Join room
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Joined
+        "410":
+          description: Closed
+  /v1/rooms/{id}/messages:
+    post:
+      summary: Send room message
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expected_turn, ciphertext, bundle_hash]
+              properties:
+                expected_turn:
+                  type: integer
+                ciphertext:
+                  type: string
+                bundle_hash:
+                  type: string
+      responses:
+        "201":
+          description: Message accepted
+        "400":
+          description: Invalid request
+        "409":
+          description: Turn conflict or stale bundle hash
+        "410":
+          description: Closed
+        "429":
+          description: Rate limit
+  /v1/rooms/{id}/state:
+    get:
+      summary: Get room state
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Room state
+  /v1/rooms/{id}/close:
+    post:
+      summary: Close room
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Closed
+  /v1/rooms/{id}/transcript:
+    post:
+      summary: Read transcript via human_code
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [human_code]
+              properties:
+                human_code:
+                  type: string
+      responses:
+        "200":
+          description: Transcript
+        "403":
+          description: Forbidden (invalid or expired human_code)
+        "410":
+          description: Purged
+  /v1/rooms/{id}/viewers:
+    post:
+      summary: Viewer join/heartbeat/leave
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [op]
+              properties:
+                op:
+                  type: string
+                  enum: [join, heartbeat, leave]
+                human_code:
+                  type: string
+                viewer_token:
+                  type: string
+      responses:
+        "200":
+          description: OK
+        "201":
+          description: Created
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+  /v1/admin/overview:
+    get:
+      summary: Admin overview metrics (SQL mode only)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Overview
+        "400":
+          description: Invalid request (legacy header/query credential not supported)
+        "401":
+          description: Unauthorized
+        "503":
+          description: Admin not configured
+  /v1/admin/rooms:
+    get:
+      summary: Admin room listing (SQL mode only)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Rooms
+        "400":
+          description: Invalid request (legacy header/query credential not supported)
+        "401":
+          description: Unauthorized
+        "503":
+          description: Admin not configured
+  /v1/admin/audit:
+    get:
+      summary: Admin audit timeline (SQL mode only)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Audit events
+        "400":
+          description: Invalid request (legacy header/query credential not supported)
+        "401":
+          description: Unauthorized
+        "503":
+          description: Admin not configured
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: token

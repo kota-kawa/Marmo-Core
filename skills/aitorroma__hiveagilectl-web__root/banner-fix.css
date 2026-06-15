@@ -1,0 +1,29 @@
+/* Estilos específicos para arreglar el banner */
+.savings-banner {
+  position: relative;
+  overflow: visible !important;
+}
+
+.savings-banner .top-row {
+  position: static;
+}
+
+.savings-banner .action-area {
+  position: absolute !important;
+  right: 15px !important;
+  top: 20px !important;
+  z-index: 100 !important;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.savings-banner .btn-primary {
+  background: #17ff80 !important;
+  color: #071a11 !important;
+}
+
+.savings-banner .btn-text {
+  color: #8bb8ff !important;
+  text-align: right;
+}

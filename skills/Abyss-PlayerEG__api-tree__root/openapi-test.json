@@ -1,0 +1,202 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Pet Shop & E-Commerce API",
+    "version": "2.0.0",
+    "description": "A realistic multi-module API for testing api-tree CLI with full HTTP method coverage"
+  },
+  "paths": {
+    "/api/v1/pets": {
+      "get": {
+        "summary": "List all pets with pagination and filtering",
+        "tags": ["pets"]
+      },
+      "post": {
+        "summary": "Register a new pet",
+        "tags": ["pets"]
+      }
+    },
+    "/api/v1/pets/{id}": {
+      "get": {
+        "summary": "Get pet details by ID",
+        "tags": ["pets"]
+      },
+      "put": {
+        "summary": "Replace pet information entirely",
+        "tags": ["pets"]
+      },
+      "patch": {
+        "summary": "Update pet adoption status",
+        "tags": ["pets"]
+      },
+      "delete": {
+        "summary": "Remove pet from the system",
+        "tags": ["pets"]
+      }
+    },
+    "/api/v1/pets/{id}/photos": {
+      "get": {
+        "summary": "List all photos of a pet",
+        "tags": ["pets"]
+      },
+      "post": {
+        "summary": "Upload a new pet photo",
+        "tags": ["pets"]
+      }
+    },
+    "/api/v1/pets/{id}/photos/{photoId}": {
+      "delete": {
+        "summary": "Delete a pet photo",
+        "tags": ["pets"]
+      },
+      "patch": {
+        "summary": "Set photo as cover image",
+        "tags": ["pets"]
+      }
+    },
+    "/api/v1/users": {
+      "get": {
+        "summary": "List all registered users",
+        "tags": ["users"]
+      },
+      "post": {
+        "summary": "Create a new user account",
+        "tags": ["users"]
+      }
+    },
+    "/api/v1/users/{userId}": {
+      "get": {
+        "summary": "Get user profile by ID",
+        "tags": ["users"]
+      },
+      "put": {
+        "summary": "Replace user profile entirely",
+        "tags": ["users"]
+      },
+      "patch": {
+        "summary": "Update user email or preferences",
+        "tags": ["users"]
+      },
+      "delete": {
+        "summary": "Permanently delete user account",
+        "tags": ["users"]
+      }
+    },
+    "/api/v1/users/{userId}/orders": {
+      "get": {
+        "summary": "List all orders for a user",
+        "tags": ["orders"]
+      },
+      "post": {
+        "summary": "Create a new order",
+        "tags": ["orders"]
+      }
+    },
+    "/api/v1/users/{userId}/orders/{orderId}": {
+      "get": {
+        "summary": "Get order details with tracking",
+        "tags": ["orders"]
+      },
+      "patch": {
+        "summary": "Update order delivery status",
+        "tags": ["orders"]
+      },
+      "delete": {
+        "summary": "Cancel an unpaid order",
+        "tags": ["orders"]
+      }
+    },
+    "/api/v1/products": {
+      "get": {
+        "summary": "Browse products with search and filters",
+        "tags": ["products"]
+      },
+      "post": {
+        "summary": "Add a new product to catalog",
+        "tags": ["products"]
+      }
+    },
+    "/api/v1/products/{productId}": {
+      "get": {
+        "summary": "Get product details with inventory",
+        "tags": ["products"]
+      },
+      "put": {
+        "summary": "Replace product data entirely",
+        "tags": ["products"]
+      },
+      "patch": {
+        "summary": "Toggle product publish status",
+        "tags": ["products"]
+      },
+      "delete": {
+        "summary": "Remove product from catalog",
+        "tags": ["products"]
+      }
+    },
+    "/api/v1/products/{productId}/reviews": {
+      "get": {
+        "summary": "List product reviews with ratings",
+        "tags": ["reviews"]
+      },
+      "post": {
+        "summary": "Submit a product review",
+        "tags": ["reviews"]
+      }
+    },
+    "/api/v1/products/{productId}/reviews/{reviewId}": {
+      "delete": {
+        "summary": "Remove an inappropriate review",
+        "tags": ["reviews"]
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "summary": "Authenticate and receive access token",
+        "tags": ["auth"]
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "summary": "Self-register a new account",
+        "tags": ["auth"]
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "summary": "Refresh expired access token",
+        "tags": ["auth"]
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "summary": "Invalidate current session",
+        "tags": ["auth"]
+      }
+    },
+    "/api/v1/auth/password": {
+      "put": {
+        "summary": "Change account password",
+        "tags": ["auth"]
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "summary": "Service health check",
+        "tags": ["system"]
+      }
+    },
+    "/api/v1/stats": {
+      "get": {
+        "summary": "Aggregated system metrics",
+        "tags": ["system"]
+      }
+    },
+    "/api/v1/cache": {
+      "delete": {
+        "summary": "Purge all cached data",
+        "tags": ["system"]
+      }
+    }
+  }
+}

@@ -1,0 +1,150 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Repository {
+  id          String   @id @default(cuid())
+  path        String   @unique
+  name        String
+  gitRemote   String?
+  lastIndexed DateTime?
+  status      String   @default("pending") // pending, indexing, ready, error
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  files       File[]
+  commits     Commit[]
+  codeChunks  CodeChunk[]
+  indexingJobs IndexingJob[]
+}
+
+model File {
+  id           String   @id @default(cuid())
+  repositoryId String
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  
+  path         String
+  language     String?
+  linesOfCode  Int?
+  size         Int?
+  contentHash  String?  // SHA-256 hash for incremental indexing
+  lastAuthor   String?
+  lastModified DateTime?
+  
+  codeChunks   CodeChunk[]
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@unique([repositoryId, path])
+  @@index([repositoryId])
+  @@index([contentHash])
+}
+
+model CodeChunk {
+  id           String   @id @default(cuid())
+  repositoryId String
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  fileId       String
+  file         File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  
+  chunkType    String   // 'function', 'class', 'file', 'comment'
+  name         String?
+  content      String
+  startLine    Int
+  endLine      Int
+  
+  // Vector embedding (stored as JSON array)
+  embedding    String?  // JSON string of float array
+  
+  metadata     String?  // JSON metadata
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@index([repositoryId, chunkType])
+  @@index([fileId])
+}
+
+model Commit {
+  id           String   @id @default(cuid())
+  repositoryId String
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  
+  hash         String   @unique
+  author       String
+  email        String?
+  timestamp    DateTime
+  message      String
+  filesChanged String   // JSON array of file paths
+  
+  // Vector embedding of commit message
+  embedding    String?  // JSON string of float array
+  
+  createdAt    DateTime @default(now())
+  
+  @@index([repositoryId, timestamp])
+}
+
+model IndexingJob {
+  id             String   @id @default(cuid())
+  repositoryId   String
+  repository     Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  
+  status         String   // 'pending', 'running', 'completed', 'failed'
+  progress       Float    @default(0)
+  totalFiles     Int?
+  processedFiles Int?
+  currentFile    String?
+  error          String?
+  
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime @default(now())
+  
+  @@index([repositoryId, status])
+}
+
+model SearchHistory {
+  id           String   @id @default(cuid())
+  repositoryId String
+  
+  query        String
+  filters      String?  // JSON string of filters
+  resultCount  Int
+  userId       String?
+  
+  createdAt    DateTime @default(now())
+  
+  @@index([repositoryId, createdAt])
+  @@index([query])
+}
+
+model CodeSymbol {
+  id           String   @id @default(cuid())
+  fileId       String
+  
+  name         String
+  type         String   // 'function', 'class', 'method', 'variable', 'interface', 'type'
+  startLine    Int
+  endLine      Int
+  startColumn  Int
+  endColumn    Int
+  docstring    String?
+  parameters   String?  // JSON array
+  returnType   String?
+  parent       String?  // Parent class/function name
+  
+  createdAt    DateTime @default(now())
+  
+  @@index([fileId])
+  @@index([type])
+  @@index([name])
+}

@@ -1,0 +1,25 @@
+Con las herramientas que ya has implementado en tu servidor MCP, tienes el motor necesario para replicar el flujo de trabajo de OpenClaw que se muestra en el video.
+Aquí tienes los pasos exactos que debes seguir, basándote en la metodología de Michael Automates, para que tu agente comience a operar de forma autónoma:
+1. La "Prueba de Fuego" (Test de Integración)
+Antes de realizar cualquier operación real, el video sugiere validar que la IA tiene control sobre tu cuenta de Binance sin arriesgar capital.
+• Instrucción a la IA: Pídele que use tu herramienta adjust_leverage para cambiar el apalancamiento de un par (por ejemplo, BTCUSDT) a un número específico, como 7x.
+• Verificación: Si la IA logra cambiar el apalancamiento con éxito, habrás confirmado que la conexión es correcta.
+2. Creación de la Estrategia y Backtesting Obligatorio
+El video es muy enfático en un punto: "No permitas que la IA te diga que es una gran estrategia sin números".
+• Solicitud de estrategia: Pide a la IA que cree una estrategia específica (ej. "Trend Following") para un par en un gráfico de 4 horas.
+• Backtest: Dile que use sus herramientas fetch_chart_data y calculate_indicators para realizar un backtest sobre datos históricos.
+• Análisis colaborativo: Pídele que te muestre los KPIs (indicadores de rendimiento) del backtest. Como OpenClaw puede ver múltiples puntos de datos a la vez, pídele su opinión técnica sobre los pros y contras de la estrategia comparándola con otras (ej. Trending vs. Ranging).
+3. Escritura del Archivo de Estrategia (.js)
+Una vez que estés satisfecho con los resultados del backtest, el siguiente paso es la persistencia.
+• Generación del archivo: La IA debe escribir el código de la lógica de trading en un archivo físico dentro de su espacio de trabajo, por ejemplo: binance_trend_strategy.js.
+• Este archivo debe llamar a tus herramientas de MCP para consultar precios y ejecutar órdenes cuando se cumplan las condiciones.
+4. Automatización mediante Cron Jobs (El "Despertador")
+Para que el bot sea autónomo y no dependa de que tú estés chateando con él, debe ser capaz de autoejecutarse.
+• Programación: Pide a la IA (aprovechando que tiene acceso a tu terminal) que configure un cron job en Linux.
+• Frecuencia: Si la estrategia es de 4 horas, el cron job debe "despertar" al script cada 4 horas.
+• Ciclo de vida: En cada ejecución, el script debe: despertarse, analizar el mercado, decidir si entrar (long/short), salir o no hacer nada, y volver a dormir hasta la siguiente sesión.
+5. Reflexión y Mejora Continua
+El video destaca que lo que hace especial a este sistema es que no es solo transaccional; puede "reflexionar sobre sus acciones".
+• Reporte de actividad: Cada cierto tiempo, entra al chat y pide un reporte de lo que ha hecho el bot.
+• Adaptación: Si el rendimiento no es el esperado, el video sugiere pedirle a la IA que use read_bot_logs para reflexionar sobre su desempeño pasado y adapte el plan o modifique el archivo .js para ajustarse a las nuevas condiciones del mercado.
+Resumen del siguiente paso inmediato: Pide a tu agente que use fetch_chart_data para hacer un backtest de una estrategia de tendencia en BTC y que te presente los resultados con números antes de proceder a programar el cron job.

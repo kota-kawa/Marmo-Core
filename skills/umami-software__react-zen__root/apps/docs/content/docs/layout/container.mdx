@@ -1,0 +1,66 @@
+---
+title: Container
+---
+
+# Container
+
+A centered wrapper that constrains content to a maximum width. Essential for readable line lengths and consistent page layouts, especially for text-heavy content like articles or documentation.
+
+<Example>
+  <DialogTrigger>
+    <Button>Show container</Button>
+    <Modal>
+      <Dialog>
+        <Container>
+          Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt
+          ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation
+          ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in
+          reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur
+          sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id
+          est laborum.
+        </Container>
+      </Dialog>
+    </Modal>
+  </DialogTrigger>
+
+  ```jsx
+  <Container>
+    <Text>Content constrained to max-width</Text>
+  </Container>
+  ```
+</Example>
+
+The container at each breakpoint has a `max-width`.
+
+<Example>
+  <DataTable
+    data={[
+      { name: 'xs', width: '520px', maxWidth: '500px' },
+      { name: 'sm', width: '768px', maxWidth: '740px' },
+      { name: 'md', width: '1024px', maxWidth: '1000px' },
+      { name: 'lg', width: '1280px', maxWidth: '1240px' },
+      { name: 'xl', width: '1640px', maxWidth: '1600px' },
+    ]}
+  >
+    <DataColumn id="name" label="Size" />
+    <DataColumn id="width" label="Breakpoint" />
+    <DataColumn id="maxWidth" label="Max width" />
+  </DataTable>
+</Example>
+
+## Component props
+
+<Example>
+  <DataTable
+    data={[
+      { name: 'isCentered', value: 'boolean', description: 'Centers the container horizontally (default: true)' },
+      { name: 'isFluid', value: 'boolean', description: 'Makes the container full width with no max-width constraint' },
+    ]}
+  >
+    <DataColumn id="name" label="Name" />
+    <DataColumn id="value" label="Type" />
+    <DataColumn id="description" label="Description" />
+  </DataTable>
+</Example>
+
+Container also extends all [Box](/docs/layout/box) props.

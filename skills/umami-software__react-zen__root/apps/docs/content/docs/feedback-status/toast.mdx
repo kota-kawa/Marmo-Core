@@ -1,0 +1,85 @@
+---
+title: Toast
+---
+
+# Toast
+
+A succinct message that is displayed temporarily.
+
+<Example>
+  <ToastExample />
+
+  ```jsx
+  <Button onPress={() => toast('Your message has been sent.')}>Show toast</Button>
+  ```
+</Example>
+
+## With title
+
+<Example>
+  <ToastTitleExample />
+
+  ```jsx
+  <Button
+    onPress={() =>
+      toast('The application encountered an error.', { title: 'Oops! Something went wrong.' })
+    }
+  >
+    Show toast
+  </Button>
+  ```
+</Example>
+
+## With action
+
+<Example>
+  <ToastActionExample />
+
+  ```jsx
+  <Button
+    onPress={() =>
+      toast('The task was deleted successfully.', {
+        title: 'Task deleted',
+        actions: ['Undo'],
+      })
+    }
+  >
+    Show toast
+  </Button>
+  ```
+</Example>
+
+## Variants
+
+<Example>
+  <ToastVariantsExample />
+
+  ```jsx
+  <>
+    <Button onPress={() => toast('Your message was sent.', { variant: 'success' })}>
+      Success toast
+    </Button>
+    <Button onPress={() => toast('Something went wrong.', { variant: 'error' })}>
+      Error toast
+    </Button>
+  </>
+  ```
+</Example>
+
+## Component props
+
+<Example>
+  <DataTable
+    data={[
+      { name: 'message', value: 'ReactNode', description: 'Toast message content' },
+      { name: 'title', value: 'ReactNode', description: 'Optional toast title' },
+      { name: 'variant', value: 'ToastVariant', description: '"default" | "success" | "error"' },
+      { name: 'action', value: 'ReactNode', description: 'Action element (e.g., button)' },
+      { name: 'onAction', value: '() => void', description: 'Called when action is clicked' },
+    ]}
+  >
+    <DataColumn id="name" label="Name" />
+    <DataColumn id="value" label="Type" />
+    <DataColumn id="description" label="Description" />
+  </DataTable>
+</Example>

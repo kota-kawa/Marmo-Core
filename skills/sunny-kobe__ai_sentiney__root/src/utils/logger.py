@@ -1,0 +1,58 @@
+import logging
+import sys
+import os
+from pathlib import Path
+from logging.handlers import RotatingFileHandler
+import colorlog
+
+def setup_logger(name: str = "sentinel") -> logging.Logger:
+    """
+    Sets up a logger with both console (colored) and file handlers.
+    """
+    # Create logs directory if it doesn't exist
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
+
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.INFO)
+
+    # Avoid adding handlers multiple times
+    if logger.handlers:
+        return logger
+
+    # 1. Console Handler (with Colors)
+    console_handler = logging.StreamHandler(sys.stderr)
+    console_handler.setLevel(logging.INFO)
+    
+    color_formatter = colorlog.ColoredFormatter(
+        "%(log_color)s%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+        log_colors={
+            'DEBUG': 'cyan',
+            'INFO': 'green',
+            'WARNING': 'yellow',
+            'ERROR': 'red',
+            'CRITICAL': 'red,bg_white',
+        }
+    )
+    console_handler.setFormatter(color_formatter)
+    logger.addHandler(console_handler)
+
+    # 2. File Handler (Detailed)
+    file_handler = RotatingFileHandler(
+        log_dir / "sentinel.log",
+        maxBytes=10*1024*1024,  # 10MB
+        backupCount=5,
+        encoding='utf-8'
+    )
+    file_handler.setLevel(logging.DEBUG)
+    file_formatter = logging.Formatter(
+        "%(asctime)s - [%(levelname)s] - %(name)s - %(filename)s:%(lineno)d - %(message)s"
+    )
+    file_handler.setFormatter(file_formatter)
+    logger.addHandler(file_handler)
+
+    return logger
+
+# Global logger instance
+logger = setup_logger()

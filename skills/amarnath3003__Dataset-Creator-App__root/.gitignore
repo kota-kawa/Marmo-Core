@@ -1,0 +1,34 @@
+# Runtime generated project data
+projects/
+
+# CLI runner — generated at runtime
+dataset-lab/.pids/
+dataset-lab/.logs/
+
+# Python virtual environment
+dataset-lab/.venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Node
+dataset-lab/frontend/node_modules/
+node_modules/
+
+# Environment / secrets
+dataset-lab/.env
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/
+
+# Cache, Testing, and Linting Output
+.mypy_cache/
+.pytest_cache/
+lint_output*.txt

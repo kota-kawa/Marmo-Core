@@ -1,0 +1,110 @@
+---
+title: Text Field
+---
+
+# Text Field
+
+A text field allows a user to enter a plain text value with a keyboard.
+
+<Example>
+  <TextField />
+
+  ```jsx
+  <TextField />
+  ```
+</Example>
+
+## Placeholder text
+
+<Example>
+  <TextField placeholder="Enter some text" />
+
+  ```jsx
+  <TextField placeholder="Enter some text" />
+  ```
+</Example>
+
+## Disabled
+
+<Example>
+  <TextField defaultValue="Disabled" isDisabled />
+
+  ```jsx
+  <TextField defaultValue="Disabled" isDisabled />
+  ```
+</Example>
+
+## Read only
+
+<Example>
+  <TextField defaultValue="Read only" isReadOnly />
+
+  ```jsx
+  <TextField defaultValue="Read only" isReadOnly />
+  ```
+</Example>
+
+## As textarea
+
+<Example>
+  <TextField placeholder="Enter some text." asTextArea />
+
+  ```jsx
+  <TextField placeholder="Enter some text." asTextArea />
+  ```
+</Example>
+
+## Copy button
+
+<Example>
+  <TextField placeholder="Enter some text." value="Text" style={{ width: 200 }} allowCopy />
+  <TextField
+    placeholder="Enter some text."
+    value="Text"
+    style={{ width: 200 }}
+    asTextArea
+    allowCopy
+  />
+
+  ```jsx
+  <TextField value="Text" allowCopy />
+  <TextField value="Text" asTextArea allowCopy />
+  ```
+</Example>
+
+## Quiet
+
+<Example>
+  <Column gap>
+  <TextField placeholder="Enter some text." variant="quiet" style={{ fontSize: '2rem' }} />
+  <TextField placeholder="Enter some text." variant="quiet" />
+  </Column>
+
+  ```jsx
+  <TextField placeholder="Enter some text." variant="quiet" />
+  ```
+</Example>
+
+## Component props
+
+<Example>
+  <DataTable
+    data={[
+      { name: 'label', value: 'string', description: 'Label text displayed above the field' },
+      { name: 'placeholder', value: 'string', description: 'Placeholder text' },
+      { name: 'value', value: 'string', description: 'Controlled value' },
+      { name: 'defaultValue', value: 'string', description: 'Default value (uncontrolled)' },
+      { name: 'variant', value: 'TextFieldVariant', description: '"quiet" | "none"' },
+      { name: 'asTextArea', value: 'boolean', description: 'Renders as a textarea instead of input' },
+      { name: 'resize', value: 'ResizeDirection', description: '"vertical" | "horizontal" | "both" | "none"' },
+      { name: 'allowCopy', value: 'boolean', description: 'Shows a copy button' },
+      { name: 'isReadOnly', value: 'boolean', description: 'Makes the field read-only' },
+      { name: 'isDisabled', value: 'boolean', description: 'Disables the field' },
+      { name: 'onChange', value: '(value: string) => void', description: 'Called when value changes' },
+    ]}
+  >
+    <DataColumn id="name" label="Name" />
+    <DataColumn id="value" label="Type" />
+    <DataColumn id="description" label="Description" />
+  </DataTable>
+</Example>

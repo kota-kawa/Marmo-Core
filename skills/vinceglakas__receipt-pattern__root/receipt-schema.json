@@ -1,0 +1,110 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Receipt",
+  "description": "Structured record of actions performed by an AI agent during a session.",
+  "type": "object",
+  "required": ["id", "agentId", "sessionId", "timestamp", "trigger", "status", "durationMs", "actions", "anomalies", "rollbackAvailable", "sdkVersion"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^rcpt_[0-9]+_[a-f0-9]{6}$",
+      "description": "Unique receipt ID: rcpt_[unix_timestamp]_[6_char_hex]"
+    },
+    "agentId": {
+      "type": "string",
+      "description": "Identifier of the agent that performed the actions"
+    },
+    "sessionId": {
+      "type": "string",
+      "description": "Session or run identifier"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of receipt creation"
+    },
+    "trigger": {
+      "type": "string",
+      "enum": ["manual", "scheduled", "webhook"],
+      "description": "What initiated this agent run"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["completed", "failed", "partial", "rolled_back"],
+      "description": "Overall outcome of the session"
+    },
+    "durationMs": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Total session duration in milliseconds"
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["sequence", "type", "target", "summary", "status", "isRollbackEligible", "durationMs", "timestamp"],
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Execution order"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["file:write", "file:delete", "api:call", "db:write", "email:send", "deploy", "shell:exec"],
+            "description": "Category of action performed"
+          },
+          "target": {
+            "type": "string",
+            "description": "What was acted on (file path, URL, table name, etc.)"
+          },
+          "summary": {
+            "type": "string",
+            "description": "Plain English description of what happened"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["success", "failed", "anomaly"]
+          },
+          "isRollbackEligible": {
+            "type": "boolean",
+            "description": "Whether this action can be undone"
+          },
+          "durationMs": {
+            "type": "number",
+            "minimum": 0
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    "anomalies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["actionSequence", "detail"],
+        "properties": {
+          "actionSequence": {
+            "type": "integer",
+            "description": "References the action's sequence number"
+          },
+          "detail": {
+            "type": "string",
+            "description": "What was unexpected"
+          }
+        }
+      }
+    },
+    "rollbackAvailable": {
+      "type": "boolean",
+      "description": "True only if ALL actions are rollback-eligible"
+    },
+    "sdkVersion": {
+      "type": "string",
+      "description": "Version of the receipt pattern or SDK"
+    }
+  }
+}

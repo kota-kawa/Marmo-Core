@@ -1,0 +1,42 @@
+---
+title: Progress Circle
+---
+
+# Progress Circle
+
+A circular progress indicator that visually represents completion status. Ideal for compact spaces, dashboards, or when you want a more visually distinctive progress display than a bar.
+
+<Example>
+  <ProgressCircle value={45} />
+
+  ```jsx
+  <ProgressCircle value={45} />
+  ```
+</Example>
+
+## Show value
+
+<Example>
+  <ProgressCircle value={15} showValue />
+
+  ```jsx
+  <ProgressCircle value={15} showValue />
+  ```
+</Example>
+
+## Component props
+
+<Example>
+  <DataTable
+    data={[
+      { name: 'value', value: 'number', description: 'Current progress value' },
+      { name: 'minValue', value: 'number', description: 'Minimum value (default: 0)' },
+      { name: 'maxValue', value: 'number', description: 'Maximum value (default: 100)' },
+      { name: 'showPercentage', value: 'boolean', description: 'Shows percentage text in center' },
+    ]}
+  >
+    <DataColumn id="name" label="Name" />
+    <DataColumn id="value" label="Type" />
+    <DataColumn id="description" label="Description" />
+  </DataTable>
+</Example>

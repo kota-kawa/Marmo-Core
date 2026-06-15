@@ -1,0 +1,160 @@
+---
+title: 'Polymarket'
+description: 'EIP-712 signed orders with a Gnosis Safe wallet on Polygon'
+---
+
+Polymarket runs on Polygon and uses a Gnosis Safe (proxy wallet) to hold positions. Orders are EIP-712 typed-data signed by your EOA on behalf of the Safe.
+
+## At a glance
+
+| | |
+| --- | --- |
+| **Chain** | Polygon (chainId 137) |
+| **Wallet model** | Gnosis Safe proxy, signed by EOA |
+| **Quote token** | USDC (6 decimals) |
+| **Signing** | Client-side (EIP-712) |
+| **Auth** | CLOB HMAC credentials, derived once from your private key |
+
+## Prerequisites
+
+- A funded Polymarket account (USDC on Polygon in your Safe wallet)
+- The EOA private key that controls your Polymarket Safe
+- A Delphi API key
+
+## One-time setup: derive CLOB credentials
+
+Polymarket uses HMAC-SHA256 credentials called "CLOB credentials" for authentication. They're derived deterministically from your EOA private key. The Delphi server can do this in one call:
+
+```typescript
+import { DelphiClient } from '@delphimarkets/sdk';
+
+const client = new DelphiClient({
+  apiKey: process.env.DELPHI_API_KEY!,
+  baseUrl: 'https://api.delphiterminal.co',
+});
+
+const result = await client.derivePolymarketCredentials(
+  process.env.POLYMARKET_PRIVATE_KEY!, // hex, no 0x prefix
+);
+
+console.log(result.eoa_address);   // your EOA
+console.log(result.safe_address);  // your Polymarket Safe (proxy wallet)
+console.log(result.api_key);       // CLOB API key ID (HMAC secret stored server-side)
+```
+
+Run this once. The server stores the credentials and uses them for all subsequent Polymarket calls.
+
+<Tip>
+You can verify your stored credentials are still valid at any time with `client.verifyPolymarketCredentials()`.
+</Tip>
+
+### Look up your Safe address without deriving
+
+If you just want to know which Safe address corresponds to an EOA (without storing credentials), use:
+
+```typescript
+const { safe_address } = await client.getPolymarketSafeAddress('0xYourEOA');
+```
+
+This is a pure CREATE2 calculation — no on-chain reads, no private key needed.
+
+## Build and place an order
+
+```typescript
+import { DelphiClient, buildPolymarketOrder } from '@delphimarkets/sdk';
+import { createWalletClient, http } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+import { polygon } from 'viem/chains';
+
+const client = new DelphiClient({
+  apiKey: process.env.DELPHI_API_KEY!,
+  baseUrl: 'https://api.delphiterminal.co',
+});
+
+const account = privateKeyToAccount(`0x${process.env.POLYMARKET_PRIVATE_KEY!}`);
+const wallet = createWalletClient({ account, chain: polygon, transport: http() });
+
+const signedOrder = await buildPolymarketOrder(
+  {
+    tokenId: '12345...',  // outcome token ID from Polymarket market data
+    side: 'BUY',
+    price: 0.55,           // 0.01 to 0.99
+    size: '5000000',       // 5 USDC, in 6-decimal base units
+    feeRateBps: '0',       // optional, default 0
+    negRisk: true,         // optional, default true. False for non-negRisk markets
+  },
+  wallet,
+  true,                    // useSafe: true for Safe wallet, false for direct EOA
+);
+
+const order = await client.placeOrder({
+  exchange: 'polymarket',
+  market_id: 'my-market',
+  order_type: 'GTC',
+  signed_order: signedOrder,
+});
+
+console.log(`Placed: ${order.order_id} (${order.status})`);
+```
+
+### Build parameters
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `tokenId` | `string` | Polymarket outcome token ID (uint256 decimal string). |
+| `side` | `'BUY' \| 'SELL'` | |
+| `price` | `number` | Price per share, in [0.01, 0.99]. |
+| `size` | `string` | Size in USDC base units (6 decimals). 1 USDC = `'1000000'`. |
+| `feeRateBps` | `string?` | Fee rate in basis points. Default `'0'`. |
+| `expiration` | `string?` | Unix seconds. `'0'` (default) = no expiry. |
+| `nonce` | `string?` | Default `'0'`. |
+| `negRisk` | `boolean?` | Whether the market uses the negRisk exchange. Default `true`. **Must match the market's actual setting.** |
+
+### Two exchange contracts
+
+Polymarket has two CTF Exchange contracts on Polygon:
+
+- **Neg Risk CTF Exchange** at `0xC5d563A36AE78145C45a50134d48A1215220f80a` — used for markets with `negRisk: true` (most modern markets, including parlay-style outcomes)
+- **CTF Exchange** at `0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E` — used for legacy non-negRisk markets
+
+The SDK signs against the right contract based on the `negRisk` flag. **Picking the wrong one produces a valid signature for the wrong contract**, and the order will fail validation upstream. Default is `true` because it's correct for most markets.
+
+## Query and cancel
+
+```typescript
+// Single order
+const status = await client.getOrder(order.order_id, 'polymarket');
+
+// All your Polymarket orders
+const all = await client.listOrders('polymarket');
+
+// Cancel a resting order
+await client.cancelOrder(order.order_id, 'polymarket');
+```
+
+## Common pitfalls
+
+<AccordionGroup>
+  <Accordion title="Order rejected: 'invalid signature'">
+    The most common cause is a wrong `negRisk` flag. If you signed against the negRisk contract but the market is non-negRisk (or vice versa), the signature is valid for the wrong domain. Double-check the market's `neg_risk` field in the Polymarket market data and pass it explicitly.
+  </Accordion>
+
+  <Accordion title="Order rejected: 'insufficient allowance'">
+    Your Polymarket Safe wallet must have approved the CTF Exchange contract to spend USDC and Conditional Tokens. This is a one-time setup done in the Polymarket UI. If you've never traded from this Safe before, log into [polymarket.com](https://polymarket.com), click "Deposit" or place a tiny test trade through the UI — that triggers the approval transactions.
+  </Accordion>
+
+  <Accordion title="Order placed but never fills">
+    The CLOB matches at the best resting prices. If your buy price is below the best ask (or sell price above the best bid), the order rests in the book until someone hits it. Use `client.getOrder()` to monitor `size_matched`. To force a fill, place a marketable order (buy at or above the best ask).
+  </Accordion>
+
+  <Accordion title="signatureType: 0 vs 1 vs 2">
+    The SDK passes `signatureType: 2` (POLY_GNOSIS_SAFE) when you set `useSafe: true` in `buildPolymarketOrder()`, and `0` (EOA) otherwise. Use `2` for Safe-based wallets (the default for most Polymarket users). `1` (POLY_PROXY) is the legacy proxy wallet type and rarely used.
+  </Accordion>
+</AccordionGroup>
+
+## API reference
+
+- [`POST /api/v1/orders`](/trading/api/place-order) — accepts a `SignedPolymarketOrder` in `signed_order`
+- [`POST /api/v1/polymarket/derive-credentials`](/trading/api/derive-polymarket-credentials)
+- [`POST /api/v1/polymarket/verify-credentials`](/trading/api/verify-polymarket-credentials)
+- [`POST /api/v1/polymarket/safe-address`](/trading/api/safe-address)

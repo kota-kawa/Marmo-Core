@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.DS_Store
+sms_verify_logs/
+*.csv
+!example_recipients.csv

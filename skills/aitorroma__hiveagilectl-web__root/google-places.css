@@ -1,0 +1,133 @@
+/* Estilos para el plugin de Google Places */
+.google-places-reviews {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Ocultar el contenedor del mapa */
+#map-plug {
+  display: none;
+}
+
+/* Estilos para las reseñas */
+.review-item {
+  background: rgba(10, 15, 20, 0.5);
+  border-radius: 10px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  border: 1px solid rgba(23, 255, 128, 0.1);
+}
+
+.review-item:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px rgba(23, 255, 128, 0.1);
+}
+
+/* Estilos para los metadatos de la reseña */
+.review-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.review-author {
+  color: #ffffff;
+  font-weight: bold;
+}
+
+.review-date {
+  color: #8a9a9d;
+  font-size: 0.85rem;
+  margin-left: 1rem;
+}
+
+/* Estilos para las estrellas */
+.review-stars {
+  margin-bottom: 0.5rem;
+}
+
+.review-stars ul {
+  display: flex;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.review-stars ul li {
+  margin-right: 0.25rem;
+}
+
+.review-stars .star {
+  color: #FFCE00;
+}
+
+.review-stars .star:before {
+  content: '\f005';
+  font-family: 'Font Awesome 5 Free';
+  font-weight: 900;
+}
+
+.review-stars .star.inactive {
+  color: #555;
+  opacity: 0.3;
+}
+
+/* Estilos para el texto de la reseña */
+.review-text {
+  color: #bcc9c3;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin-bottom: 0;
+}
+
+/* Estilos para la calificación promedio */
+.average-rating {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.average-rating h4 {
+  margin: 0;
+  color: #ffffff;
+}
+
+/* Estilos para el mensaje de error */
+.reviews-error {
+  text-align: center;
+  color: #bcc9c3;
+  padding: 1rem;
+}
+
+.reviews-error p {
+  margin-bottom: 1rem;
+}
+
+.reviews-error a {
+  color: #17ff80;
+  text-decoration: none;
+}
+
+.reviews-error a:hover {
+  text-decoration: underline;
+}
+
+.fallback-reviews {
+  margin-top: 2rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .review-item {
+    padding: 1rem;
+  }
+  
+  .review-meta {
+    flex-direction: column;
+  }
+  
+  .review-date {
+    margin-left: 0;
+  }
+}

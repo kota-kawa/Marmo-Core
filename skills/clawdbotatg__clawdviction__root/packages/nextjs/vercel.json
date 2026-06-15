@@ -1,0 +1,20 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/accrue",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/forum-process",
+      "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/labs/queue/process",
+      "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/cron/gov-process",
+      "schedule": "*/2 * * * *"
+    }
+  ]
+}

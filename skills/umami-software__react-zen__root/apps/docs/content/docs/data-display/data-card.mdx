@@ -1,0 +1,42 @@
+---
+title: Data Card
+---
+
+# Data Card
+
+A structured display component for presenting key-value pairs in a vertical list format. Useful for profile cards, detail panels, summary views, or any context where labeled data needs clear presentation.
+
+<Example>
+  <DataCard
+    data={[
+      { id: 'name', label: 'Name', value: 'Bob' },
+      { id: 'title', label: 'Title', value: 'Vice President' },
+      { id: 'age', label: 'Age', value: '42' },
+    ]}
+  />
+
+  ```jsx
+  <DataCard
+    data={[
+      { id: 'name', label: 'Name', value: 'Bob' },
+      { id: 'title', label: 'Title', value: 'Vice President' },
+      { id: 'age', label: 'Age', value: '42' },
+    ]}
+  />
+  ```
+</Example>
+
+## Component props
+
+<Example>
+  <DataTable
+    data={[
+      { name: 'data', value: 'object[]', description: 'Array of { label, value } objects' },
+      { name: 'labelWidth', value: 'string', description: 'Width of label column (default: "auto")' },
+    ]}
+  >
+    <DataColumn id="name" label="Name" />
+    <DataColumn id="value" label="Type" />
+    <DataColumn id="description" label="Description" />
+  </DataTable>
+</Example>

@@ -1,0 +1,72 @@
+---
+title: Loading
+---
+
+# Loading
+
+An element that indicates content is loading.
+
+## Spinner
+
+<Example>
+  <Spinner />
+
+  ```jsx
+  <Spinner />
+  ```
+</Example>
+
+## Dots
+
+<Example>
+  <Dots />
+
+  ```jsx
+  <Dots />
+  ```
+</Example>
+
+## Sizes
+
+<Example>
+  <Row justifyContent="space-evenly" width="100%">
+    <Column alignItems="center" gap>
+      <Label>sm</Label>
+      <Spinner size="sm" />
+      <Label>md</Label>
+      <Spinner size="md" />
+      <Label>lg</Label>
+      <Spinner size="lg" />
+    </Column>
+    <Column alignItems="center" gap>
+      <Label>sm</Label>
+      <Dots size="sm" />
+      <Label>md</Label>
+      <Dots size="md" />
+      <Label>lg</Label>
+      <Dots size="lg" />
+    </Column>
+  </Row>
+
+  ```jsx
+  <Spinner size="sm" />
+  <Spinner size="md" />
+  <Spinner size="lg" />
+  ```
+</Example>
+
+## Component props
+
+<Example>
+  <DataTable
+    data={[
+      { name: 'size', value: 'LoadingSize', description: '"sm" | "md" | "lg"' },
+      { name: 'icon', value: 'LoadingIcon', description: '"dots" | "spinner" (default: "spinner")' },
+      { name: 'placement', value: 'LoadingPlacement', description: '"absolute" | "center" | "inline" (default: "inline")' },
+    ]}
+  >
+    <DataColumn id="name" label="Name" />
+    <DataColumn id="value" label="Type" />
+    <DataColumn id="description" label="Description" />
+  </DataTable>
+</Example>

@@ -1,0 +1,310 @@
+{
+  "version": "1.0.0",
+  "description": "Known failure patterns and their fixes for the Self-Improving Agent Architect",
+  "failure_patterns": [
+    {
+      "id": "context_insufficient",
+      "pattern": "Agent mentions 'I don't have enough context'",
+      "regex": "(?i)(don't have enough|lack.*context|need more information|unclear what)",
+      "category": "PROMPT_INCOMPLETE",
+      "severity": "medium",
+      "fix": {
+        "type": "prompt_edit",
+        "description": "Add more context to agent prompt about project structure and goals",
+        "suggestions": [
+          "Include explicit project directory structure",
+          "Add examples of expected output format",
+          "Specify the tech stack being used",
+          "Provide context about related files"
+        ]
+      }
+    },
+    {
+      "id": "timeout_zero_files",
+      "pattern": "Timeout after creating 0 files",
+      "regex": "timeout.*files.*created.*0|0.*files.*timeout",
+      "category": "PROMPT_TOO_COMPLEX",
+      "severity": "high",
+      "fix": {
+        "type": "architecture_change",
+        "description": "Split agent responsibilities into multiple smaller agents",
+        "suggestions": [
+          "Break the task into 2-3 smaller sub-tasks",
+          "Create dependency chain between new agents",
+          "Reduce scope of individual agent prompts"
+        ]
+      }
+    },
+    {
+      "id": "type_mismatch",
+      "pattern": "Type error: property X does not exist",
+      "regex": "(?i)(property.*does not exist|type.*not assignable|cannot find name)",
+      "category": "DEP_INCOMPATIBLE",
+      "severity": "medium",
+      "fix": {
+        "type": "prompt_edit",
+        "description": "Update shared interface contract between agents",
+        "suggestions": [
+          "Add explicit TypeScript interface definitions to shared/types.ts",
+          "Include interface contracts in agent prompts",
+          "Ensure all agents reference the same type definitions"
+        ]
+      }
+    },
+    {
+      "id": "missing_dependency",
+      "pattern": "Cannot find module or import failed",
+      "regex": "(?i)(cannot find module|import.*failed|module not found|no such file)",
+      "category": "DEP_MISSING",
+      "severity": "high",
+      "fix": {
+        "type": "architecture_change",
+        "description": "Ensure dependency agent runs before this agent",
+        "suggestions": [
+          "Check wave ordering in swarm design",
+          "Add explicit dependency in agent prompt",
+          "Create the missing file in an earlier wave"
+        ]
+      }
+    },
+    {
+      "id": "circular_dependency",
+      "pattern": "Circular dependency detected",
+      "regex": "(?i)(circular.*dependency|cyclic.*import|dependency cycle)",
+      "category": "DEP_CIRCULAR",
+      "severity": "high",
+      "fix": {
+        "type": "architecture_change",
+        "description": "Break the circular dependency by restructuring",
+        "suggestions": [
+          "Extract shared code into a separate utility module",
+          "Use dependency injection instead of direct imports",
+          "Create an interface module that both can import"
+        ]
+      }
+    },
+    {
+      "id": "rate_limit",
+      "pattern": "Rate limit exceeded or 429 error",
+      "regex": "(?i)(rate limit|429|too many requests|throttl)",
+      "category": "EXEC_RATE_LIMIT",
+      "severity": "medium",
+      "fix": {
+        "type": "config_change",
+        "description": "Reduce parallel execution and add delays",
+        "suggestions": [
+          "Reduce max_concurrent agents",
+          "Increase launch_stagger delay",
+          "Implement exponential backoff"
+        ]
+      }
+    },
+    {
+      "id": "memory_exceeded",
+      "pattern": "Out of memory or context length exceeded",
+      "regex": "(?i)(out of memory|context.*exceeded|maximum.*tokens|truncat)",
+      "category": "EXEC_OOM",
+      "severity": "high",
+      "fix": {
+        "type": "architecture_change",
+        "description": "Reduce agent scope or split into multiple agents",
+        "suggestions": [
+          "Split large file generation into multiple agents",
+          "Reduce context passed to agent",
+          "Use streaming or chunked processing"
+        ]
+      }
+    },
+    {
+      "id": "conflicting_outputs",
+      "pattern": "Multiple agents wrote same file differently",
+      "regex": "(?i)(conflict.*file|multiple.*versions|merge conflict)",
+      "category": "OUTPUT_CONFLICT",
+      "severity": "medium",
+      "fix": {
+        "type": "prompt_edit",
+        "description": "Clarify file ownership in agent prompts",
+        "suggestions": [
+          "Explicitly assign files to specific agents",
+          "Use different file names or directories",
+          "Define clear boundaries in agent responsibilities"
+        ]
+      }
+    },
+    {
+      "id": "incomplete_implementation",
+      "pattern": "TODO or placeholder left in code",
+      "regex": "(?i)(TODO|FIXME|not implemented|placeholder|coming soon)",
+      "category": "OUTPUT_INCOMPLETE",
+      "severity": "medium",
+      "fix": {
+        "type": "prompt_edit",
+        "description": "Add explicit completeness requirement to prompt",
+        "suggestions": [
+          "Add 'Do not leave any TODOs or placeholders' to success criteria",
+          "Include 'All functions must be fully implemented' requirement",
+          "Reduce scope if implementation is too complex"
+        ]
+      }
+    },
+    {
+      "id": "build_failure",
+      "pattern": "Build or compilation failed",
+      "regex": "(?i)(build failed|compilation error|cannot compile|syntax error)",
+      "category": "INT_BUILD_FAILURE",
+      "severity": "high",
+      "fix": {
+        "type": "prompt_edit",
+        "description": "Add build verification step to integration agent",
+        "suggestions": [
+          "Include 'Verify code compiles without errors' in success criteria",
+          "Add syntax validation before marking complete",
+          "Include specific build commands in agent prompt"
+        ]
+      }
+    },
+    {
+      "id": "test_failure",
+      "pattern": "Tests failed or test errors",
+      "regex": "(?i)(test.*fail|assertion.*error|expect.*received|0 passing)",
+      "category": "INT_TEST_FAILURE",
+      "severity": "medium",
+      "fix": {
+        "type": "prompt_edit",
+        "description": "Ensure test requirements are clear and tests are run",
+        "suggestions": [
+          "Add 'All tests must pass' to success criteria",
+          "Include test running instructions in QA agent prompt",
+          "Specify expected test coverage"
+        ]
+      }
+    },
+    {
+      "id": "interface_mismatch",
+      "pattern": "API interface doesn't match expected contract",
+      "regex": "(?i)(interface.*mismatch|contract.*violation|expected.*but got)",
+      "category": "INT_INTERFACE_MISMATCH",
+      "severity": "high",
+      "fix": {
+        "type": "prompt_edit",
+        "description": "Strengthen interface contracts in agent prompts",
+        "suggestions": [
+          "Include exact API signatures in prompts",
+          "Add TypeScript interfaces to shared resources",
+          "Create interface validation step"
+        ]
+      }
+    },
+    {
+      "id": "vague_responsibilities",
+      "pattern": "Agent unclear about what to do",
+      "regex": "(?i)(not sure what|unclear.*task|what should I|which.*should)",
+      "category": "PROMPT_AMBIGUOUS",
+      "severity": "medium",
+      "fix": {
+        "type": "prompt_edit",
+        "description": "Add explicit task list to agent prompt",
+        "suggestions": [
+          "List specific files to create",
+          "Define exact functions to implement",
+          "Include concrete success criteria"
+        ]
+      }
+    },
+    {
+      "id": "conflicting_requirements",
+      "pattern": "Requirements seem to contradict",
+      "regex": "(?i)(contradict|conflict.*requirement|both.*and|cannot.*while)",
+      "category": "PROMPT_CONTRADICTORY",
+      "severity": "high",
+      "fix": {
+        "type": "prompt_edit",
+        "description": "Resolve contradictions in requirements",
+        "suggestions": [
+          "Review and clarify requirements before swarm launch",
+          "Prioritize requirements if they conflict",
+          "Split conflicting requirements to different agents"
+        ]
+      }
+    },
+    {
+      "id": "wrong_tech_stack",
+      "pattern": "Used wrong framework or library",
+      "regex": "(?i)(wrong.*framework|should.*used|instead of|not.*supposed)",
+      "category": "PROMPT_INCOMPLETE",
+      "severity": "medium",
+      "fix": {
+        "type": "prompt_edit",
+        "description": "Explicitly specify tech stack in agent prompts",
+        "suggestions": [
+          "List required frameworks and versions",
+          "Include 'Do not use [X]' constraints",
+          "Add tech stack to shared configuration"
+        ]
+      }
+    }
+  ],
+  "success_patterns": [
+    {
+      "id": "explicit_file_list",
+      "description": "Prompts with explicit file lists have 85% higher success rate",
+      "recommendation": "Always include a 'Files to Create' section with specific filenames"
+    },
+    {
+      "id": "clear_interfaces",
+      "description": "Prompts with TypeScript interfaces reduce type errors by 90%",
+      "recommendation": "Define shared types in shared/types.ts and reference in prompts"
+    },
+    {
+      "id": "success_criteria",
+      "description": "Prompts with measurable success criteria complete 40% faster",
+      "recommendation": "Include checkboxes for each requirement"
+    },
+    {
+      "id": "dependency_explicit",
+      "description": "Explicit dependency declarations reduce integration conflicts by 75%",
+      "recommendation": "Always specify what the agent needs from and provides to others"
+    },
+    {
+      "id": "example_output",
+      "description": "Including example outputs improves quality scores by 30%",
+      "recommendation": "Add code examples or sample outputs to complex prompts"
+    }
+  ],
+  "mutation_templates": [
+    {
+      "id": "add_file_list",
+      "type": "insertion",
+      "description": "Add explicit file list to prompt",
+      "template": "\n\n## Files to Create\n1. ${filename1} - ${purpose1}\n2. ${filename2} - ${purpose2}\n"
+    },
+    {
+      "id": "add_interface",
+      "type": "insertion",
+      "description": "Add TypeScript interface definition",
+      "template": "\n\n## Interfaces\n```typescript\ninterface ${name} {\n  ${properties}\n}\n```\n"
+    },
+    {
+      "id": "add_success_criteria",
+      "type": "insertion",
+      "description": "Add success criteria checklist",
+      "template": "\n\n## Success Criteria\n- [ ] ${criterion1}\n- [ ] ${criterion2}\n- [ ] ${criterion3}\n"
+    },
+    {
+      "id": "add_dependencies",
+      "type": "insertion",
+      "description": "Add dependency declarations",
+      "template": "\n\n## Dependencies\n- **Needs from other agents**: ${needs}\n- **Provides to other agents**: ${provides}\n"
+    },
+    {
+      "id": "clarify_scope",
+      "type": "substitution",
+      "description": "Replace vague language with specific instructions",
+      "patterns": [
+        {"from": "handle errors appropriately", "to": "wrap in try-catch blocks and log errors to console"},
+        {"from": "create necessary files", "to": "create the following files: ${files}"},
+        {"from": "implement the feature", "to": "implement ${specific_feature} with ${specific_behavior}"}
+      ]
+    }
+  ]
+}

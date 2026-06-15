@@ -1,0 +1,147 @@
+---
+title: 'Limitless'
+description: 'EIP-712 signed orders with an EOA wallet on Base'
+---
+
+Limitless runs on Base (Coinbase's L2) and uses a direct EOA wallet model — no Safe or smart wallet wrapping. Orders are EIP-712 signed by your EOA itself.
+
+## At a glance
+
+| | |
+| --- | --- |
+| **Chain** | Base (chainId 8453) |
+| **Wallet model** | EOA (direct) |
+| **Quote token** | USDC (6 decimals) |
+| **Signing** | Client-side (EIP-712) |
+| **Auth** | Limitless API key + HMAC secret + EOA private key |
+
+## Prerequisites
+
+- A Limitless account ([limitless.exchange](https://limitless.exchange))
+- USDC on Base in your EOA
+- Your Limitless API key and HMAC secret (from your account settings)
+- The EOA private key associated with your Limitless account
+- Your Limitless `ownerId` — fetch from `GET /profiles` on the Limitless API
+
+## One-time setup: register credentials
+
+```typescript
+import { DelphiClient } from '@delphimarkets/sdk';
+import { createWalletClient, http } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+import { base } from 'viem/chains';
+
+const account = privateKeyToAccount(`0x${process.env.LIMITLESS_PRIVATE_KEY!}`);
+const walletClient = createWalletClient({ account, chain: base, transport: http() });
+
+const client = new DelphiClient({
+  apiKey: process.env.DELPHI_API_KEY!,
+  baseUrl: 'https://api.delphiterminal.co',
+});
+
+await client.registerCredentials('limitless', {
+  api_key: process.env.LIMITLESS_API_KEY!,
+  api_secret: process.env.LIMITLESS_API_SECRET!,    // HMAC secret
+  api_passphrase: '',                                // unused
+  signer_address: account.address,                   // your EOA
+});
+```
+
+Run once per user. The credentials are stored encrypted server-side.
+
+### Approving USDC
+
+Your EOA must approve the Limitless CTF Exchange contract (`0x05c748E2f4DcDe0ec9Fa8DDc40DE6b867f923fa5`) to spend USDC on Base. This is a standard ERC-20 approval. Most users do this through the Limitless UI on first deposit. If you've never traded on Limitless from this EOA, place a tiny test trade through their UI to trigger the approval.
+
+## Build and place an order
+
+```typescript
+import { DelphiClient, buildLimitlessOrder } from '@delphimarkets/sdk';
+import { createWalletClient, http } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+import { base } from 'viem/chains';
+
+const account = privateKeyToAccount(`0x${process.env.LIMITLESS_PRIVATE_KEY!}`);
+const walletClient = createWalletClient({ account, chain: base, transport: http() });
+
+const signedOrder = await buildLimitlessOrder(
+  {
+    marketSlug: 'trump-out-as-president-before-2027-1768933068297',
+    tokenId: '56154308...',  // outcome token uint256
+    side: 'BUY',
+    price: 0.10,              // 0.01 to 0.99
+    size: 1,                  // USDC amount, human-readable
+    ownerId: 1292635,         // from Limitless /profiles endpoint
+    feeRateBps: 300,          // optional, default 300 (3%)
+  },
+  walletClient,
+);
+
+const order = await client.placeOrder({
+  exchange: 'limitless',
+  market_id: 'trump-out-as-president-before-2027-1768933068297',
+  order_type: 'GTC',
+  signed_order: signedOrder,
+});
+
+console.log(`Placed: ${order.order_id} (${order.status})`);
+```
+
+### Build parameters
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `marketSlug` | `string` | Limitless market slug (URL fragment from the market page). |
+| `tokenId` | `string` | Outcome token ID (uint256 decimal string). |
+| `side` | `'BUY' \| 'SELL'` | |
+| `price` | `number` | Price per share in [0.01, 0.99]. |
+| `size` | `number` | USDC amount, human-readable (e.g. `1` for 1 USDC). |
+| `ownerId` | `number` | Your Limitless owner ID. Required. |
+| `feeRateBps` | `number?` | Default `300` (3%). Limitless's standard fee. |
+
+### How to find your ownerId
+
+Hit Limitless's `/profiles` endpoint with your account address:
+
+```typescript
+const res = await fetch(
+  `https://api.limitless.exchange/profiles/${account.address}`,
+);
+const { id } = await res.json();
+console.log(id); // your ownerId
+```
+
+Cache this value — it doesn't change.
+
+## Query and cancel
+
+```typescript
+const status = await client.getOrder(order.order_id, 'limitless');
+const all = await client.listOrders('limitless');
+await client.cancelOrder(order.order_id, 'limitless');
+```
+
+## Common pitfalls
+
+<AccordionGroup>
+  <Accordion title="signatureType: 0 means EOA — don't use 2">
+    Limitless uses direct EOA signing, not Safe wallet wrapping. The SDK sets `signatureType: 0` automatically. If you're hand-rolling a payload, don't copy `signatureType: 2` from a Polymarket example — the signature verifier will reject it.
+  </Accordion>
+
+  <Accordion title="Order amounts have integer types in JSON">
+    Unlike Polymarket and Predict.fun (which use uint256 strings), Limitless's API uses JavaScript numbers for `salt`, `makerAmount`, `takerAmount`, etc. The SDK handles this for you. If hand-rolling, don't quote them as strings.
+  </Accordion>
+
+  <Accordion title="ownerId is wrong → 'profile not found'">
+    Limitless ties orders to their internal profile ID, not your wallet address. Fetch your `id` from `GET /profiles/{address}` once and cache it. If you switch wallets, your `ownerId` changes too.
+  </Accordion>
+
+  <Accordion title="Fee rate confusion">
+    Limitless's standard fee is 300 bps (3%) — this is taken from the maker side. The SDK defaults to `300` if you don't specify `feeRateBps`. Markets may occasionally run at a different rate; check the market metadata.
+  </Accordion>
+</AccordionGroup>
+
+## API reference
+
+- [`POST /api/v1/orders`](/trading/api/place-order) — accepts a `SignedLimitlessOrder` in `signed_order`
+- [`POST /api/v1/users/{userID}/credentials`](/trading/api/register-credentials) — pass `_` as the path segment

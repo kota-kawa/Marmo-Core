@@ -1,0 +1,94 @@
+---
+title: Navbar
+---
+
+# Navbar
+
+A horizontal navigation bar for website headers. Supports dropdown menus, links, and nested navigation items with hover and focus interactions for accessible site navigation.
+
+<Example>
+  <Navbar>
+    <NavbarItem label="Product">
+      <Menu>
+        <MenuItem>Features</MenuItem>
+        <MenuItem>Pricing</MenuItem>
+      </Menu>
+    </NavbarItem>
+    <NavbarItem label="Resources">
+      <Menu>
+        <MenuItem>Documentation</MenuItem>
+        <MenuItem>API Reference</MenuItem>
+        <MenuItem>Support</MenuItem>
+      </Menu>
+    </NavbarItem>
+    <NavbarItem label="Company">
+      <Menu>
+        <MenuItem>About</MenuItem>
+        <MenuItem>Blog</MenuItem>
+        <MenuItem>Careers</MenuItem>
+      </Menu>
+    </NavbarItem>
+    <NavbarItem>
+      <a href="https://github.com/umami-software/umami">GitHub</a>
+    </NavbarItem>
+
+  </Navbar>
+
+  ```jsx
+  <Navbar>
+    <NavbarItem label="Product">
+      <Menu>
+        <MenuItem>Features</MenuItem>
+        <MenuItem>Pricing</MenuItem>
+      </Menu>
+    </NavbarItem>
+    <NavbarItem label="Resources">
+      <Menu>
+        <MenuItem>Documentation</MenuItem>
+        <MenuItem>API Reference</MenuItem>
+        <MenuItem>Support</MenuItem>
+      </Menu>
+    </NavbarItem>
+    <NavbarItem label="Company">
+      <Menu>
+        <MenuItem>About</MenuItem>
+        <MenuItem>Blog</MenuItem>
+        <MenuItem>Careers</MenuItem>
+      </Menu>
+    </NavbarItem>
+    <NavbarItem>
+      <a href="https://github.com/umami-software/umami">GitHub</a>
+    </NavbarItem>
+  </Navbar>
+  ```
+</Example>
+
+## Component props
+
+### Navbar
+
+<Example>
+  <DataTable
+    data={[
+      { name: 'showArrow', value: 'boolean', description: 'Shows dropdown arrow on items (default: true)' },
+    ]}
+  >
+    <DataColumn id="name" label="Name" />
+    <DataColumn id="value" label="Type" />
+    <DataColumn id="description" label="Description" />
+  </DataTable>
+</Example>
+
+### NavbarItem
+
+<Example>
+  <DataTable
+    data={[
+      { name: 'label', value: 'string', description: 'Item label (enables hover dropdown)' },
+    ]}
+  >
+    <DataColumn id="name" label="Name" />
+    <DataColumn id="value" label="Type" />
+    <DataColumn id="description" label="Description" />
+  </DataTable>
+</Example>

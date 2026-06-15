@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Runtime data — created by the skill on first write in the consuming project.
+# These do NOT live inside the skill package.
+# Set MINI_CONTEXT_GRAPH_DATA_DIR / MINI_CONTEXT_GRAPH_WIKI_DIR to override location.
+data/
+wiki/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+
+plan.md

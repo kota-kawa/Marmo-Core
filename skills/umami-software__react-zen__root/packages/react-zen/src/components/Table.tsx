@@ -1,0 +1,118 @@
+import type { CSSProperties } from 'react';
+import {
+  Table as AriaTable,
+  TableBody as AriaTableBody,
+  TableHeader as AriaTableHeader,
+  Cell,
+  type CellProps,
+  Column,
+  type ColumnProps,
+  Row,
+  type RowProps,
+  type TableBodyProps,
+  type TableHeaderProps,
+  type TableProps,
+} from 'react-aria-components';
+import { cn } from './lib/tailwind';
+
+const gridTemplateColumns = 'repeat(auto-fit, minmax(140px, 1fr))';
+
+export interface TableColumnProps extends ColumnProps {
+  align?: 'start' | 'center' | 'end';
+}
+
+export interface TableCellProps extends CellProps {
+  align?: 'start' | 'center' | 'end';
+}
+
+const alignClasses = {
+  start: 'justify-start',
+  center: 'justify-center',
+  end: 'justify-end',
+};
+
+export function Table({ children, className, ...props }: TableProps) {
+  return (
+    <AriaTable
+      aria-label="Table"
+      {...props}
+      className={cn('grid text-base w-full relative', className)}
+    >
+      {children}
+    </AriaTable>
+  );
+}
+
+interface TableHeaderComponentProps extends Omit<TableHeaderProps<any>, 'style'> {
+  style?: CSSProperties;
+}
+
+export function TableHeader({ children, className, style, ...props }: TableHeaderComponentProps) {
+  const cols = style?.gridTemplateColumns || gridTemplateColumns;
+
+  return (
+    <AriaTableHeader
+      {...props}
+      className={cn(
+        '[&>tr]:grid [&>tr]:border-b [&>tr]:border-edge [&>tr]:[grid-template-columns:var(--grid-cols)]',
+        className,
+      )}
+      style={{ '--grid-cols': cols } as CSSProperties}
+    >
+      {children}
+    </AriaTableHeader>
+  );
+}
+
+export function TableBody({ children, className, ...props }: TableBodyProps<any>) {
+  return (
+    <AriaTableBody {...props} className={cn('contents', className)}>
+      {children}
+    </AriaTableBody>
+  );
+}
+
+export function TableRow({ children, className, style, ...props }: RowProps<any>) {
+  return (
+    <Row
+      {...props}
+      className={cn('grid border-b border-edge-muted min-h-10', className)}
+      style={{ gridTemplateColumns, ...style }}
+    >
+      {children}
+    </Row>
+  );
+}
+
+export function TableColumn({ children, className, align, ...props }: TableColumnProps) {
+  return (
+    <Column
+      {...props}
+      className={cn(
+        'flex p-2 text-left font-bold flex-1 first:pl-0 last:pr-0',
+        align && alignClasses[align],
+        className,
+      )}
+      isRowHeader
+    >
+      {children}
+    </Column>
+  );
+}
+
+export function TableCell({ children, className, align, ...props }: TableCellProps) {
+  return (
+    <Cell
+      {...props}
+      className={cn(
+        'flex p-2 flex-1 first:pl-0 last:pr-0',
+        '[&_a]:font-medium [&_a]:underline [&_a]:decoration-edge [&_a]:underline-offset-4',
+        '[&_a:hover]:decoration-primary',
+        align && alignClasses[align],
+        className,
+      )}
+    >
+      {children}
+    </Cell>
+  );
+}

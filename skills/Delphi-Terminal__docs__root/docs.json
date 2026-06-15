@@ -1,0 +1,194 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "appearance": {
+    "default": "dark"
+  },
+  "name": "Delphi Markets API",
+  "colors": {
+    "primary": "#1B3A5F",
+    "light": "#5B8AC4",
+    "dark": "#0F1F3C"
+  },
+  "styling": {
+    "codeblocks": {
+      "theme": "one-dark-pro"
+    }
+  },
+  "favicon": "/favicon.png",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "authentication"
+            ]
+          },
+          {
+            "group": "Data",
+            "pages": [
+              "data-extraction"
+            ]
+          },
+          {
+            "group": "Examples",
+            "pages": [
+              "klsi-examples",
+              "polymarket-examples"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "openapi": "openapi.json"
+      },
+      {
+        "tab": "WebSockets",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "websocket-examples"
+            ]
+          },
+          {
+            "group": "Streams",
+            "pages": [
+              "ws-kalshi",
+              "ws-polymarket",
+              "ws-pfun",
+              "ws-limitless",
+              "ws-gemi",
+              "ws-mani",
+              "ws-opnm",
+              "ws-fex",
+              "ws-prdi",
+              "ws-parlays"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Parlays",
+        "openapi": "openapi-parlays.json"
+      },
+      {
+        "tab": "Trading",
+        "groups": [
+          {
+            "group": "Trading SDK",
+            "pages": [
+              "trading/index",
+              {
+                "group": "Exchanges",
+                "pages": [
+                  "trading/polymarket",
+                  "trading/kalshi",
+                  "trading/opinion-labs",
+                  "trading/gemini",
+                  "trading/limitless",
+                  "trading/predict-fun"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Trading API",
+            "pages": [
+              "trading/api/place-order",
+              "trading/api/list-orders",
+              "trading/api/get-order",
+              "trading/api/cancel-order"
+            ]
+          },
+          {
+            "group": "Credentials",
+            "pages": [
+              "trading/api/register-credentials",
+              "trading/api/list-credentials"
+            ]
+          },
+          {
+            "group": "Polymarket Onboarding",
+            "pages": [
+              "trading/api/derive-polymarket-credentials",
+              "trading/api/verify-polymarket-credentials",
+              "trading/api/safe-address"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Changelog",
+        "groups": [
+          {
+            "group": "Changelog",
+            "pages": [
+              "changelog"
+            ]
+          }
+        ]
+      }
+    ],
+    "global": {
+      "anchors": [
+        {
+          "anchor": "API Status",
+          "href": "https://api.delphiterminal.co/health",
+          "icon": "signal"
+        }
+      ]
+    }
+  },
+  "logo": {
+    "light": "/DelphiBlue.png",
+    "dark": "/DelphiWhite.png",
+    "size": 200
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Support",
+        "href": "mailto:support@delphimarkets.com"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Get API Key",
+      "href": "https://delphimarkets.com"
+    }
+  },
+  "footer": {
+    "socials": {
+      "x": "https://x.com/delphiterminal",
+      "github": "https://github.com/delphiterminal"
+    }
+  },
+  "api": {
+    "openapi": "openapi.json",
+    "playground": {
+      "display": "interactive"
+    },
+    "examples": {
+      "autogenerate": false
+    }
+  },
+  "contextual": {
+    "options": [
+      "copy",
+      "view",
+      "chatgpt",
+      "claude",
+      "perplexity",
+      "mcp",
+      "cursor",
+      "vscode"
+    ]
+  }
+}

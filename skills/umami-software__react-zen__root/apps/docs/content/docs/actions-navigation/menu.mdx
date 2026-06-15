@@ -1,0 +1,210 @@
+---
+title: Menu
+---
+
+# Menu
+
+A menu displays a list of actions or options that a user can choose.
+
+<Example>
+  <Menu>
+    <MenuItem>One</MenuItem>
+    <MenuItem>Two</MenuItem>
+    <MenuItem>Three</MenuItem>
+    <MenuItem>Four</MenuItem>
+    <MenuItem>Five</MenuItem>
+  </Menu>
+
+  ```jsx
+  <Menu>
+    <MenuItem>One</MenuItem>
+    <MenuItem>Two</MenuItem>
+    <MenuItem>Three</MenuItem>
+  </Menu>
+  ```
+</Example>
+
+## Separators
+
+<Example>
+  <Menu>
+    <MenuItem>One</MenuItem>
+    <MenuItem>Two</MenuItem>
+    <MenuSeparator />
+    <MenuItem>Three</MenuItem>
+    <MenuItem>Four</MenuItem>
+    <MenuSeparator />
+    <MenuItem>Five</MenuItem>
+  </Menu>
+
+  ```jsx
+  <Menu>
+    <MenuItem>One</MenuItem>
+    <MenuItem>Two</MenuItem>
+    <MenuSeparator />
+    <MenuItem>Three</MenuItem>
+  </Menu>
+  ```
+</Example>
+
+## Sections
+
+<Example>
+  <Menu>
+    <MenuSection title="Introduction">
+      <MenuItem>One</MenuItem>
+      <MenuItem>Two</MenuItem>
+      <MenuItem>Three</MenuItem>
+    </MenuSection>
+    <MenuSection title="Summary">
+      <MenuItem>Four</MenuItem>
+      <MenuItem>Five</MenuItem>
+    </MenuSection>
+  </Menu>
+
+  ```jsx
+  <Menu>
+    <MenuSection title="Introduction">
+      <MenuItem>One</MenuItem>
+      <MenuItem>Two</MenuItem>
+    </MenuSection>
+    <MenuSection title="Summary">
+      <MenuItem>Three</MenuItem>
+    </MenuSection>
+  </Menu>
+  ```
+</Example>
+
+## Single select
+
+<Example>
+  <Menu selectionMode="single">
+    <MenuItem>One</MenuItem>
+    <MenuItem>Two</MenuItem>
+    <MenuItem>Three</MenuItem>
+    <MenuItem>Four</MenuItem>
+    <MenuItem>Five</MenuItem>
+  </Menu>
+
+  ```jsx
+  <Menu selectionMode="single">
+    <MenuItem>One</MenuItem>
+    <MenuItem>Two</MenuItem>
+    <MenuItem>Three</MenuItem>
+  </Menu>
+  ```
+</Example>
+
+## Multiple select
+
+<Example>
+  <Menu selectionMode="multiple">
+    <MenuItem>One</MenuItem>
+    <MenuItem>Two</MenuItem>
+    <MenuItem>Three</MenuItem>
+    <MenuItem>Four</MenuItem>
+    <MenuItem>Five</MenuItem>
+  </Menu>
+
+  ```jsx
+  <Menu selectionMode="multiple">
+    <MenuItem>One</MenuItem>
+    <MenuItem>Two</MenuItem>
+    <MenuItem>Three</MenuItem>
+  </Menu>
+  ```
+</Example>
+
+## Preselected
+
+<Example>
+  <Menu selectionMode="multiple" defaultSelectedKeys={['three', 'five']}>
+    <MenuItem id="one">One</MenuItem>
+    <MenuItem id="two">Two</MenuItem>
+    <MenuItem id="three">Three</MenuItem>
+    <MenuItem id="four">Four</MenuItem>
+    <MenuItem id="five">Five</MenuItem>
+  </Menu>
+
+  ```jsx
+  <Menu selectionMode="multiple" defaultSelectedKeys={['three', 'five']}>
+    <MenuItem id="one">One</MenuItem>
+    <MenuItem id="two">Two</MenuItem>
+    <MenuItem id="three">Three</MenuItem>
+  </Menu>
+  ```
+</Example>
+
+## Submenu
+
+<Example>
+  <Menu>
+    <MenuItem id="one">One</MenuItem>
+    <MenuItem id="two">Two</MenuItem>
+    <MenuItem id="three">Three</MenuItem>
+    <MenuItem id="four">Four</MenuItem>
+    <SubMenuTrigger>
+      <MenuItem id="five" showSubMenuIcon>Five</MenuItem>
+      <Popover>
+        <Menu>
+          <MenuItem id="six">Six</MenuItem>
+          <MenuItem id="seven">Seven</MenuItem>
+          <MenuItem id="eight">Eight</MenuItem>
+        </Menu>
+      </Popover>
+    </SubMenuTrigger>
+  </Menu>
+
+  ```jsx
+  <Menu>
+    <MenuItem>One</MenuItem>
+    <SubMenuTrigger>
+      <MenuItem showSubMenuIcon>More</MenuItem>
+      <Popover>
+        <Menu>
+          <MenuItem>Sub item 1</MenuItem>
+          <MenuItem>Sub item 2</MenuItem>
+        </Menu>
+      </Popover>
+    </SubMenuTrigger>
+  </Menu>
+  ```
+</Example>
+
+## Component props
+
+### Menu
+
+<Example>
+  <DataTable
+    data={[
+      { name: 'selectionMode', value: 'SelectionMode', description: '"none" | "single" | "multiple"' },
+      { name: 'selectedKeys', value: 'string[]', description: 'Controlled selected keys' },
+      { name: 'defaultSelectedKeys', value: 'string[]', description: 'Default selected keys' },
+      { name: 'onSelectionChange', value: '(keys: Selection) => void', description: 'Called when selection changes' },
+    ]}
+  >
+    <DataColumn id="name" label="Name" />
+    <DataColumn id="value" label="Type" />
+    <DataColumn id="description" label="Description" />
+  </DataTable>
+</Example>
+
+### MenuItem
+
+<Example>
+  <DataTable
+    data={[
+      { name: 'id', value: 'string', description: 'Unique item identifier' },
+      { name: 'icon', value: 'ReactNode', description: 'Icon displayed before label' },
+      { name: 'label', value: 'string', description: 'Item label text' },
+      { name: 'isDisabled', value: 'boolean', description: 'Disables the item' },
+      { name: 'showChecked', value: 'boolean', description: 'Shows check mark when selected (default: true)' },
+      { name: 'showSubMenuIcon', value: 'boolean', description: 'Shows submenu arrow icon' },
+    ]}
+  >
+    <DataColumn id="name" label="Name" />
+    <DataColumn id="value" label="Type" />
+    <DataColumn id="description" label="Description" />
+  </DataTable>
+</Example>

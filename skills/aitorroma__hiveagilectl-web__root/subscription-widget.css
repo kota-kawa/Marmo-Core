@@ -1,0 +1,54 @@
+/* Estilos personalizados para el widget de suscripción */
+.premium-cta {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 30px;
+}
+
+#hiveagilectl-subscription-widget {
+    max-width: 500px;
+    width: 100%;
+    margin: 20px auto;
+}
+
+/* Estilos adicionales para integrar mejor el widget con el diseño de la página */
+.hiveagilectl-widget {
+    background-color: #0c3c2f !important;
+    border: 1px solid #00A79D !important;
+    box-shadow: 0 10px 30px rgba(0, 167, 157, 0.3) !important;
+}
+
+.hiveagilectl-widget h2 {
+    color: #00A79D !important;
+    font-size: 24px !important;
+    text-align: center !important;
+    margin-bottom: 20px !important;
+}
+
+.hiveagilectl-widget button {
+    background-image: linear-gradient(to right, #00A79D, #007d74) !important;
+    box-shadow: 0 5px 15px rgba(0, 167, 157, 0.3) !important;
+    font-weight: 600 !important;
+}
+
+.hiveagilectl-widget button:hover {
+    transform: translateY(-2px) !important;
+}
+
+.hiveagilectl-plan-option label.selected {
+    border-color: #00A79D !important;
+    background-color: rgba(0, 167, 157, 0.1) !important;
+}
+
+.hiveagilectl-plan-price {
+    color: #00A79D !important;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    #hiveagilectl-subscription-widget {
+        max-width: 100%;
+        padding: 0 15px;
+    }
+}

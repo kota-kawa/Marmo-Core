@@ -1,0 +1,30 @@
+# Render.com blueprint — deploy backend with one click
+# https://dashboard.render.com/blueprints
+
+services:
+  - type: web
+    name: genesis-backend
+    runtime: python
+    plan: free
+    region: oregon
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: mkdir -p data && uvicorn src.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: DATABASE_URL
+        value: sqlite+aiosqlite:///./data/genesis.db
+      - key: MONAD_RPC_URL
+        value: https://testnet-rpc.monad.xyz
+      - key: FRONTEND_URL
+        value: https://uplink-genesis.vercel.app
+      - key: DEBUG
+        value: false
+      - key: ADMIN_KEY
+        generateValue: true
+      - key: AGENT_API_KEY
+        generateValue: true
+      - key: ENCRYPTION_KEY
+        generateValue: true

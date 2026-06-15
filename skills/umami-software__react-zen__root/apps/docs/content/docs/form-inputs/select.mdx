@@ -1,0 +1,165 @@
+---
+title: Select
+---
+
+# Select
+
+Displays a list of options for the user to pick from—triggered by a button.
+
+<Example>
+  <Box width="300px">
+    <Select placeholder="Please select an option">
+      <ListItem id="one">One</ListItem>
+      <ListItem id="two">Two</ListItem>
+      <ListItem id="three">Three</ListItem>
+      <ListItem id="four">Four</ListItem>
+      <ListItem id="five">Five</ListItem>
+    </Select>
+  </Box>
+
+  ```jsx
+  <Select placeholder="Please select an option">
+    <ListItem id="one">One</ListItem>
+    <ListItem id="two">Two</ListItem>
+    <ListItem id="three">Three</ListItem>
+  </Select>
+  ```
+</Example>
+
+## With label
+
+<Example>
+  <Box width="300px">
+    <Select label="Select" placeholder="Please select an option">
+      <ListItem id="one">One</ListItem>
+      <ListItem id="two">Two</ListItem>
+      <ListItem id="three">Three</ListItem>
+      <ListItem id="four">Four</ListItem>
+      <ListItem id="five">Five</ListItem>
+    </Select>
+  </Box>
+
+  ```jsx
+  <Select label="Select" placeholder="Please select an option">
+    <ListItem id="one">One</ListItem>
+    <ListItem id="two">Two</ListItem>
+    <ListItem id="three">Three</ListItem>
+  </Select>
+  ```
+</Example>
+
+## With search
+
+<Example>
+  <Box width="300px">
+    <SelectSearchExample />
+  </Box>
+
+  ```jsx
+  <Box width="300px">
+    <SelectSearchExample />
+  </Box>
+  ```
+</Example>
+
+## Loading
+
+<Example>
+  <Box width="300px">
+    <SelectSearchExample isLoading={true} />
+  </Box>
+
+  ```jsx
+  <Box width="300px">
+    <SelectSearchExample isLoading={true} />
+  </Box>
+  ```
+</Example>
+
+## Custom display
+
+<Example>
+  <Box width="300px">
+    <SelectValueExample />
+  </Box>
+
+  ```jsx
+  <Box width="300px">
+    <SelectValueExample />
+  </Box>
+  ```
+</Example>
+
+## Scrollable
+
+<Example>
+  <Box width="300px">
+    <Select maxHeight="300px" placeholder="Please select an option">
+      {Array.from(Array(42).keys()).map(i => (
+        <ListItem key={i} id={String(i)}>{i}</ListItem>
+      ))}
+    </Select>
+  </Box>
+
+  ```jsx
+  <Select maxHeight="300px" placeholder="Please select an option">
+    {Array.from(Array(42).keys()).map(i => (
+      <ListItem key={i} id={String(i)}>{i}</ListItem>
+    ))}
+  </Select>
+  ```
+</Example>
+
+## Fullscreen mode
+
+<Example>
+  <Box width="300px">
+    <Select label="Select" placeholder="Please select an option" isFullscreen>
+      <ListItem id="one">One</ListItem>
+      <ListItem id="two">Two</ListItem>
+      <ListItem id="three">Three</ListItem>
+      <ListItem id="four">Four</ListItem>
+      <ListItem id="five">Five</ListItem>
+    </Select>
+  </Box>
+
+  ```jsx
+  <Select label="Select" placeholder="Please select an option" isFullscreen>
+    <ListItem id="one">One</ListItem>
+    <ListItem id="two">Two</ListItem>
+    <ListItem id="three">Three</ListItem>
+  </Select>
+  ```
+</Example>
+
+
+## Component props
+
+<Example>
+  <DataTable
+    data={[
+      { name: 'value', value: 'string | number', description: 'Controlled selected value' },
+      { name: 'defaultValue', value: 'string | number', description: 'Default selected value' },
+      { name: 'label', value: 'string', description: 'Label text displayed above the select' },
+      { name: 'placeholder', value: 'string', description: 'Placeholder text when no selection' },
+      { name: 'isLoading', value: 'boolean', description: 'Shows loading indicator' },
+      { name: 'isDisabled', value: 'boolean', description: 'Disables the select' },
+      { name: 'isFullscreen', value: 'boolean', description: 'Opens options in fullscreen mode' },
+      { name: 'allowSearch', value: 'boolean', description: 'Enables search within options' },
+      { name: 'searchValue', value: 'string', description: 'Controlled search field value' },
+      { name: 'searchDelay', value: 'number', description: 'Debounce delay for search' },
+      { name: 'maxHeight', value: 'string | number', description: 'Max height of the dropdown list' },
+      { name: 'showIcon', value: 'boolean', description: 'Show chevron icon on trigger button (default: true)' },
+      { name: 'onChange', value: '(value: any) => void', description: 'Called when selection changes' },
+      { name: 'onSearch', value: '(value: string) => void', description: 'Called when search value changes' },
+      { name: 'renderValue', value: 'ReactNode | Function', description: 'Custom render for selected value' },
+      { name: 'buttonProps', value: 'ButtonProps', description: 'Props passed to the trigger button' },
+      { name: 'listProps', value: 'ListProps', description: 'Props passed to the list component' },
+      { name: 'popoverProps', value: 'PopoverProps', description: 'Props passed to the popover' },
+    ]}
+  >
+    <DataColumn id="name" label="Name" />
+    <DataColumn id="value" label="Type" />
+    <DataColumn id="description" label="Description" />
+  </DataTable>
+</Example>

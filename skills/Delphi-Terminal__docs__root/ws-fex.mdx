@@ -1,0 +1,132 @@
+---
+title: "ForecastEx WebSocket"
+description: "Real-time price and trade streaming for ForecastEx prediction markets"
+---
+
+## Connection
+
+Connect to the ForecastEx WebSocket endpoint:
+
+```
+wss://api.delphiterminal.co/ws/fex?api_key=YOUR_API_KEY
+```
+
+| Property | Value |
+|----------|-------|
+| Protocol | WebSocket (wss://) |
+| Authentication | `api_key` query parameter |
+| Keepalive | Ping every 54 seconds |
+| Timeout | 60 seconds without pong |
+| Max Message Size | 16 KB |
+
+## Subscribing to markets
+
+Once connected, send a JSON message to subscribe using `market_id`:
+
+```json
+{
+  "action": "subscribe",
+  "market_ids": ["EMCAC_1226_24"],
+  "message_types": ["prices", "trades"]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `action` | string | Yes | `subscribe` or `unsubscribe` |
+| `market_ids` | array | Yes | Array of ForecastEx market identifiers |
+| `message_types` | array | No | `["prices"]`, `["trades"]`, or both. Defaults to prices if omitted. **No orderbook available.** |
+
+## Unsubscribing
+
+```json
+{
+  "action": "unsubscribe",
+  "market_ids": ["EMCAC_1226_24"]
+}
+```
+
+## Message types
+
+### Price messages
+
+```json
+{
+  "type": "prices",
+  "data": {
+    "venue": "FEX",
+    "market_id": "EMCAC_1226_24",
+    "server_time": 1774762511552,
+    "ingest_time": 1774762511553,
+    "payload": {
+      "type": "Ticker",
+      "Ticker": {
+        "price": 0.65,
+        "yes_bid": 0.0,
+        "yes_ask": 0.0,
+        "volume": 0,
+        "open_interest": 0
+      }
+    }
+  }
+}
+```
+
+### Trade messages
+
+```json
+{
+  "type": "trades",
+  "data": {
+    "venue": "FEX",
+    "market_id": "EMCAC_1226_24",
+    "server_time": 1774762511552,
+    "payload": {
+      "type": "Trade",
+      "Trade": {
+        "yes_price": 0.65,
+        "no_price": 0.35,
+        "count": 1,
+        "taker_side": "yes"
+      }
+    }
+  }
+}
+```
+
+## Full example
+
+```javascript
+const ws = new WebSocket("wss://api.delphiterminal.co/ws/fex?api_key=YOUR_API_KEY");
+
+ws.onopen = () => {
+  console.log("Connected to ForecastEx WebSocket");
+
+  ws.send(JSON.stringify({
+    action: "subscribe",
+    market_ids: ["EMCAC_1226_24"],
+    message_types: ["prices", "trades"]
+  }));
+};
+
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+
+  if (data.type === "prices") {
+    console.log("Price update:", data.data);
+  } else if (data.type === "trades") {
+    console.log("Trade:", data.data);
+  }
+};
+
+ws.onclose = () => console.log("Disconnected");
+ws.onerror = (error) => console.error("WebSocket error:", error);
+```
+
+## Important notes
+
+- **Authentication required** via `api_key` query parameter
+- **No orderbook data available** — ForecastEx uses CSV-based data feeds
+- ForecastEx data is sourced via CSV polling (10-minute intervals)
+- Use `market_id` (ForecastEx market identifier) to subscribe
+- Messages are only sent for markets you have explicitly subscribed to

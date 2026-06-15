@@ -1,0 +1,171 @@
+---
+title: List
+---
+
+# List
+
+A list displays a collection of items and allows a user to select one or more of them.
+
+<Example>
+  <List>
+    <ListItem>One</ListItem>
+    <ListItem>Two</ListItem>
+    <ListItem>Three</ListItem>
+    <ListItem>Four</ListItem>
+    <ListItem>Five</ListItem>
+  </List>
+
+  ```jsx
+  <List>
+    <ListItem>One</ListItem>
+    <ListItem>Two</ListItem>
+    <ListItem>Three</ListItem>
+  </List>
+  ```
+</Example>
+
+## Separators
+
+<Example>
+  <List>
+    <ListItem>One</ListItem>
+    <ListItem>Two</ListItem>
+    <ListSeparator />
+    <ListItem>Three</ListItem>
+    <ListItem>Four</ListItem>
+    <ListSeparator />
+    <ListItem>Five</ListItem>
+  </List>
+
+  ```jsx
+  <List>
+    <ListItem>One</ListItem>
+    <ListItem>Two</ListItem>
+    <ListSeparator />
+    <ListItem>Three</ListItem>
+  </List>
+  ```
+</Example>
+
+## Sections
+
+<Example>
+  <List>
+    <ListSection title="Introduction">
+      <ListItem>One</ListItem>
+      <ListItem>Two</ListItem>
+      <ListItem>Three</ListItem>
+    </ListSection>
+    <ListSection title="Summary">
+      <ListItem>Four</ListItem>
+      <ListItem>Five</ListItem>
+    </ListSection>
+  </List>
+
+  ```jsx
+  <List>
+    <ListSection title="Introduction">
+      <ListItem>One</ListItem>
+      <ListItem>Two</ListItem>
+    </ListSection>
+    <ListSection title="Summary">
+      <ListItem>Three</ListItem>
+    </ListSection>
+  </List>
+  ```
+</Example>
+
+## Single select
+
+<Example>
+  <List selectionMode="single">
+    <ListItem>One</ListItem>
+    <ListItem>Two</ListItem>
+    <ListItem>Three</ListItem>
+    <ListItem>Four</ListItem>
+    <ListItem>Five</ListItem>
+  </List>
+
+  ```jsx
+  <List selectionMode="single">
+    <ListItem>One</ListItem>
+    <ListItem>Two</ListItem>
+    <ListItem>Three</ListItem>
+  </List>
+  ```
+</Example>
+
+## Multiple select
+
+<Example>
+  <List selectionMode="multiple">
+    <ListItem>One</ListItem>
+    <ListItem>Two</ListItem>
+    <ListItem>Three</ListItem>
+    <ListItem>Four</ListItem>
+    <ListItem>Five</ListItem>
+  </List>
+
+  ```jsx
+  <List selectionMode="multiple">
+    <ListItem>One</ListItem>
+    <ListItem>Two</ListItem>
+    <ListItem>Three</ListItem>
+  </List>
+  ```
+</Example>
+
+## Preselected
+
+<Example>
+  <List selectionMode="multiple" defaultSelectedKeys={['three', 'five']}>
+    <ListItem id="one">One</ListItem>
+    <ListItem id="two">Two</ListItem>
+    <ListItem id="three">Three</ListItem>
+    <ListItem id="four">Four</ListItem>
+    <ListItem id="five">Five</ListItem>
+  </List>
+
+  ```jsx
+  <List selectionMode="multiple" defaultSelectedKeys={['three', 'five']}>
+    <ListItem id="one">One</ListItem>
+    <ListItem id="two">Two</ListItem>
+    <ListItem id="three">Three</ListItem>
+  </List>
+  ```
+</Example>
+
+## Component props
+
+### List
+
+<Example>
+  <DataTable
+    data={[
+      { name: 'selectionMode', value: 'SelectionMode', description: '"none" | "single" | "multiple"' },
+      { name: 'selectedKeys', value: 'string[]', description: 'Controlled selected keys' },
+      { name: 'defaultSelectedKeys', value: 'string[]', description: 'Default selected keys' },
+      { name: 'onSelectionChange', value: '(keys: Selection) => void', description: 'Called when selection changes' },
+    ]}
+  >
+    <DataColumn id="name" label="Name" />
+    <DataColumn id="value" label="Type" />
+    <DataColumn id="description" label="Description" />
+  </DataTable>
+</Example>
+
+### ListItem
+
+<Example>
+  <DataTable
+    data={[
+      { name: 'id', value: 'string', description: 'Unique item identifier' },
+      { name: 'textValue', value: 'string', description: 'Text value for accessibility' },
+      { name: 'isDisabled', value: 'boolean', description: 'Disables the item' },
+    ]}
+  >
+    <DataColumn id="name" label="Name" />
+    <DataColumn id="value" label="Type" />
+    <DataColumn id="description" label="Description" />
+  </DataTable>
+</Example>

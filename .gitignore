@@ -1,2 +1,3 @@
-skills/
 skills_collect.log
+skills/.state.json
+skills/.repos.json

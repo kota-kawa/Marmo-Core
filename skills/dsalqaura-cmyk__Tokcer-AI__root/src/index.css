@@ -1,0 +1,183 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-black text-white font-['Inter',sans-serif] antialiased selection:bg-orange-500/30 selection:text-orange-200 relative overflow-x-hidden min-h-screen;
+  }
+  /* Prevent horizontal scroll everywhere */
+  html, body, #root {
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+  /* Hide Chrome, Safari, Edge, Opera number input spin buttons */
+  input::-webkit-outer-spin-button,
+  input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  /* Hide Firefox number input spin buttons */
+  input[type=number] {
+    -moz-appearance: textfield;
+  }
+}
+
+@layer components {
+  .glass-nav {
+    @apply bg-black/70 backdrop-blur-md;
+  }
+}
+
+@layer utilities {
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-zinc-700 rounded-full;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    @apply bg-zinc-600;
+  }
+  /* Hide scrollbar for tab navigation */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* ============================================
+   MOBILE PORTRAIT FIXES (< 640px)
+   ============================================ */
+@media screen and (max-width: 639px) {
+  /* Ensure tables scroll horizontally */
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  thead, tbody, tr {
+    min-width: 500px;
+  }
+  /* Reduce oversized paddings on mobile */
+  .rounded-\[32px\], .rounded-\[40px\] {
+    border-radius: 1.25rem !important;
+  }
+  /* Make sure modals don't overflow */
+  .fixed.inset-0 > div[class*="max-w-"] {
+    max-height: 90vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* ============================================
+   MOBILE LANDSCAPE FIXES
+   ============================================ */
+@media screen and (max-height: 500px) and (orientation: landscape) {
+  /* Make mobile menu scrollable in landscape */
+  nav .mobile-menu-drawer {
+    overflow-y: auto;
+    max-height: calc(100vh - 64px);
+    -webkit-overflow-scrolling: touch;
+  }
+  /* Dashboard sidebar - ensure it doesn't overflow */
+  aside.fixed {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* Reduce hero padding in landscape */
+  header.relative {
+    padding-top: 5rem;
+    padding-bottom: 2rem;
+  }
+}
+
+/* Safe area for modern mobile devices */
+.pb-safe {
+  padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+}
+
+/* Ensure buttons never get clipped by short viewport */
+@media screen and (orientation: landscape) and (max-height: 450px) {
+  .mobile-nav-actions {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .mobile-nav-actions button {
+    flex: 1 1 calc(50% - 0.25rem);
+    min-width: 0;
+  }
+}
+
+/* ============================================
+   PARTNER DASHBOARD MOBILE FIXES
+   ============================================ */
+@media screen and (max-width: 639px) {
+  /* Partner tab navigation - horizontal scroll on mobile */
+  .no-scrollbar {
+    scroll-snap-type: x mandatory;
+  }
+  .no-scrollbar > button {
+    scroll-snap-align: start;
+  }
+}
+
+/* ============================================
+   GENERAL RESPONSIVE UTILITIES
+   ============================================ */
+
+/* Touch-friendly tap targets */
+@media (pointer: coarse) {
+  button, a, select, input[type="file"] {
+    min-height: 44px;
+  }
+  select {
+    min-height: 48px;
+  }
+}
+
+/* Ensure SVG charts don't overflow on small screens */
+svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Smooth scrolling for anchor links */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Prevent text overflow in tight containers */
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Modal overlay always covers full viewport including landscape */
+.fixed.inset-0 {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+/* Keyboard-safe input areas on mobile */
+@media screen and (max-width: 768px) {
+  input:focus, textarea:focus, select:focus {
+    scroll-margin-bottom: 100px;
+  }
+}

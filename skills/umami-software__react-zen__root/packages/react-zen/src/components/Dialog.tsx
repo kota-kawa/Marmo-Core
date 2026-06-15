@@ -1,0 +1,38 @@
+import { Column } from '@umami/kaze';
+import type { ReactNode } from 'react';
+import {
+  Dialog as AriaDialog,
+  type DialogProps as AriaDialogProps,
+  type DialogRenderProps,
+} from 'react-aria-components';
+import { Heading } from './Heading';
+import { cn } from './lib/tailwind';
+
+export interface DialogProps extends AriaDialogProps {
+  children?: ReactNode | ((props: DialogRenderProps) => ReactNode);
+  title?: ReactNode;
+  variant?: 'sheet';
+}
+
+export function Dialog({ title, variant, children, className, ...props }: DialogProps) {
+  return (
+    <AriaDialog
+      aria-label="Dialog"
+      {...props}
+      className={cn(
+        'p-6 shadow-xl bg-surface-base border border-edge rounded relative outline-none overflow-auto',
+        variant === 'sheet' && 'w-full h-full p-0 border-0 rounded-none shadow-none z-[9999]',
+        className,
+      )}
+    >
+      {dialogProps => {
+        return (
+          <Column height="100%" gap>
+            {title && <Heading size="xl">{title}</Heading>}
+            {typeof children === 'function' ? children(dialogProps) : children}
+          </Column>
+        );
+      }}
+    </AriaDialog>
+  );
+}

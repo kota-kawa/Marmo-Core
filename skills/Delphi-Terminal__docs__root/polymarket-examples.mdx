@@ -1,0 +1,44 @@
+---
+title: "Polymarket examples"
+description: "Practical request patterns for Polymarket endpoints"
+---
+
+Use these examples as copy/paste starting points for Polymarket endpoints.
+
+## Set your API key
+
+```bash
+export API_KEY="your_api_key_here"
+```
+
+## Get market details
+
+```bash
+curl -s -H "X-API-Key: $API_KEY" \
+  "https://api.delphiterminal.co/api/v1/poly/0xb09a659b55f0eab385d75ef14d180e9a6b2f02290a427504e38bf803e35d25d6/market" \
+  | jq
+```
+
+## Get orderbook
+
+```bash
+curl -s -H "X-API-Key: $API_KEY" \
+  "https://api.delphiterminal.co/api/v1/poly/0xb09a659b55f0eab385d75ef14d180e9a6b2f02290a427504e38bf803e35d25d6/orderbook?limit=50" \
+  | jq
+```
+
+## Get trade history
+
+```bash
+curl -s -H "X-API-Key: $API_KEY" \
+  "https://api.delphiterminal.co/api/v1/poly/0xb09a659b55f0eab385d75ef14d180e9a6b2f02290a427504e38bf803e35d25d6/tradehistory?limit=50" \
+  | jq
+```
+
+## Get raw orderbook deltas
+
+```bash
+curl -s -H "X-API-Key: $API_KEY" \
+  "https://api.delphiterminal.co/api/v1/poly/0xb09a659b55f0eab385d75ef14d180e9a6b2f02290a427504e38bf803e35d25d6/raw_deltas?limit=10" \
+  | jq
+```

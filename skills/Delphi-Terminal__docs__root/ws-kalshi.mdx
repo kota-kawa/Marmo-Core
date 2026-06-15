@@ -1,0 +1,128 @@
+---
+title: "Kalshi WebSocket"
+description: "Real-time price, orderbook, and trade streaming for Kalshi markets"
+---
+
+## Connection
+
+Connect to the Kalshi WebSocket endpoint:
+
+```
+wss://api.delphiterminal.co/ws/kalshi
+```
+
+No authentication is required for WebSocket connections.
+
+| Property | Value |
+|----------|-------|
+| Protocol | WebSocket (wss://) |
+| Keepalive | Ping every 54 seconds |
+| Timeout | 60 seconds without pong |
+| Max Message Size | 512 KB |
+
+## Subscribing to markets
+
+Once connected, send a JSON message to subscribe using `klsi_id`:
+
+```json
+{
+  "action": "subscribe",
+  "klsi_ids": ["KXBTCD-25FEB14-B55000", "KXETHD-25FEB14-B3100"],
+  "message_types": ["prices", "orderbook", "trades"]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `action` | string | Yes | `subscribe` or `unsubscribe` |
+| `klsi_ids` | array | Yes | Array of Kalshi market identifiers |
+| `message_types` | array | No | `["prices"]`, `["orderbook"]`, `["trades"]`, or any combination. Defaults to prices and orderbook if omitted |
+
+## Unsubscribing
+
+```json
+{
+  "action": "unsubscribe",
+  "klsi_ids": ["KXBTCD-25FEB14-B55000"]
+}
+```
+
+## Message types
+
+### Price messages
+
+Real-time price updates for subscribed markets:
+
+```json
+{
+  "klsi_id": "KXBTCD-25FEB14-B55000",
+  "price": 0.65,
+  "yes_bid": 0.64,
+  "yes_ask": 0.66,
+  "volume": 15000,
+  "open_interest": 8500,
+  "last_update": "2026-02-03T14:30:00Z"
+}
+```
+
+### Orderbook messages
+
+Real-time orderbook snapshots for subscribed markets:
+
+```json
+{
+  "klsi_id": "KXBTCD-25FEB14-B55000",
+  "bid_side": [0, 0, 0, "...", 150, 200, 100],
+  "ask_side": [100, 150, 200, "...", 0, 0, 0],
+  "last_update": "2026-02-03T14:30:00Z"
+}
+```
+
+### Trade messages
+
+Real-time trade executions for subscribed markets:
+
+```json
+{
+  "id": "trade123",
+  "klsi_id": "KXBTCD-25FEB14-B55000",
+  "exchange": "klsi",
+  "yes_price": 0.65,
+  "no_price": 0.35,
+  "count": 10,
+  "taker_side": "buy",
+  "last_update": "2026-02-03T14:30:00Z"
+}
+```
+
+## Full example
+
+```javascript
+const ws = new WebSocket("wss://api.delphiterminal.co/ws/kalshi");
+
+ws.onopen = () => {
+  console.log("Connected to Kalshi WebSocket");
+
+  ws.send(JSON.stringify({
+    action: "subscribe",
+    klsi_ids: ["KXBTCD-25FEB14-B55000"],
+    message_types: ["prices", "orderbook", "trades"]
+  }));
+};
+
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log("Received:", data);
+};
+
+ws.onclose = () => console.log("Disconnected");
+ws.onerror = (error) => console.error("WebSocket error:", error);
+```
+
+## Important notes
+
+- **No authentication required** for WebSocket connections
+- Use `klsi_id` (Kalshi market identifier) to subscribe
+- Messages are only sent for markets you have explicitly subscribed to
+- Multiple markets can be subscribed in a single message
+- Trades must be explicitly requested (not included in the default subscription)

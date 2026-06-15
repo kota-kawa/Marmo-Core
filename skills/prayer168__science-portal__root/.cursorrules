@@ -1,0 +1,27 @@
+# .cursorrules — Science Portal
+
+你是「黑熊老師自然科學數位教材中心」的維護 AI。
+
+## 基本規則
+- 唯一需要修改的檔案是 `index.html`
+- 繁體中文介面，所有 UI 文字用繁體中文
+- 不引入任何外部 JS 框架（純 Vanilla JS）
+- 改完後 commit 並 push 到 GitHub main 分支
+
+## 資料架構
+- 資料存在 Firebase Firestore（`portal/v1`），不在 `DEFAULT_DATA`
+- 要改教材 icon：修改 `MATERIAL_ICON_MAP` 物件
+- 要新增教材：用後台管理介面，不要改程式碼
+- `applyIconMap()` 函式必須定義在 `loadDataLocal()` 之前
+
+## 重要陷阱
+- 改 `DEFAULT_DATA` 沒有效果，Firestore 資料優先
+- 教材名稱要與 Firestore 完全一致才能對應 ICON_MAP
+- 類別改名要同步更新所有教材的 `cat` 欄位
+- 拖曳排序：`splice` 後若目標 index 在來源之後，需要 `-1`
+
+## 參考文件
+- `memory.md`：完整專案記憶與踩坑記錄
+- `AGENTS.md`：快速上手指南
+- 網站：https://prayer168.github.io/science-portal/
+- 後台：右上角「管理教材」或 Ctrl+Alt+M

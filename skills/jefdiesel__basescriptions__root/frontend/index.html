@@ -1,0 +1,1296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0052FF">
+  <title>Basescriptions - Ethscriptions on Base</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg-primary: #0a0a0a;
+      --bg-secondary: #141414;
+      --bg-card: rgba(255, 255, 255, 0.05);
+      --border: rgba(255, 255, 255, 0.1);
+      --text-primary: #ffffff;
+      --text-secondary: rgba(255, 255, 255, 0.6);
+      --accent-blue: #0052FF;
+      --accent-green: #30E000;
+      --accent-red: #FF494A;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Header */
+    header {
+      padding: 24px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    header .container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 24px;
+      font-weight: 700;
+      text-decoration: none;
+      color: var(--text-primary);
+    }
+
+    .logo-icon {
+      width: 40px;
+      height: 40px;
+      background: var(--accent-blue);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+
+    nav {
+      display: flex;
+      gap: 32px;
+    }
+
+    nav a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+
+    nav a:hover {
+      color: var(--text-primary);
+    }
+
+    .connect-btn {
+      background: var(--accent-blue);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 9999px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    .connect-btn:hover {
+      opacity: 0.9;
+    }
+
+    /* Hero */
+    .hero {
+      padding: 80px 0;
+      text-align: center;
+    }
+
+    .hero h1 {
+      font-size: 56px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      background: linear-gradient(135deg, #fff 0%, #0052FF 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero p {
+      font-size: 20px;
+      color: var(--text-secondary);
+      max-width: 600px;
+      margin: 0 auto 40px;
+    }
+
+    /* Search */
+    .search-box {
+      max-width: 600px;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 20px 24px;
+      padding-right: 140px;
+      font-size: 18px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      color: var(--text-primary);
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .search-input:focus {
+      border-color: var(--accent-blue);
+    }
+
+    .search-input::placeholder {
+      color: var(--text-secondary);
+    }
+
+    .search-btn {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: var(--accent-blue);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    .search-btn:hover {
+      opacity: 0.9;
+    }
+
+    .search-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Result */
+    .result {
+      margin-top: 24px;
+      padding: 20px 24px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      display: none;
+      max-width: 400px;
+      margin-left: auto;
+      margin-right: auto;
+      text-align: center;
+    }
+
+    .result.show {
+      display: block;
+    }
+
+    .result.available {
+      border-color: var(--accent-green);
+    }
+
+    .result.taken {
+      border-color: var(--accent-red);
+    }
+
+    .result-header {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .result-status {
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .result-status.available {
+      background: rgba(48, 224, 0, 0.2);
+      color: var(--accent-green);
+    }
+
+    .result-status.taken {
+      background: rgba(255, 73, 74, 0.2);
+      color: var(--accent-red);
+    }
+
+    .result-name {
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .result-details {
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+
+    .result-details a {
+      color: var(--accent-blue);
+      text-decoration: none;
+    }
+
+    .result-details a:hover {
+      text-decoration: underline;
+    }
+
+    .register-btn {
+      margin-top: 16px;
+      background: var(--accent-green);
+      color: #000;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 15px;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    .register-btn:hover {
+      opacity: 0.9;
+    }
+
+    .register-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Stats */
+    .stats {
+      padding: 60px 0;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 24px;
+    }
+
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 36px;
+      font-weight: 700;
+      color: var(--accent-blue);
+    }
+
+    .stat-label {
+      color: var(--text-secondary);
+      margin-top: 8px;
+    }
+
+    /* Recent */
+    .recent {
+      padding: 60px 0;
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+
+    .section-title {
+      font-size: 28px;
+      font-weight: 700;
+    }
+
+    .recent-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    .inscription-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      transition: border-color 0.2s;
+      aspect-ratio: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      cursor: pointer;
+    }
+
+    .inscription-card:hover {
+      border-color: var(--accent-blue);
+    }
+
+    .inscription-content {
+      font-size: 18px;
+      font-weight: 600;
+      font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+      word-break: break-all;
+      overflow-y: auto;
+      max-height: 100%;
+      width: 100%;
+      line-height: 1.4;
+      text-align: center;
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .inscription-meta {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .inscription-meta span {
+      display: block;
+      margin: 4px 0;
+    }
+
+    .inscription-image {
+      width: 100%;
+      max-height: 180px;
+      object-fit: contain;
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+
+    .inscription-image.pixel-art {
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    .html-card {
+      background: #0a0a0a !important;
+      padding: 0 !important;
+      overflow: hidden;
+    }
+
+    .inscription-iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      pointer-events: none;
+      background: transparent;
+    }
+
+    /* Footer */
+    footer {
+      padding: 40px 0;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      color: var(--text-secondary);
+    }
+
+    footer a {
+      color: var(--accent-blue);
+      text-decoration: none;
+    }
+
+    /* Loading */
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent-blue);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px;
+      color: var(--text-secondary);
+    }
+
+    .pagination {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 16px;
+      margin-top: 32px;
+    }
+
+    .page-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      padding: 10px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+
+    .page-btn:hover:not(:disabled) {
+      border-color: var(--accent-blue);
+      background: var(--accent-blue);
+    }
+
+    .page-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .page-info {
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+
+    .load-more {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
+      padding: 40px;
+      color: var(--text-secondary);
+    }
+
+    .loading-spinner {
+      width: 24px;
+      height: 24px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent-blue);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    /* Sync Banner */
+    .sync-banner {
+      background: var(--bg-secondary);
+      text-align: center;
+      padding: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border);
+    }
+    .sync-banner.synced {
+      color: var(--accent-green);
+    }
+    .sync-banner.behind {
+      color: var(--accent-red);
+    }
+
+    /* Hamburger Menu */
+    .hamburger {
+      display: none;
+      flex-direction: column;
+      gap: 5px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 8px;
+      z-index: 101;
+    }
+    .hamburger span {
+      display: block;
+      width: 24px;
+      height: 2px;
+      background: var(--text-primary);
+      transition: all 0.3s;
+    }
+    .hamburger.active span:nth-child(1) {
+      transform: rotate(45deg) translate(5px, 5px);
+    }
+    .hamburger.active span:nth-child(2) {
+      opacity: 0;
+    }
+    .hamburger.active span:nth-child(3) {
+      transform: rotate(-45deg) translate(5px, -5px);
+    }
+
+    .mobile-nav {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--bg-primary);
+      z-index: 100;
+      flex-direction: column;
+      padding: 100px 24px 24px;
+    }
+    .mobile-nav.active { display: flex; }
+    .mobile-nav a {
+      display: block;
+      padding: 16px 0;
+      color: var(--text-primary);
+      text-decoration: none;
+      font-size: 20px;
+      font-weight: 600;
+      border-bottom: 1px solid var(--border);
+    }
+    .mobile-nav .connect-btn {
+      margin-top: 24px;
+      text-align: center;
+    }
+
+    @media (max-width: 768px) {
+      .hamburger { display: flex; }
+
+      .hero h1 {
+        font-size: 32px;
+      }
+
+      .hero p {
+        font-size: 16px;
+      }
+
+      nav {
+        display: none;
+      }
+
+      .search-input {
+        font-size: 16px;
+        padding: 16px;
+        padding-right: 100px;
+      }
+
+      .search-btn {
+        padding: 10px 16px;
+        font-size: 14px;
+      }
+
+      .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .stat-value {
+        font-size: 24px;
+      }
+
+      .recent-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+      }
+
+      .inscription-card {
+        padding: 12px;
+      }
+
+      .inscription-content {
+        font-size: 14px;
+      }
+
+      .inscription-meta {
+        font-size: 11px;
+      }
+
+      .section-title {
+        font-size: 22px;
+      }
+
+      header .container {
+        padding: 0 16px;
+      }
+
+      .logo {
+        font-size: 20px;
+      }
+
+      .logo-icon {
+        width: 32px;
+        height: 32px;
+        font-size: 16px;
+      }
+
+      .connect-btn {
+        padding: 10px 16px;
+        font-size: 14px;
+      }
+
+      .hero {
+        padding: 40px 0;
+      }
+
+      .stats, .recent {
+        padding: 40px 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="sync-banner" id="syncBanner">
+    <span id="syncStatus">Loading...</span>
+  </div>
+  <header>
+    <div class="container">
+      <a href="/" class="logo">
+        <div class="logo-icon">B</div>
+        <span>Basescriptions</span>
+      </a>
+      <nav>
+        <a href="/register/">Register a Name</a>
+        <a href="/inscribe/">Inscribe</a>
+        <a href="/tokens/">Tokens</a>
+        <a href="/upload/">Upload Site</a>
+        <a href="#recent">Recent</a>
+      </nav>
+      <button class="connect-btn" id="connectBtn">Connect Wallet</button>
+      <button class="hamburger" id="hamburger">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
+  </header>
+
+  <div class="mobile-nav" id="mobileNav">
+    <a href="/">Home</a>
+    <a href="/register/">Register a Name</a>
+    <a href="/inscribe/">Inscribe</a>
+    <a href="/tokens/">Tokens</a>
+    <a href="/upload/">Upload Site</a>
+    <a href="#recent" onclick="closeMobileNav()">Recent</a>
+    <button class="connect-btn" id="mobileConnectBtn">Connect Wallet</button>
+  </div>
+
+  <main>
+    <section class="hero" id="search">
+      <div class="container">
+        <h1>Inscriptions on Base</h1>
+        <p>Inscribe calldata, images, encrypted proofs, art, music, even whole websites. Magnitudes cheaper than mainnet. Backed by Fedchain.</p>
+
+        <div class="search-box">
+          <input type="text" class="search-input" id="searchInput" placeholder="Search for a name..." autocomplete="off">
+          <button class="search-btn" id="searchBtn">Check</button>
+        </div>
+
+        <div class="result" id="result">
+          <div class="result-header">
+            <span class="result-status" id="resultStatus">Available</span>
+            <span class="result-name" id="resultName"></span>
+          </div>
+          <div class="result-details" id="resultDetails"></div>
+          <button class="register-btn" id="registerBtn" style="display: none;">Register Now</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="stats">
+      <div class="container">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-value" id="statTotal">-</div>
+            <div class="stat-label">Total Inscriptions</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="statTransfers">-</div>
+            <div class="stat-label">Transfers</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="statBehind">-</div>
+            <div class="stat-label">Blocks Behind</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">~$0.001</div>
+            <div class="stat-label">Cost per Inscription</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="recent" id="recent">
+      <div class="container">
+        <div class="section-header">
+          <h2 class="section-title">Recent Inscriptions</h2>
+        </div>
+        <div class="recent-grid" id="recentGrid">
+          <div class="empty-state">Loading...</div>
+        </div>
+        <div class="load-more" id="loadMore" style="display: none;">
+          <div class="loading-spinner"></div>
+          <span>Loading more...</span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>Basescriptions - Inscriptions on Base L2</p>
+      <p style="margin-top: 8px;">
+        <a href="https://github.com/jefdiesel/basescriptions" target="_blank">GitHub</a> &middot;
+        <a href="https://basescan.org" target="_blank">BaseScan</a>
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    const API_BASE = 'https://basescriptions-api.wrapit.workers.dev';
+    const BASE_CHAIN_ID = 8453;
+
+    let provider = null;
+    let signer = null;
+    let address = null;
+
+    // Elements
+    const connectBtn = document.getElementById('connectBtn');
+    const searchInput = document.getElementById('searchInput');
+    const searchBtn = document.getElementById('searchBtn');
+    const result = document.getElementById('result');
+    const resultStatus = document.getElementById('resultStatus');
+    const resultName = document.getElementById('resultName');
+    const resultDetails = document.getElementById('resultDetails');
+    const registerBtn = document.getElementById('registerBtn');
+    const recentGrid = document.getElementById('recentGrid');
+
+    // Restore wallet from localStorage
+    async function restoreWallet() {
+      const saved = localStorage.getItem('connectedWallet');
+      if (saved && window.ethereum) {
+        try {
+          const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+          if (accounts[0]?.toLowerCase() === saved.toLowerCase()) {
+            address = accounts[0];
+            connectBtn.textContent = address.slice(0, 6) + '...' + address.slice(-4);
+            connectBtn.onclick = () => window.location.href = '/' + address;
+          }
+        } catch (e) {}
+      }
+    }
+    restoreWallet();
+
+    // Connect wallet
+    connectBtn.addEventListener('click', async () => {
+      if (address) {
+        window.location.href = '/' + address;
+        return;
+      }
+      if (typeof window.ethereum === 'undefined') {
+        alert('Please install MetaMask, Coinbase Wallet, or another Web3 wallet');
+        return;
+      }
+
+      try {
+        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        address = accounts[0];
+
+        // Switch to Base
+        try {
+          await window.ethereum.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: '0x2105' }],
+          });
+        } catch (switchError) {
+          if (switchError.code === 4902) {
+            await window.ethereum.request({
+              method: 'wallet_addEthereumChain',
+              params: [{
+                chainId: '0x2105',
+                chainName: 'Base',
+                nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+                rpcUrls: ['https://mainnet.base.org'],
+                blockExplorerUrls: ['https://basescan.org']
+              }]
+            });
+          }
+        }
+
+        localStorage.setItem('connectedWallet', address);
+        connectBtn.textContent = address.slice(0, 6) + '...' + address.slice(-4);
+        connectBtn.onclick = () => window.location.href = '/' + address;
+      } catch (error) {
+        console.error(error);
+      }
+    });
+
+    // Search
+    searchBtn.addEventListener('click', checkName);
+    searchInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') checkName();
+    });
+
+    async function checkName() {
+      const name = searchInput.value.trim();
+      if (!name) return;
+
+      searchBtn.disabled = true;
+      searchBtn.innerHTML = '<span class="loading"></span>';
+
+      // Restore result structure if it was replaced by success message
+      if (!document.getElementById('resultStatus')) {
+        result.innerHTML = `
+          <div class="result-header">
+            <span class="result-status" id="resultStatus">Available</span>
+            <span class="result-name" id="resultName"></span>
+          </div>
+          <div class="result-details" id="resultDetails"></div>
+          <button class="register-btn" id="registerBtn" style="display: none;">Register Now</button>
+        `;
+        result.style.borderColor = '';
+      }
+
+      const resultStatus = document.getElementById('resultStatus');
+      const resultName = document.getElementById('resultName');
+      const resultDetails = document.getElementById('resultDetails');
+      const registerBtn = document.getElementById('registerBtn');
+
+      try {
+        const res = await fetch(`${API_BASE}/name/${encodeURIComponent(name)}`);
+        const data = await res.json();
+
+        result.classList.add('show');
+        resultName.textContent = name;
+
+        if (data.available) {
+          result.classList.remove('taken');
+          result.classList.add('available');
+          resultStatus.textContent = 'Available';
+          resultStatus.classList.remove('taken');
+          resultStatus.classList.add('available');
+          resultDetails.innerHTML = '';
+          // Store name globally for the button
+          window.pendingName = name;
+          registerBtn.style.display = 'inline-block';
+          registerBtn.disabled = false;
+          registerBtn.textContent = 'Register Now';
+          registerBtn.setAttribute('onclick', 'registerName(window.pendingName)');
+        } else {
+          result.classList.remove('available');
+          result.classList.add('taken');
+          resultStatus.textContent = 'Taken';
+          resultStatus.classList.remove('available');
+          resultStatus.classList.add('taken');
+          const shortOwner = data.owner.slice(0, 6) + '...' + data.owner.slice(-4);
+          resultDetails.innerHTML = `
+            <p>Owned by <a href="/${data.owner}">${shortOwner}</a></p>
+          `;
+          registerBtn.style.display = 'none';
+        }
+      } catch (error) {
+        console.error(error);
+        alert('Error checking name');
+      }
+
+      searchBtn.disabled = false;
+      searchBtn.textContent = 'Check';
+    }
+
+    // Register
+    async function registerName(name) {
+      if (!window.ethereum) {
+        alert('Please install a Web3 wallet');
+        return;
+      }
+
+      registerBtn.disabled = true;
+      registerBtn.textContent = 'Connecting...';
+
+      try {
+        // Ensure wallet is connected
+        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        if (!accounts || !accounts[0]) {
+          throw new Error('No account connected');
+        }
+        address = accounts[0];
+
+        // Switch to Base
+        registerBtn.textContent = 'Switching to Base...';
+        const currentChain = await window.ethereum.request({ method: 'eth_chainId' });
+        if (currentChain !== '0x2105') {
+          try {
+            await window.ethereum.request({
+              method: 'wallet_switchEthereumChain',
+              params: [{ chainId: '0x2105' }]
+            });
+          } catch (switchError) {
+            if (switchError.code === 4902) {
+              await window.ethereum.request({
+                method: 'wallet_addEthereumChain',
+                params: [{
+                  chainId: '0x2105',
+                  chainName: 'Base',
+                  nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+                  rpcUrls: ['https://mainnet.base.org'],
+                  blockExplorerUrls: ['https://basescan.org']
+                }]
+              });
+            } else {
+              throw new Error('Please switch to Base network');
+            }
+          }
+          // Verify switch succeeded
+          const newChain = await window.ethereum.request({ method: 'eth_chainId' });
+          if (newChain !== '0x2105') {
+            throw new Error('Please switch to Base network to register');
+          }
+        }
+
+        // Send transaction
+        registerBtn.textContent = 'Confirm in wallet...';
+        const content = `data:,${name}`;
+        const data = stringToHex(content);
+
+        const txHash = await window.ethereum.request({
+          method: 'eth_sendTransaction',
+          params: [{
+            from: address,
+            to: address,
+            data: data,
+            value: '0x0'
+          }]
+        });
+
+        registerBtn.style.display = 'none';
+        localStorage.setItem('connectedWallet', address);
+        connectBtn.textContent = address.slice(0, 6) + '...' + address.slice(-4);
+
+        // Show success card
+        result.classList.remove('available', 'taken');
+        result.style.borderColor = 'var(--accent-green)';
+        result.innerHTML = `
+          <div style="text-align: center; padding: 20px;">
+            <div style="font-size: 48px; margin-bottom: 16px;">✓</div>
+            <h2 style="font-size: 32px; font-weight: 800; color: var(--accent-green); margin-bottom: 8px;">${name}</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 24px;">is now yours on Base!</p>
+
+            <div style="background: var(--bg-secondary); border-radius: 12px; padding: 16px; margin-bottom: 24px;">
+              <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">Transaction</p>
+              <a href="https://basescan.org/tx/${txHash}" target="_blank" style="color: var(--accent-blue); font-size: 14px; word-break: break-all;">${txHash}</a>
+            </div>
+
+            <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 24px;">
+              <a href="https://twitter.com/intent/tweet?text=${encodeURIComponent('Just registered "' + name + '" on @Basescriptions! 🔵\n\nInscriptions on Base L2 for magnitudes cheaper than mainnet.\n\nbasescriptions.com')}" target="_blank" style="display: inline-flex; align-items: center; gap: 8px; background: #1DA1F2; color: white; padding: 12px 20px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+                <span>Share on X</span>
+              </a>
+              <button onclick="navigator.clipboard.writeText('${name}'); this.textContent='Copied!'" style="background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                Copy Name
+              </button>
+            </div>
+
+            <div style="display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;">
+              <a href="/inscribe/" style="color: var(--accent-blue); font-size: 16px; font-weight: 600;">Inscribe Data →</a>
+              <a href="javascript:void(0)" onclick="registerAnother()" style="color: var(--accent-green); font-size: 16px; font-weight: 600;">Register Another →</a>
+            </div>
+          </div>
+        `;
+      } catch (error) {
+        console.error(error);
+        registerBtn.disabled = false;
+        registerBtn.textContent = 'Register Now';
+        alert('Registration failed: ' + (error.message || 'Unknown error'));
+      }
+    }
+
+    function registerAnother() {
+      // Restore the result box structure
+      result.innerHTML = `
+        <div class="result-header">
+          <span class="result-status" id="resultStatus">Available</span>
+          <span class="result-name" id="resultName"></span>
+        </div>
+        <div class="result-details" id="resultDetails"></div>
+        <button class="register-btn" id="registerBtn" style="display: none;">Register Now</button>
+      `;
+      result.style.borderColor = '';
+      result.classList.remove('show', 'available', 'taken');
+      searchInput.value = '';
+      searchInput.focus();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function stringToHex(str) {
+      let hex = '0x';
+      for (let i = 0; i < str.length; i++) {
+        hex += str.charCodeAt(i).toString(16).padStart(2, '0');
+      }
+      return hex;
+    }
+
+    // Load stats
+    async function loadStats() {
+      try {
+        const [statsRes, blockRes] = await Promise.all([
+          fetch(`${API_BASE}/stats`),
+          fetch('https://mainnet.base.org', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_blockNumber', id: 1 })
+          })
+        ]);
+
+        const data = await statsRes.json();
+        const blockData = await blockRes.json();
+        const currentBlock = parseInt(blockData.result, 16);
+        const blocksBehind = currentBlock - data.last_indexed_block;
+
+        document.getElementById('statTotal').textContent = data.total_ethscriptions.toLocaleString();
+        document.getElementById('statTransfers').textContent = data.total_transfers.toLocaleString();
+
+        const behindEl = document.getElementById('statBehind');
+        const syncBanner = document.getElementById('syncBanner');
+        const syncStatus = document.getElementById('syncStatus');
+
+        if (blocksBehind === 0) {
+          behindEl.textContent = 'Synced';
+          behindEl.style.color = 'var(--accent-green)';
+          syncStatus.textContent = 'Synced';
+          syncBanner.className = 'sync-banner synced';
+        } else {
+          behindEl.textContent = blocksBehind.toLocaleString();
+          behindEl.style.color = blocksBehind > 1000 ? 'var(--accent-red)' : 'var(--accent-blue)';
+          syncStatus.textContent = blocksBehind.toLocaleString() + ' blocks behind';
+          syncBanner.className = blocksBehind > 1000 ? 'sync-banner behind' : 'sync-banner';
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    // Infinite scroll state
+    const perPage = 24;
+    let currentOffset = 0;
+    let isLoading = false;
+    let hasMore = true;
+    const loadMoreEl = document.getElementById('loadMore');
+
+    // Load recent inscriptions (appends on scroll)
+    async function loadRecent(reset = false) {
+      if (isLoading || (!hasMore && !reset)) return;
+
+      if (reset) {
+        currentOffset = 0;
+        hasMore = true;
+        recentGrid.innerHTML = '';
+      }
+
+      isLoading = true;
+      loadMoreEl.style.display = 'flex';
+
+      try {
+        const res = await fetch(`${API_BASE}/recent?limit=${perPage}&offset=${currentOffset}`);
+        const data = await res.json();
+
+        if (!data.ethscriptions || data.ethscriptions.length === 0) {
+          hasMore = false;
+          if (currentOffset === 0) {
+            recentGrid.innerHTML = '<div class="empty-state">No inscriptions indexed yet. Backfill in progress...</div>';
+          }
+          loadMoreEl.style.display = 'none';
+          isLoading = false;
+          return;
+        }
+
+        // Filter out spam/junk content types
+        const filtered = data.ethscriptions.filter(e => {
+          const ct = (e.content_type || '').toLowerCase();
+          // Hide application/json (chunked multipart spam) and application/text
+          if (ct === 'application/json' || ct === 'application/text') {
+            return false;
+          }
+          return true;
+        });
+
+        const cards = await Promise.all(filtered.map(async e => {
+          let contentUri = e.content_uri || '';
+          const contentType = e.content_type || '';
+
+          const isImage = contentUri.startsWith('data:image/') || contentType.startsWith('image/');
+          let isHtml = contentUri.startsWith('data:text/html') || contentType === 'text/html';
+          const isPixelArt = contentUri.includes('pixelart=1');
+
+          // Fetch full calldata from chain for HTML (database truncates)
+          if ((isHtml || (!isImage && e.creation_tx)) && e.creation_tx) {
+            try {
+              const rpcRes = await fetch('https://mainnet.base.org', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  jsonrpc: '2.0', id: 1,
+                  method: 'eth_getTransactionByHash',
+                  params: [e.creation_tx]
+                })
+              });
+              const rpcData = await rpcRes.json();
+              if (rpcData.result && rpcData.result.input) {
+                const fullContent = parseCalldata(rpcData.result.input);
+                // Check if it's actually HTML
+                if (fullContent.startsWith('data:text/html')) {
+                  contentUri = fullContent;
+                  isHtml = true;
+                } else if (!isHtml) {
+                  contentUri = fullContent;
+                }
+              }
+            } catch (err) { console.error(err); }
+          }
+
+          if (isImage) {
+            const pixelClass = isPixelArt ? 'pixel-art' : '';
+            return `
+              <div class="inscription-card" onclick="window.location='/item/${e.id}'">
+                <img src="${contentUri}" class="inscription-image ${pixelClass}" alt="Inscription" />
+              </div>
+            `;
+          } else if (isHtml) {
+            // Inject CSS to remove body margins/white background
+            const injectedUri = injectHtmlStyles(contentUri);
+            return `
+              <div class="inscription-card html-card" onclick="window.location='/item/${e.id}'">
+                <iframe class="inscription-iframe" src="${injectedUri}" sandbox="allow-scripts allow-same-origin"></iframe>
+              </div>
+            `;
+          } else {
+            const display = contentUri.replace(/^data:[^,]*,/, '');
+            return `
+              <div class="inscription-card" onclick="window.location='/item/${e.id}'">
+                <div class="inscription-content">${escapeHtml(display)}</div>
+              </div>
+            `;
+          }
+        }));
+
+        recentGrid.insertAdjacentHTML('beforeend', cards.join(''));
+
+        currentOffset += data.ethscriptions.length;
+
+        // Check if there are more items
+        if (data.ethscriptions.length < perPage || (data.total && currentOffset >= data.total)) {
+          hasMore = false;
+        }
+      } catch (error) {
+        console.error(error);
+        if (currentOffset === 0) {
+          recentGrid.innerHTML = '<div class="empty-state">Error loading inscriptions</div>';
+        }
+      }
+
+      loadMoreEl.style.display = 'none';
+      isLoading = false;
+    }
+
+    // Infinite scroll detection
+    function onScroll() {
+      if (isLoading || !hasMore) return;
+
+      const scrollY = window.scrollY;
+      const windowHeight = window.innerHeight;
+      const docHeight = document.documentElement.scrollHeight;
+
+      // Load more when within 400px of bottom
+      if (scrollY + windowHeight >= docHeight - 400) {
+        loadRecent();
+      }
+    }
+
+    window.addEventListener('scroll', onScroll);
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function parseCalldata(input) {
+      if (!input || input === '0x') return '';
+      const hex = input.startsWith('0x') ? input.slice(2) : input;
+      const bytes = new Uint8Array(hex.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+      return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+    }
+
+    function injectHtmlStyles(dataUri) {
+      try {
+        const injectCss = '<style>html,body{margin:0;padding:0;background:transparent;width:100%;height:100%;overflow:hidden;}</style>';
+
+        if (dataUri.startsWith('data:text/html;base64,')) {
+          // Decode base64, inject, re-encode
+          const base64 = dataUri.slice('data:text/html;base64,'.length);
+          let html = atob(base64);
+          // Inject after <head> or at start of <html> or at very start
+          if (html.includes('<head>')) {
+            html = html.replace('<head>', '<head>' + injectCss);
+          } else if (html.includes('<html')) {
+            html = html.replace(/<html[^>]*>/, '$&' + injectCss);
+          } else {
+            html = injectCss + html;
+          }
+          return 'data:text/html;base64,' + btoa(html);
+        } else if (dataUri.startsWith('data:text/html,')) {
+          // Plain text, decode URI component, inject, re-encode
+          let html = decodeURIComponent(dataUri.slice('data:text/html,'.length));
+          if (html.includes('<head>')) {
+            html = html.replace('<head>', '<head>' + injectCss);
+          } else if (html.includes('<html')) {
+            html = html.replace(/<html[^>]*>/, '$&' + injectCss);
+          } else {
+            html = injectCss + html;
+          }
+          return 'data:text/html,' + encodeURIComponent(html);
+        }
+      } catch (e) {
+        console.error('Failed to inject styles:', e);
+      }
+      return dataUri;
+    }
+
+    // Register service worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js');
+    }
+
+    // Init
+    loadStats();
+    loadRecent(true);
+
+    // Auto-refresh stats only (don't reset scroll position)
+    setInterval(loadStats, 30000);
+
+    // Hamburger menu
+    const hamburger = document.getElementById('hamburger');
+    const mobileNav = document.getElementById('mobileNav');
+    const mobileConnectBtn = document.getElementById('mobileConnectBtn');
+
+    hamburger.addEventListener('click', () => {
+      hamburger.classList.toggle('active');
+      mobileNav.classList.toggle('active');
+    });
+
+    function closeMobileNav() {
+      hamburger.classList.remove('active');
+      mobileNav.classList.remove('active');
+    }
+
+    mobileConnectBtn.addEventListener('click', async () => {
+      if (address) {
+        window.location.href = '/' + address;
+        return;
+      }
+      await connectBtn.click();
+      closeMobileNav();
+    });
+
+    // Sync connect button text when wallet connects
+    const originalOnClick = connectBtn.onclick;
+    function updateMobileConnectBtn() {
+      mobileConnectBtn.textContent = connectBtn.textContent;
+    }
+    new MutationObserver(updateMobileConnectBtn).observe(connectBtn, { childList: true, characterData: true, subtree: true });
+  </script>
+</body>
+</html>

@@ -1,0 +1,133 @@
+---
+title: 'Gemini Predictions'
+description: 'Centralized prediction market with server-side HMAC-SHA512 authentication'
+---
+
+Gemini Predictions is a centralized prediction market run by Gemini. Like Kalshi, it uses traditional limit-order semantics with server-side authentication — no client-side signing needed.
+
+## At a glance
+
+| | |
+| --- | --- |
+| **Chain** | None (centralized exchange) |
+| **Wallet model** | None (USD account balance) |
+| **Quote token** | USD |
+| **Signing** | Server-side (HMAC-SHA512) |
+| **Auth** | Gemini API key + HMAC secret, registered once |
+
+## Prerequisites
+
+- A Gemini account with Predictions enabled
+- A Gemini API key with order placement permissions — generate at [exchange.gemini.com](https://exchange.gemini.com) (or [exchange.sandbox.gemini.com](https://exchange.sandbox.gemini.com) for testing)
+- Save the API key and HMAC secret immediately — Gemini only shows the secret once
+
+## One-time setup: register credentials
+
+```typescript
+import { DelphiClient } from '@delphimarkets/sdk';
+
+const client = new DelphiClient({
+  apiKey: process.env.DELPHI_API_KEY!,
+  baseUrl: 'https://api.delphiterminal.co',
+});
+
+await client.registerCredentials('gemini', {
+  api_key: process.env.GEMINI_API_KEY!,
+  api_secret: process.env.GEMINI_API_SECRET!,  // HMAC-SHA512 secret
+  api_passphrase: '',                           // unused for Gemini
+});
+```
+
+The Delphi server stores the HMAC secret encrypted at rest and uses it to sign every Gemini request.
+
+## Place an order
+
+```typescript
+import { DelphiClient, buildGeminiOrder } from '@delphimarkets/sdk';
+
+const order = await client.placeOrder({
+  exchange: 'gemini',
+  market_id: 'GEMI-FEDJAN26-DN25',
+  order_type: 'GTC',
+  signed_order: buildGeminiOrder({
+    symbol: 'GEMI-FEDJAN26-DN25',
+    side: 'buy',          // 'buy' or 'sell'
+    outcome: 'yes',       // 'yes' or 'no'
+    quantity: 1,           // number of contracts
+    price: 0.55,           // limit price, 0.01 to 0.99
+    timeInForce: 'good-til-cancel', // optional, this is the default
+  }),
+});
+
+console.log(`Placed: ${order.order_id} (${order.status})`);
+```
+
+`buildGeminiOrder` is a thin convenience helper — it just shapes your input into the JSON the API expects. There's no cryptography happening client-side; you can construct the payload by hand if you prefer:
+
+```typescript
+const order = await client.placeOrder({
+  exchange: 'gemini',
+  market_id: 'GEMI-FEDJAN26-DN25',
+  order_type: 'GTC',
+  signed_order: {
+    symbol: 'GEMI-FEDJAN26-DN25',
+    side: 'buy',
+    outcome: 'yes',
+    quantity: '1',
+    price: '0.55',
+    time_in_force: 'good-til-cancel',
+  },
+});
+```
+
+### Order parameters
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `symbol` | `string` | Gemini contract symbol (e.g. `GEMI-FEDJAN26-DN25`). |
+| `side` | `'buy' \| 'sell'` | Buy to enter long, sell to enter short or close. |
+| `outcome` | `'yes' \| 'no'` | Which outcome of the market. |
+| `quantity` | `number` | Number of contracts. |
+| `price` | `number` | Limit price in [0.01, 0.99]. |
+| `timeInForce` | `string?` | Default `'good-til-cancel'`. Other Gemini values: `'fill-or-kill'`, `'immediate-or-cancel'`. |
+
+## Query and cancel
+
+```typescript
+const status = await client.getOrder(order.order_id, 'gemini');
+const all = await client.listOrders('gemini');
+await client.cancelOrder(order.order_id, 'gemini');
+```
+
+## Common pitfalls
+
+<AccordionGroup>
+  <Accordion title="401 Unauthorized when placing first order">
+    Confirm your API key has the `Trader` role (or `Auditor + Trader`) on Gemini. Read-only `Auditor`-tier keys can fetch market data but can't place orders.
+  </Accordion>
+
+  <Accordion title="HMAC secret got rotated and orders fail">
+    Gemini lets you rotate the HMAC secret while keeping the same API key ID. If you rotate, re-register on Delphi with the new secret:
+
+    ```typescript
+    await client.registerCredentials('gemini', {
+      api_key: process.env.GEMINI_API_KEY!,
+      api_secret: process.env.GEMINI_API_SECRET_NEW!,
+      api_passphrase: '',
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Sandbox vs production">
+    The Delphi server points at production Gemini by default. Sandbox API keys (from `exchange.sandbox.gemini.com`) won't work without server-side configuration. Contact Delphi support if you need sandbox routing.
+  </Accordion>
+
+  <Accordion title="Symbol format">
+    Gemini contract symbols include the expiry encoded in the suffix (e.g. `FEDJAN26` = Fed meeting January 2026). Always pull the latest active symbols from Gemini's market data endpoint before placing orders — old symbols will return "market not found" once they settle.
+  </Accordion>
+</AccordionGroup>
+
+## API reference
+
+- [`POST /api/v1/orders`](/trading/api/place-order) — accepts a `GeminiPredictionOrder` in `signed_order`
+- [`POST /api/v1/users/{userID}/credentials`](/trading/api/register-credentials) — pass `_` as the path segment

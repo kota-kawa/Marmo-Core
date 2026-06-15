@@ -1,0 +1,124 @@
+---
+title: 'Kalshi'
+description: 'US-regulated prediction market with server-side RSA-PSS authentication'
+---
+
+Kalshi is a CFTC-regulated prediction market exchange. Orders use traditional limit-order semantics with the server signing each request using your registered RSA private key — no client-side cryptography required.
+
+## At a glance
+
+| | |
+| --- | --- |
+| **Chain** | None (centralized exchange) |
+| **Wallet model** | None (USD account balance) |
+| **Quote token** | USD (cents) |
+| **Signing** | Server-side (RSA-PSS) |
+| **Auth** | Kalshi API key ID + RSA private key, registered once |
+
+## Prerequisites
+
+- A funded Kalshi account
+- A Kalshi API key pair — generate at [kalshi.com/account/api](https://kalshi.com/account/api) by uploading the public half of an RSA keypair you generate locally
+- Your RSA private key in PEM format
+
+If you don't already have an RSA keypair, generate one:
+
+```bash
+openssl genrsa -out kalshi-key.pem 2048
+openssl rsa -in kalshi-key.pem -pubout -out kalshi-key.pub
+```
+
+Upload `kalshi-key.pub` to Kalshi. Note the API key ID it returns (a UUID).
+
+## One-time setup: register credentials
+
+```typescript
+import { DelphiClient } from '@delphimarkets/sdk';
+import { readFileSync } from 'node:fs';
+
+const client = new DelphiClient({
+  apiKey: process.env.DELPHI_API_KEY!,
+  baseUrl: 'https://api.delphiterminal.co',
+});
+
+await client.registerCredentials('kalshi', {
+  api_key: process.env.KALSHI_API_KEY_ID!,                       // UUID from Kalshi
+  api_secret: readFileSync('./kalshi-key.pem', 'utf-8'),         // RSA PEM, full -----BEGIN... block
+  api_passphrase: '',                                             // unused for Kalshi
+});
+```
+
+Run this once per user. The Delphi server stores the RSA key encrypted at rest and uses it to sign every Kalshi request you make through the proxy.
+
+## Place an order
+
+```typescript
+const order = await client.placeOrder({
+  exchange: 'kalshi',
+  market_id: 'KXNHLGAME-26MAR30PITNYI-NYI',
+  order_type: 'GTC',
+  signed_order: {
+    ticker: 'KXNHLGAME-26MAR30PITNYI-NYI',
+    side: 'yes',           // 'yes' or 'no' — which Kalshi outcome
+    action: 'buy',         // 'buy' or 'sell' (default: 'buy')
+    type: 'limit',         // always 'limit' (Kalshi only supports limit orders here)
+    price_cents: '54',     // limit price in cents, 1-99
+    count: '1',            // number of contracts
+  },
+});
+
+console.log(`Placed: ${order.order_id} (${order.status})`);
+```
+
+### Order parameters
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `ticker` | `string` | Kalshi market ticker (e.g. `KXNHLGAME-26MAR30PITNYI-NYI`). |
+| `side` | `'yes' \| 'no'` | The outcome you're trading — Kalshi sides are by outcome, not buy/sell direction. |
+| `action` | `'buy' \| 'sell'` | Default `'buy'`. To exit a position, use `'sell'`. |
+| `type` | `'limit'` | Always `'limit'`. |
+| `price_cents` | `string` | Limit price in cents (1-99). `'54'` = 54¢ = $0.54. |
+| `count` | `string` | Number of contracts. |
+
+<Note>
+Kalshi prices are in **cents**, not dollars or fractions. A 54¢ limit means `price_cents: '54'`, not `'0.54'`.
+</Note>
+
+## Query and cancel
+
+```typescript
+const status = await client.getOrder(order.order_id, 'kalshi');
+const all = await client.listOrders('kalshi');
+await client.cancelOrder(order.order_id, 'kalshi');
+```
+
+## Common pitfalls
+
+<AccordionGroup>
+  <Accordion title="401 Unauthorized: 'invalid signature'">
+    The server's signature is being rejected by Kalshi. Usually one of:
+    - The PEM you registered isn't the private half of the keypair you uploaded to Kalshi
+    - The PEM has Windows line endings (`\r\n`) — re-save the file with Unix line endings (`\n`)
+    - The PEM is missing the `-----BEGIN PRIVATE KEY-----` / `-----END PRIVATE KEY-----` envelope
+
+    Re-register with a fresh PEM read via `readFileSync('./kalshi-key.pem', 'utf-8')`.
+  </Accordion>
+
+  <Accordion title="Order rejected: 'invalid market ticker'">
+    Kalshi tickers can change format between events. Pull the latest market list from `GET /api/v1/klsi/markets` (or the Kalshi API directly) before placing orders to confirm the ticker is current.
+  </Accordion>
+
+  <Accordion title="Position limit error">
+    Kalshi imposes per-market position limits (often $25,000 max exposure per market for retail accounts). Check your remaining headroom in the Kalshi UI before placing a large order.
+  </Accordion>
+
+  <Accordion title="Sandbox vs production">
+    Kalshi has separate `api.elections.kalshi.com` (production) and `demo-api.kalshi.co` (sandbox) endpoints. The Delphi server uses production by default. Sandbox API keys are not interchangeable. If you want sandbox access for testing, contact Delphi support.
+  </Accordion>
+</AccordionGroup>
+
+## API reference
+
+- [`POST /api/v1/orders`](/trading/api/place-order) — accepts a `KalshiLimitOrder` in `signed_order`
+- [`POST /api/v1/users/{userID}/credentials`](/trading/api/register-credentials) — pass `_` as the path segment

@@ -1,0 +1,145 @@
+---
+title: "Polymarket WebSocket"
+description: "Real-time price, orderbook, and trade streaming for Polymarket"
+---
+
+## Connection
+
+Connect to the Polymarket WebSocket endpoint:
+
+```
+wss://api.delphiterminal.co/ws/poly
+```
+
+No authentication is required for WebSocket connections.
+
+| Property | Value |
+|----------|-------|
+| Protocol | WebSocket (wss://) |
+| Keepalive | Ping every 54 seconds |
+| Timeout | 60 seconds without pong |
+| Max Message Size | 512 KB |
+
+## Subscribing to markets
+
+Once connected, send a JSON message to subscribe using `condition_id`:
+
+```json
+{
+  "action": "subscribe",
+  "condition_ids": ["0x00000977017fa72fb6b1908ae694000d3b51f442c2552656b10bdbbfd16ff707"],
+  "message_types": ["prices", "orderbook", "trades"]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `action` | string | Yes | `subscribe` or `unsubscribe` |
+| `condition_ids` | array | Yes | Array of Polymarket condition identifiers (hex strings starting with 0x) |
+| `message_types` | array | No | `["prices"]`, `["orderbook"]`, `["trades"]`, or any combination. Defaults to prices and orderbook if omitted |
+
+## Unsubscribing
+
+```json
+{
+  "action": "unsubscribe",
+  "condition_ids": ["0x00000977017fa72fb6b1908ae694000d3b51f442c2552656b10bdbbfd16ff707"]
+}
+```
+
+## Message types
+
+### Price messages
+
+Real-time price updates for subscribed markets:
+
+```json
+{
+  "type": "prices",
+  "data": {
+    "exchange": "poly",
+    "condition_id": "0x0000097701...",
+    "price": 0.992,
+    "last_update": "2026-02-04T15:30:00Z"
+  }
+}
+```
+
+### Orderbook messages
+
+Real-time orderbook snapshots for subscribed markets:
+
+```json
+{
+  "type": "orderbook",
+  "data": {
+    "snapshot_time": "2026-02-04T15:30:00Z",
+    "exchange": "poly",
+    "market_id": "0x1234abcd...",
+    "condition_id": "0x0000097701...",
+    "bid_side": [0.55, 0.54, 0.53, 0.52, 0.51],
+    "ask_side": [0.56, 0.57, 0.58, 0.59, 0.60],
+    "original_last_update": "2026-02-04T15:29:59Z"
+  }
+}
+```
+
+### Trade messages
+
+Real-time trade executions for subscribed markets:
+
+```json
+{
+  "type": "trades",
+  "data": {
+    "exchange": "poly",
+    "condition_id": "0x0000097701...",
+    "token_id": "0x123...",
+    "market_id": "0xabc...",
+    "price": 0.65,
+    "size": 100.5,
+    "side": "buy",
+    "last_update": "2026-02-04T15:30:00Z"
+  }
+}
+```
+
+## Full example
+
+```javascript
+const ws = new WebSocket("wss://api.delphiterminal.co/ws/poly");
+
+ws.onopen = () => {
+  console.log("Connected to Polymarket WebSocket");
+
+  ws.send(JSON.stringify({
+    action: "subscribe",
+    condition_ids: ["0x00000977017fa72fb6b1908ae694000d3b51f442c2552656b10bdbbfd16ff707"],
+    message_types: ["prices", "orderbook", "trades"]
+  }));
+};
+
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+
+  if (data.type === "prices") {
+    console.log("Price update:", data.data);
+  } else if (data.type === "orderbook") {
+    console.log("Orderbook update:", data.data);
+  } else if (data.type === "trades") {
+    console.log("Trade:", data.data);
+  }
+};
+
+ws.onclose = () => console.log("Disconnected");
+ws.onerror = (error) => console.error("WebSocket error:", error);
+```
+
+## Important notes
+
+- **No authentication required** for WebSocket connections
+- Use `condition_id` (Polymarket condition identifier) to subscribe
+- Messages are only sent for markets you have explicitly subscribed to
+- Multiple markets can be subscribed in a single message
+- Trades must be explicitly requested (not included in the default subscription)
+- Orderbook updates are high-frequency — consider filtering client-side if needed

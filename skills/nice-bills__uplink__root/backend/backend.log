@@ -1,0 +1,110 @@
+INFO:     Started server process [9540]
+INFO:     Waiting for application startup.
+2026-02-14 07:21:43,446 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-02-14 07:21:43,447 INFO sqlalchemy.engine.Engine PRAGMA main.table_info("agents")
+2026-02-14 07:21:43,447 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-02-14 07:21:43,464 INFO sqlalchemy.engine.Engine PRAGMA main.table_info("campaigns")
+2026-02-14 07:21:43,465 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-02-14 07:21:43,465 INFO sqlalchemy.engine.Engine PRAGMA main.table_info("donations")
+2026-02-14 07:21:43,466 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-02-14 07:21:43,466 INFO sqlalchemy.engine.Engine PRAGMA main.table_info("treasuries")
+2026-02-14 07:21:43,466 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-02-14 07:21:43,467 INFO sqlalchemy.engine.Engine PRAGMA main.table_info("multi_sig_proposals")
+2026-02-14 07:21:43,467 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-02-14 07:21:43,468 INFO sqlalchemy.engine.Engine PRAGMA main.table_info("reputation_history")
+2026-02-14 07:21:43,468 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-02-14 07:21:43,468 INFO sqlalchemy.engine.Engine PRAGMA main.table_info("wallets")
+2026-02-14 07:21:43,468 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-02-14 07:21:43,469 INFO sqlalchemy.engine.Engine PRAGMA main.table_info("campaign_updates")
+2026-02-14 07:21:43,469 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-02-14 07:21:43,470 INFO sqlalchemy.engine.Engine PRAGMA main.table_info("withdrawal_requests")
+2026-02-14 07:21:43,470 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-02-14 07:21:43,471 INFO sqlalchemy.engine.Engine COMMIT
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:58162 - "OPTIONS /campaigns?limit=6&status=active HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58176 - "OPTIONS /stats HTTP/1.1" 200 OK
+2026-02-14 08:03:57,929 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-02-14 08:03:57,943 INFO sqlalchemy.engine.Engine SELECT campaigns.id, campaigns.agent_id, campaigns.title, campaigns.description, campaigns.goal, campaigns.raised, campaigns.withdrawn, campaigns.deadline, campaigns.status, campaigns.metadata_uri, campaigns.treasury_address, campaigns.source_platform, campaigns.source_author_handle, campaigns.source_author_name, campaigns.source_author_avatar, campaigns.source_content, campaigns.source_url, campaigns.source_timestamp, campaigns.is_verified, campaigns.verification_status, campaigns.created_at, campaigns.updated_at 
+FROM campaigns ORDER BY campaigns.created_at DESC
+ LIMIT ? OFFSET ?
+2026-02-14 08:03:57,945 INFO sqlalchemy.engine.Engine [generated in 0.00336s] (6, 0)
+2026-02-14 08:03:58,070 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-02-14 08:03:58,074 INFO sqlalchemy.engine.Engine SELECT count(campaigns.id) AS count_1 
+FROM campaigns
+2026-02-14 08:03:58,075 INFO sqlalchemy.engine.Engine [generated in 0.00066s] ()
+INFO:     127.0.0.1:58162 - "GET /campaigns?limit=6&status=active HTTP/1.1" 200 OK
+2026-02-14 08:03:58,170 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-02-14 08:03:58,175 INFO sqlalchemy.engine.Engine SELECT count(campaigns.id) AS count_1 
+FROM campaigns 
+WHERE campaigns.status = ?
+2026-02-14 08:03:58,175 INFO sqlalchemy.engine.Engine [generated in 0.00057s] ('active',)
+2026-02-14 08:03:58,187 INFO sqlalchemy.engine.Engine SELECT sum(campaigns.raised) AS sum_1 
+FROM campaigns
+2026-02-14 08:03:58,187 INFO sqlalchemy.engine.Engine [generated in 0.00054s] ()
+2026-02-14 08:03:58,187 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-02-14 08:03:58,189 INFO sqlalchemy.engine.Engine SELECT campaigns.id, campaigns.agent_id, campaigns.title, campaigns.description, campaigns.goal, campaigns.raised, campaigns.withdrawn, campaigns.deadline, campaigns.status, campaigns.metadata_uri, campaigns.treasury_address, campaigns.source_platform, campaigns.source_author_handle, campaigns.source_author_name, campaigns.source_author_avatar, campaigns.source_content, campaigns.source_url, campaigns.source_timestamp, campaigns.is_verified, campaigns.verification_status, campaigns.created_at, campaigns.updated_at 
+FROM campaigns ORDER BY campaigns.created_at DESC
+ LIMIT ? OFFSET ?
+2026-02-14 08:03:58,190 INFO sqlalchemy.engine.Engine [cached since 0.2479s ago] (6, 0)
+2026-02-14 08:03:58,199 INFO sqlalchemy.engine.Engine SELECT count(agents.id) AS count_1 
+FROM agents 
+WHERE agents.is_active = 1
+2026-02-14 08:03:58,200 INFO sqlalchemy.engine.Engine [generated in 0.00064s] ()
+INFO:     127.0.0.1:58162 - "GET /campaigns?limit=6&status=active HTTP/1.1" 200 OK
+2026-02-14 08:03:58,204 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-02-14 08:03:58,213 INFO sqlalchemy.engine.Engine SELECT count(distinct(donations.donor_address)) AS count_1 
+FROM donations
+2026-02-14 08:03:58,213 INFO sqlalchemy.engine.Engine [generated in 0.00052s] ()
+2026-02-14 08:03:58,227 INFO sqlalchemy.engine.Engine SELECT count(donations.id) AS count_1 
+FROM donations
+2026-02-14 08:03:58,228 INFO sqlalchemy.engine.Engine [generated in 0.00048s] ()
+INFO:     127.0.0.1:58162 - "OPTIONS /reputation/leaderboard/agents?limit=50 HTTP/1.1" 200 OK
+2026-02-14 08:03:58,509 INFO sqlalchemy.engine.Engine SELECT avg(donations.amount) AS avg_1 
+FROM donations
+2026-02-14 08:03:58,509 INFO sqlalchemy.engine.Engine [generated in 0.00042s] ()
+INFO:     127.0.0.1:58162 - "GET /reputation/leaderboard/agents?limit=50 HTTP/1.1" 422 Unprocessable Entity
+2026-02-14 08:03:58,537 INFO sqlalchemy.engine.Engine SELECT campaigns.id, campaigns.agent_id, campaigns.title, campaigns.description, campaigns.goal, campaigns.raised, campaigns.withdrawn, campaigns.deadline, campaigns.status, campaigns.metadata_uri, campaigns.treasury_address, campaigns.source_platform, campaigns.source_author_handle, campaigns.source_author_name, campaigns.source_author_avatar, campaigns.source_content, campaigns.source_url, campaigns.source_timestamp, campaigns.is_verified, campaigns.verification_status, campaigns.created_at, campaigns.updated_at 
+FROM campaigns ORDER BY campaigns.raised DESC
+ LIMIT ? OFFSET ?
+2026-02-14 08:03:58,538 INFO sqlalchemy.engine.Engine [generated in 0.00052s] (1, 0)
+INFO:     127.0.0.1:58176 - "GET /stats HTTP/1.1" 200 OK
+2026-02-14 08:03:58,587 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-02-14 08:03:58,591 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-02-14 08:03:58,592 INFO sqlalchemy.engine.Engine SELECT count(campaigns.id) AS count_1 
+FROM campaigns
+2026-02-14 08:03:58,592 INFO sqlalchemy.engine.Engine [cached since 0.5183s ago] ()
+2026-02-14 08:03:58,596 INFO sqlalchemy.engine.Engine SELECT count(campaigns.id) AS count_1 
+FROM campaigns 
+WHERE campaigns.status = ?
+2026-02-14 08:03:58,596 INFO sqlalchemy.engine.Engine [cached since 0.4213s ago] ('active',)
+2026-02-14 08:03:58,600 INFO sqlalchemy.engine.Engine SELECT sum(campaigns.raised) AS sum_1 
+FROM campaigns
+2026-02-14 08:03:58,600 INFO sqlalchemy.engine.Engine [cached since 0.4134s ago] ()
+2026-02-14 08:03:58,602 INFO sqlalchemy.engine.Engine SELECT count(agents.id) AS count_1 
+FROM agents 
+WHERE agents.is_active = 1
+2026-02-14 08:03:58,602 INFO sqlalchemy.engine.Engine [cached since 0.4031s ago] ()
+2026-02-14 08:03:58,604 INFO sqlalchemy.engine.Engine SELECT count(distinct(donations.donor_address)) AS count_1 
+FROM donations
+2026-02-14 08:03:58,605 INFO sqlalchemy.engine.Engine [cached since 0.3919s ago] ()
+2026-02-14 08:03:58,607 INFO sqlalchemy.engine.Engine SELECT count(donations.id) AS count_1 
+FROM donations
+2026-02-14 08:03:58,608 INFO sqlalchemy.engine.Engine [cached since 0.3803s ago] ()
+2026-02-14 08:03:58,610 INFO sqlalchemy.engine.Engine SELECT avg(donations.amount) AS avg_1 
+FROM donations
+2026-02-14 08:03:58,611 INFO sqlalchemy.engine.Engine [cached since 0.1021s ago] ()
+2026-02-14 08:03:58,613 INFO sqlalchemy.engine.Engine SELECT campaigns.id, campaigns.agent_id, campaigns.title, campaigns.description, campaigns.goal, campaigns.raised, campaigns.withdrawn, campaigns.deadline, campaigns.status, campaigns.metadata_uri, campaigns.treasury_address, campaigns.source_platform, campaigns.source_author_handle, campaigns.source_author_name, campaigns.source_author_avatar, campaigns.source_content, campaigns.source_url, campaigns.source_timestamp, campaigns.is_verified, campaigns.verification_status, campaigns.created_at, campaigns.updated_at 
+FROM campaigns ORDER BY campaigns.raised DESC
+ LIMIT ? OFFSET ?
+2026-02-14 08:03:58,613 INFO sqlalchemy.engine.Engine [cached since 0.07615s ago] (1, 0)
+INFO:     127.0.0.1:58176 - "GET /stats HTTP/1.1" 200 OK
+2026-02-14 08:03:58,618 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:     127.0.0.1:58176 - "GET /reputation/leaderboard/agents?limit=50 HTTP/1.1" 422 Unprocessable Entity
+INFO:     127.0.0.1:58176 - "GET /reputation/leaderboard/agents?limit=50 HTTP/1.1" 422 Unprocessable Entity
+INFO:     127.0.0.1:58176 - "GET /reputation/leaderboard/agents?limit=50 HTTP/1.1" 422 Unprocessable Entity
+INFO:     127.0.0.1:56564 - "OPTIONS /reputation/leaderboard/donors?limit=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56564 - "GET /reputation/leaderboard/donors?limit=50 HTTP/1.1" 422 Unprocessable Entity
+INFO:     127.0.0.1:56564 - "GET /reputation/leaderboard/donors?limit=50 HTTP/1.1" 422 Unprocessable Entity
+INFO:     127.0.0.1:56564 - "GET /reputation/leaderboard/agents?limit=50 HTTP/1.1" 422 Unprocessable Entity
+INFO:     127.0.0.1:56564 - "GET /reputation/leaderboard/agents?limit=50 HTTP/1.1" 422 Unprocessable Entity

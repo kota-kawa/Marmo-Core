@@ -1,0 +1,21 @@
+name: Notify Hatcher Rebuild
+on:
+  push:
+    branches: [main]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /internal/skill-rebuild
+        env:
+          INTERNAL_SECRET: ${{ secrets.HATCHER_INTERNAL_SECRET }}
+        run: |
+          if [ -z "$INTERNAL_SECRET" ]; then
+            echo "HATCHER_INTERNAL_SECRET not set — skipping rebuild notification"
+            exit 0
+          fi
+          curl -sS -X POST https://api.hatcher.host/internal/skill-rebuild \
+            -H "x-internal-secret: $INTERNAL_SECRET" \
+            -w "\nHTTP %{http_code}\n" \
+            --fail-with-body

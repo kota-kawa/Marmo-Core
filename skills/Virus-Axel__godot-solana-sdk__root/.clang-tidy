@@ -1,0 +1,30 @@
+Checks: '
+    *,
+    -google-readability-namespace-comments,
+    -modernize-use-trailing-return-type,
+    -llvmlibc-*,
+    -zircon-*,
+    -mpi-*,
+    -fuchsia*,
+    -boost-use-ranges,
+    -readability-use-anyofallof,
+    -abseil-*,
+    -android-*,
+    -altera-*,
+    -misc-no-recursion,
+    -bugprone-easily-swappable-parameters,
+    -cppcoreguidelines-special-member-functions,
+    -hicpp-special-member-functions,
+    -llvm-header-guard,
+  '
+HeaderFileExtensions: ['', h, hh, hpp, hxx, inc, glsl]
+ImplementationFileExtensions: [c, cc, cpp, cxx, m, mm, java]
+HeaderFilterRegex: (include)/
+ExcludeHeaderFilterRegex: (godot-cpp/|.*_generated\.hpp|include/doc_data_godot-solana-sdk.gen.h|anchor/generated/)
+FormatStyle: file
+CheckOptions:
+  cppcoreguidelines-pro-type-member-init.IgnoreArrays: true
+  cppcoreguidelines-pro-type-member-init.UseAssignment: true
+  modernize-use-bool-literals.IgnoreMacros: false
+  modernize-use-default-member-init.IgnoreMacros: false
+  modernize-use-default-member-init.UseAssignment: true

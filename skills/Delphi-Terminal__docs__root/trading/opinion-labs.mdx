@@ -1,0 +1,162 @@
+---
+title: 'Opinion Labs'
+description: 'EIP-712 signed orders with a Gnosis Safe wallet on BNB Chain'
+---
+
+Opinion Labs (opinion.trade) runs on BNB Chain and uses a Gnosis Safe to hold positions, similar in structure to Polymarket. Orders are EIP-712 signed by your EOA on behalf of the Safe.
+
+## At a glance
+
+| | |
+| --- | --- |
+| **Chain** | BNB Chain (chainId 56) |
+| **Wallet model** | Gnosis Safe, signed by EOA |
+| **Quote token** | USDT (18 decimals on BSC) |
+| **Signing** | Client-side (EIP-712) |
+| **Auth** | Opinion Labs API key + EOA private key |
+
+## Prerequisites
+
+- An Opinion Labs account ([opinion.trade](https://opinion.trade))
+- USDT on BNB Chain in your Opinion Labs Safe wallet
+- The EOA private key that controls the Safe
+- A Delphi API key
+
+## One-time setup
+
+Opinion Labs has two pre-trading steps: looking up your Safe address and approving the exchange contracts.
+
+### 1. Get your Safe address
+
+```typescript
+import { getSafeAddress } from '@delphimarkets/sdk';
+
+const safeAddress = await getSafeAddress(process.env.OPINIONLABS_API_KEY!);
+console.log(safeAddress); // 0x...
+```
+
+This calls the Opinion Labs API directly (no server-side state).
+
+### 2. Approve the exchange contracts
+
+The Safe needs to approve the CTF Exchange contract to spend your USDT and Conditional Tokens. This is a **one-time** transaction per Safe.
+
+```typescript
+import {
+  getSafeApprovalStatus,
+  enableTrading,
+} from '@delphimarkets/sdk';
+import { createWalletClient, createPublicClient, http } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+import { bsc } from 'viem/chains';
+
+const account = privateKeyToAccount(`0x${process.env.OPINIONLABS_PRIVATE_KEY!}`);
+const walletClient = createWalletClient({ account, chain: bsc, transport: http() });
+const publicClient = createPublicClient({ chain: bsc, transport: http() });
+
+const status = await getSafeApprovalStatus(publicClient, safeAddress);
+if (!status.allApproved) {
+  const txHash = await enableTrading(safeAddress, walletClient, publicClient);
+  await publicClient.waitForTransactionReceipt({ hash: txHash });
+  console.log(`Approvals confirmed: ${txHash}`);
+}
+```
+
+`enableTrading` submits a Safe transaction that sets approvals for both USDT (ERC-20) and Conditional Tokens (ERC-1155). After it confirms, you can place orders.
+
+### 3. Register credentials with Delphi
+
+```typescript
+const client = new DelphiClient({
+  apiKey: process.env.DELPHI_API_KEY!,
+  baseUrl: 'https://api.delphiterminal.co',
+});
+
+await client.registerCredentials('opinionlabs', {
+  api_key: process.env.OPINIONLABS_API_KEY!,
+  api_secret: '',                  // unused
+  api_passphrase: '',              // unused
+  signer_address: account.address, // your EOA address
+});
+```
+
+## Build and place an order
+
+```typescript
+import { DelphiClient, buildOpinionLabsOrder } from '@delphimarkets/sdk';
+import { createWalletClient, http } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+import { bsc } from 'viem/chains';
+
+const account = privateKeyToAccount(`0x${process.env.OPINIONLABS_PRIVATE_KEY!}`);
+const walletClient = createWalletClient({ account, chain: bsc, transport: http() });
+
+const signedOrder = await buildOpinionLabsOrder(
+  {
+    marketId: 8453,                  // numeric market ID
+    tokenId: '1087612329966...',     // outcome token (uint256 decimal string)
+    side: 'BUY',
+    price: 0.50,                     // 0.01 to 0.99
+    amount: 3,                        // USDT amount, human-readable
+    safeAddress,                      // from step 1 above
+  },
+  walletClient,
+);
+
+const order = await client.placeOrder({
+  exchange: 'opinionlabs',
+  market_id: '8453',
+  order_type: 'GTC',
+  signed_order: signedOrder,
+});
+
+console.log(`Placed: ${order.order_id} (${order.status})`);
+```
+
+### Build parameters
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `marketId` | `number` | Opinion Labs numeric market ID. |
+| `tokenId` | `string` | Outcome token ID (uint256 decimal string). |
+| `side` | `'BUY' \| 'SELL'` | |
+| `price` | `number` | Price per share in [0.01, 0.99]. |
+| `amount` | `number` | USDT amount, human-readable (e.g. `3` for 3 USDT). |
+| `safeAddress` | `string` | Your Opinion Labs Safe address. Required. |
+| `feeRateBps` | `string?` | Default `'0'`. |
+| `expiration` | `number?` | Unix seconds. Default = now + 24h. |
+
+The signed payload includes both the EIP-712 fields and Opinion-Labs-specific metadata (`topicId`, `currencyAddress`, `tradingMethod`, etc.) that the Opinion Labs API requires alongside the signature.
+
+## Query and cancel
+
+```typescript
+const status = await client.getOrder(order.order_id, 'opinionlabs');
+const all = await client.listOrders('opinionlabs');
+await client.cancelOrder(order.order_id, 'opinionlabs');
+```
+
+## Common pitfalls
+
+<AccordionGroup>
+  <Accordion title="Approval status check returns allApproved: false">
+    Run `enableTrading()` once and wait for the receipt. The Safe transaction sets approvals atomically. Re-check `getSafeApprovalStatus()` after the receipt confirms — it should return `allApproved: true`.
+  </Accordion>
+
+  <Accordion title="USDT amounts look 1000x too small">
+    USDT on BNB Chain uses **18 decimals**, not 6 like USDT on Ethereum or Polygon. The SDK handles this for you — pass human-readable values to `amount` (e.g. `3` for 3 USDT) and the SDK converts internally.
+  </Accordion>
+
+  <Accordion title="signatureType must be 2">
+    Opinion Labs requires `signatureType: '2'` (POLY_GNOSIS_SAFE) — the Safe signs as the asset owner with the EOA producing the signature. The SDK sets this automatically. If you're hand-rolling a signed payload, don't use `0` (EOA) or `1` (PROXY).
+  </Accordion>
+
+  <Accordion title="Order field 'sign' duplicates 'signature'">
+    Opinion Labs's API requires both `signature` and `sign` fields, set to the same value. The SDK populates both. This is a quirk of their API surface, not a bug.
+  </Accordion>
+</AccordionGroup>
+
+## API reference
+
+- [`POST /api/v1/orders`](/trading/api/place-order) — accepts a `SignedOpinionLabsOrder` in `signed_order`
+- [`POST /api/v1/users/{userID}/credentials`](/trading/api/register-credentials) — pass `_` as the path segment

@@ -1,0 +1,54 @@
+{
+  "id": "rcpt_1709641200_a3f8b2",
+  "agentId": "claude-code",
+  "sessionId": "sess_20260305_143200",
+  "timestamp": "2026-03-05T14:35:22.847Z",
+  "trigger": "manual",
+  "status": "completed",
+  "durationMs": 12847,
+  "actions": [
+    {
+      "sequence": 1,
+      "type": "file:write",
+      "target": "src/auth/middleware.ts",
+      "summary": "Added rate limiting middleware — 100 req/min per IP using sliding window",
+      "status": "success",
+      "isRollbackEligible": true,
+      "durationMs": 340,
+      "timestamp": "2026-03-05T14:35:10.102Z"
+    },
+    {
+      "sequence": 2,
+      "type": "file:write",
+      "target": "src/auth/middleware.test.ts",
+      "summary": "Added 6 unit tests covering rate limit edge cases (burst, reset, whitelist)",
+      "status": "success",
+      "isRollbackEligible": true,
+      "durationMs": 520,
+      "timestamp": "2026-03-05T14:35:15.430Z"
+    },
+    {
+      "sequence": 3,
+      "type": "shell:exec",
+      "target": "npm test -- --grep 'rate limit'",
+      "summary": "Ran rate limiting test suite — 6/6 passed",
+      "status": "success",
+      "isRollbackEligible": false,
+      "durationMs": 4200,
+      "timestamp": "2026-03-05T14:35:18.700Z"
+    },
+    {
+      "sequence": 4,
+      "type": "file:write",
+      "target": "src/config/rate-limits.ts",
+      "summary": "Created config file with default rate limit values (100/min, 1000/hour)",
+      "status": "success",
+      "isRollbackEligible": true,
+      "durationMs": 180,
+      "timestamp": "2026-03-05T14:35:20.100Z"
+    }
+  ],
+  "anomalies": [],
+  "rollbackAvailable": false,
+  "sdkVersion": "receipt-pattern/1.0.0"
+}

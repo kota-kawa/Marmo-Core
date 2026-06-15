@@ -1,0 +1,989 @@
+import requests
+import json
+import time
+from typing import Dict, Any, List
+from src.utils.logger import logger
+from src.utils.config_loader import ConfigLoader
+from src.utils.lab_hint_formatter import build_lab_hint_detail, build_lab_hint_header
+from src.utils.report_payload_normalizer import normalize_report_for_display
+from src.utils.tech_summary_formatter import format_tech_summary_for_brief, format_tech_summary_for_display
+
+
+def _build_validation_hint(data: Dict[str, Any]) -> str:
+    compact = data.get("validation_compact") or ((data.get("validation_report") or {}).get("compact")) or {}
+    if not compact:
+        return ""
+
+    live_window = f"{compact.get('live_primary_window')}日" if compact.get("live_primary_window") else "暂无"
+    synthetic_window = f"{compact.get('synthetic_primary_window')}日" if compact.get("synthetic_primary_window") else "暂无"
+    offensive_text = "允许" if compact.get("offensive_allowed") else "关闭"
+    reason = str(compact.get("offensive_reason", "") or "").strip()
+    reason_suffix = f"（{reason}）" if reason else ""
+    return (
+        f"真实样本: {live_window}{int(compact.get('live_sample_count', 0) or 0)}笔"
+        f" | 历史样本: {synthetic_window}{int(compact.get('synthetic_sample_count', 0) or 0)}笔"
+        f" | 进攻权限: {offensive_text}{reason_suffix}"
+    )
+
+
+def _build_lab_hint(data: Dict[str, Any]) -> str:
+    hint = data.get("lab_hint") or {}
+    if not hint:
+        return ""
+    return build_lab_hint_detail(hint, markdown=True)
+
+
+def _is_quality_alert(status: Any) -> bool:
+    normalized = str(status or "").strip().lower()
+    return normalized not in {"", "normal", "fresh"}
+
+
+def _format_quality_status(status: Any) -> str:
+    normalized = str(status or "").strip().lower()
+    labels = {
+        "degraded": "数据降级",
+        "blocked": "数据受阻",
+        "missing": "关键数据缺失",
+    }
+    return labels.get(normalized, str(status or "数据异常"))
+
+
+def _build_quality_notice(data: Dict[str, Any]) -> Dict[str, Any] | None:
+    quality_status = data.get("quality_status", "normal")
+    if not _is_quality_alert(quality_status):
+        return None
+
+    data_timestamp = data.get("data_timestamp", "N/A")
+    source_labels = ", ".join(data.get("source_labels", [])) or "N/A"
+    quality_detail = str(data.get("quality_detail", "") or "").strip()
+    detail_line = f"\n> 原因：{quality_detail}" if quality_detail else ""
+    return {
+        "tag": "div",
+        "text": {
+            "tag": "lark_md",
+            "content": (
+                f"> ⚠️ **数据提示**: {_format_quality_status(quality_status)}"
+                f"（时间：{data_timestamp}；来源：{source_labels}）"
+                f"{detail_line}"
+            ),
+        },
+    }
+
+
+def _normalize_reason(reason: Any, tech_summary: Any) -> str:
+    reason_text = str(reason or "").strip()
+    raw_tech = str(tech_summary or "").strip()
+    if not reason_text:
+        return ""
+    formatted_tech = format_tech_summary_for_display(raw_tech)
+    if reason_text in {raw_tech, formatted_tech}:
+        return ""
+    return reason_text
+
+
+class FeishuClient:
+    def __init__(self):
+        self.config = ConfigLoader().config
+        self.webhook_url = self.config['api_keys'].get('feishu_webhook')
+        reporter_cfg = ConfigLoader.get_reporter_config()
+        self.timeout = reporter_cfg.get('feishu_timeout', 10)
+        if not self.webhook_url:
+            logger.error("Feishu Webhook URL is missing!")
+
+    def send_card(self, analysis_result: Dict[str, Any]):
+        """
+        Sends an interactive card message to Feishu.
+        """
+        if not self.webhook_url:
+            logger.warning("Skipping Feishu push (No URL)")
+            return
+
+        try:
+            card_content = self._construct_card(analysis_result)
+            payload = {
+                "msg_type": "interactive",
+                "card": card_content
+            }
+            
+            response = requests.post(self.webhook_url, json=payload, timeout=self.timeout)
+            response.raise_for_status()
+            
+            # Check Feishu response logic
+            resp_json = response.json()
+            if resp_json.get("code") != 0:
+                logger.error(f"Feishu Error: {resp_json}")
+            else:
+                logger.info("Feishu notification sent successfully.")
+                
+        except Exception as e:
+            logger.error(f"Failed to send Feishu message: {e}")
+
+    def send_preclose_card(self, analysis_result: Dict[str, Any]):
+        if not self.webhook_url:
+            logger.warning("Skipping Feishu push (No URL)")
+            return
+
+        try:
+            card_content = self._construct_preclose_card(analysis_result)
+            payload = {
+                "msg_type": "interactive",
+                "card": card_content
+            }
+            response = requests.post(self.webhook_url, json=payload, timeout=self.timeout)
+            response.raise_for_status()
+            resp_json = response.json()
+            if resp_json.get("code") != 0:
+                logger.error(f"Feishu Error: {resp_json}")
+            else:
+                logger.info("Feishu preclose notification sent successfully.")
+        except Exception as e:
+            logger.error(f"Failed to send Feishu preclose message: {e}")
+
+    def _construct_card(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Constructs the Feishu Interactive Card JSON (Optimized V2).
+        """
+        data = normalize_report_for_display(data)
+        market_sentiment = data.get("market_sentiment", "N/A")
+        macro_summary = data.get("macro_summary", "暂无大盘点评")
+        risk_alert = data.get("risk_alert", "")
+        bull_case = data.get("bull_case", "")
+        bear_case = data.get("bear_case", "")
+        actions = data.get("actions", [])
+        
+        # Pass indices data manually if we can, but usually 'data' is just the AI result.
+        # Wait, the AI result doesn't contain the raw indices data unless we put it there or pass it separately.
+        # Ideally, we should merge the raw indices into the data passed here.
+        # For now, let's assume the AI *could* mention it, OR we modify main.py to injection 'indices' into the result dict.
+        # Let's rely on main.py to merge 'indices' into analysis_result before calling send_card.
+        indices_info = data.get("indices_info", "暂无指数数据") 
+
+        # Color Logic
+        header_color = "blue"
+        if "SELL" in str(actions) or "冰点" in market_sentiment:
+            header_color = "red"
+        elif "亢奋" in market_sentiment:
+            header_color = "orange"
+        elif "震荡" in market_sentiment:
+            header_color = "grey"
+
+        # 1. Header Section
+        elements: List[Dict[str, Any]] = []
+        quality_notice = _build_quality_notice(data)
+        if quality_notice:
+            elements.extend([quality_notice, {"tag": "hr"}])
+        elements.extend([
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": f"**📈 市场情绪**: {market_sentiment}\n{indices_info}"
+                }
+            },
+            {"tag": "hr"},
+             {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": f"**🌍 宏观/消息面**: \n{macro_summary}"
+                }
+            },
+            {"tag": "hr"}
+        ])
+
+        # Signal Scorecard Section
+        scorecard = data.get('signal_scorecard')
+        if scorecard:
+            sc_text = f"**📊 {scorecard.get('comparison_label', '信号追踪')}** | {scorecard.get('summary_text', '')}\n"
+            for e in scorecard.get('yesterday_evaluation', []):
+                if e['result'] == 'NEUTRAL':
+                    continue
+                icon = "✅" if e['result'] == 'HIT' else "❌"
+                sc_text += f"{icon} {e['name']} {e['yesterday_signal']}→{e['today_change']}%\n"
+            elements.append({"tag": "div", "text": {"tag": "lark_md", "content": sc_text}})
+            elements.append({"tag": "hr"})
+
+        # Bull/Bear case section
+        if bull_case or bear_case:
+            perspectives = "**⚖️ 多空视角**\n"
+            if bull_case:
+                perspectives += f"> 🟢 **看多逻辑**: {bull_case}\n"
+            if bear_case:
+                perspectives += f"> 🔴 **看空逻辑**: {bear_case}\n"
+            elements.append({
+                "tag": "div",
+                "text": {"tag": "lark_md", "content": perspectives}
+            })
+            elements.append({"tag": "hr"})
+
+        # 2. Portfolio Grouping (Danger first)
+        # 🔧 统一信号标签体系
+        # Processor信号: SAFE, OVERBOUGHT, OBSERVED, WATCH, WARNING, DANGER, LIMIT_UP, LIMIT_DOWN, N/A
+        # 映射到Feishu组:
+        #   SELL组 (红): DANGER, WARNING, LIMIT_DOWN (跌停无法卖出，但需警示)
+        #   WATCH组 (黄): WATCH, OBSERVED, OVERBOUGHT (超买需观察是否回调)
+        #   HOLD组 (绿): SAFE, HOLD, LIMIT_UP (涨停继续持有)
+        #   特殊组 (灰): N/A (数据不足)
+
+        grouped_actions: Dict[str, List[Dict[str, Any]]] = {
+            "SELL": [],
+            "OPPORTUNITY": [],
+            "WATCH": [],
+            "HOLD": [],
+            "LIMIT": [],  # 涨跌停特殊组
+            "UNKNOWN": []  # 数据不足
+        }
+
+        # 信号到组的映射
+        SIGNAL_GROUP_MAP = {
+            # SELL组 (需要减仓/离场)
+            "DANGER": "SELL",
+            "WARNING": "SELL",
+            "SELL": "SELL",
+            "LOCKED_DANGER": "SELL",  # T+1锁定但处于危险状态，仍需警示
+            "减配": "SELL",
+            "回避": "SELL",
+            # OPPORTUNITY组 (加仓机会)
+            "OPPORTUNITY": "OPPORTUNITY",
+            "ACCUMULATE": "OPPORTUNITY",
+            "BUY": "OPPORTUNITY",
+            "增配": "OPPORTUNITY",
+            # WATCH组 (需要观察)
+            "WATCH": "WATCH",
+            "OBSERVED": "WATCH",
+            "OVERBOUGHT": "WATCH",
+            # HOLD组 (安全持有)
+            "SAFE": "HOLD",
+            "HOLD": "HOLD",
+            "持有": "HOLD",
+            # 涨跌停特殊处理
+            "LIMIT_UP": "LIMIT",
+            "LIMIT_DOWN": "LIMIT",
+            # 数据不足
+            "N/A": "UNKNOWN"
+        }
+
+        for stock in actions:
+            act = stock.get('action', 'HOLD').upper()
+            signal = stock.get('signal', act).upper()  # 优先用signal字段
+
+            # 使用映射确定分组
+            group = SIGNAL_GROUP_MAP.get(signal, SIGNAL_GROUP_MAP.get(act, "UNKNOWN"))
+            grouped_actions[group].append(stock)
+
+        # Helper to render a group
+        def render_group(title, emoji, stock_list):
+            if not stock_list: return
+            elements.append({
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": f"**{emoji} {title} ({len(stock_list)})**"
+                }
+            })
+            for s in stock_list:
+                name = s.get('name')
+                code = s.get('code')
+                reason = s.get('reason', '')
+                confidence = s.get('confidence', '')
+                key_level = s.get('key_level', '')
+                
+                # Check if we have price info inside the AI action object?
+                # AI output usually doesn't strictly copy price.
+                # But we can ask AI to include it, OR we merge it in main.py.
+                # For simplicity, let's hope AI includes it if we prompt it, OR...
+                # Actually, main.py passes raw 'ai_input' to Gemini, but 'analysis_result' comes from AI.
+                # AI doesn't return 'pct_change'.
+                # We need to MATCH code to raw data in main.py to get price info?
+                # That's too complex for this step.
+                # Better approach: Modify Prompt to ask AI to strictly echo "Price: xx, Change: xx%"?
+                # Or just let AI decide.
+                # But the user specifically asked for "各个股票今天的涨跌".
+                # If we don't merge, we don't have it.
+                # So I should merge in main.py.
+                
+                pct_info = s.get('pct_change_str', '') # Expect this to be injected by main.py
+                
+                # Modified content for midday report to include price
+                price = s.get('current_price', 0)
+                price_display = f" ¥{price}" if price else ""
+                
+                content = f"**{name}** ({code}){price_display} {pct_info}"
+                
+                # 🔧 FIX: 显示 T+1 锁定警告
+                signal_note = s.get('signal_note', '')
+                if signal_note:
+                    content += f"\n> ⚠️ **{signal_note}**"
+
+                # Highlight Operation Advice
+                operation = s.get('operation', '')
+                if operation:
+                    # Emphasize operation (e.g. 加仓/减仓)
+                    content += f"\n> 🔥 **建议**: {operation}"
+                    
+                if confidence: content += f" `置信度:{confidence}`"
+                normalized_reason = _normalize_reason(reason, s.get('tech_summary', ''))
+                if normalized_reason:
+                    content += f"\n> 💡 {normalized_reason}"
+                if key_level: content += f"\n> 🎯 关键位: {key_level}"
+
+                tech_summary = format_tech_summary_for_brief(s.get('tech_summary', ''))
+                if tech_summary:
+                    content += f"\n> 📊 技术面: {tech_summary}"
+                
+                elements.append({
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": content
+                    }
+                })
+            elements.append({"tag": "hr"})
+
+        # Render Order: SELL -> LIMIT -> OPPORTUNITY -> WATCH -> HOLD -> UNKNOWN
+        render_group("建议离场/减仓", "🔴", grouped_actions["SELL"])
+        render_group("涨跌停锁定", "🔒", grouped_actions["LIMIT"])
+        render_group("候选加仓", "🟣", grouped_actions["OPPORTUNITY"])
+        render_group("继续观察", "🟡", grouped_actions["WATCH"])
+        render_group("继续持有", "🟢", grouped_actions["HOLD"])
+        if grouped_actions["UNKNOWN"]:
+            render_group("数据不足", "⚪", grouped_actions["UNKNOWN"])
+
+        # 3. Footer with Date and Session
+        from datetime import datetime
+        now = datetime.now()
+        date_str = now.strftime('%Y年%m月%d日')
+        hour = now.hour
+        
+        # Determine market session
+        if hour < 12:
+            session = "盘中（上午）"
+        elif hour < 15:
+            session = "盘中（下午）"
+        else:
+            session = "收盘后"
+            
+        # Risk disclaimer
+        elements.append({
+            "tag": "div",
+            "text": {
+                "tag": "lark_md",
+                "content": "> ⚠️ 以上分析由AI系统基于技术指标自动生成，不构成投资建议。市场存在不可预测的系统性风险，请结合自身风险承受能力独立决策。"
+            }
+        })
+
+        elements.append({
+             "tag": "note",
+             "elements": [
+                 {
+                     "tag": "plain_text",
+                     "content": f"Sentinel AI V2.0 • {date_str} {session} • {time.strftime('%H:%M')}"
+                 }
+             ]
+         })
+
+        card = {
+            "config": {"wide_screen_mode": True},
+            "header": {
+                "template": header_color,
+                "title": {
+                    "tag": "plain_text",
+                    "content": "🛡️ 哨兵智能投顾 (Pro)"
+                }
+            },
+            "elements": elements
+        }
+        return card
+
+    def _construct_preclose_card(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        card = self._construct_card(data)
+        card["header"]["title"]["content"] = "⏳ 哨兵收盘前执行"
+
+        for element in card.get("elements", []):
+            text = element.get("text", {})
+            content = text.get("content")
+            if not isinstance(content, str):
+                continue
+            if "**🌍 宏观/消息面**" in content:
+                text["content"] = content.replace("**🌍 宏观/消息面**", "**⏳ 收盘前执行摘要**")
+                break
+
+        for element in reversed(card.get("elements", [])):
+            if element.get("tag") == "note":
+                for note in element.get("elements", []):
+                    if note.get("tag") == "plain_text":
+                        note["content"] = note.get("content", "").replace("盘中（下午）", "收盘前执行").replace("收盘后", "收盘前执行")
+                        if "收盘前执行" not in note["content"]:
+                            note["content"] = "Sentinel AI V2.0 • 收盘前执行"
+                break
+
+        return card
+
+    def send_close_card(self, data: Dict[str, Any]):
+        """Sends the close review card to Feishu."""
+        card_content = self._construct_close_card(data)
+        payload = {
+            "msg_type": "interactive",
+            "card": card_content
+        }
+        try:
+            response = requests.post(self.webhook_url, json=payload, timeout=self.timeout)
+            if response.status_code == 200:
+                logger.info("Feishu close review sent successfully.")
+            else:
+                logger.error(f"Feishu close push failed: {response.text}")
+        except Exception as e:
+            logger.error(f"Failed to send Feishu close card: {e}")
+
+    def send_morning_card(self, data: Dict[str, Any]):
+        """Sends the morning pre-market brief card to Feishu."""
+        if not self.webhook_url:
+            logger.warning("Skipping Feishu push (No URL)")
+            return
+
+        try:
+            card_content = self._construct_morning_card(data)
+            payload = {
+                "msg_type": "interactive",
+                "card": card_content
+            }
+            response = requests.post(self.webhook_url, json=payload, timeout=self.timeout)
+            response.raise_for_status()
+            resp_json = response.json()
+            if resp_json.get("code") != 0:
+                logger.error(f"Feishu Error: {resp_json}")
+            else:
+                logger.info("Feishu morning brief sent successfully.")
+        except Exception as e:
+            logger.error(f"Failed to send Feishu morning card: {e}")
+
+    def send_swing_card(self, data: Dict[str, Any]):
+        if not self.webhook_url:
+            logger.warning("Skipping Feishu push (No URL)")
+            return
+
+        try:
+            card_content = self._construct_swing_card(data)
+            payload = {
+                "msg_type": "interactive",
+                "card": card_content
+            }
+            response = requests.post(self.webhook_url, json=payload, timeout=self.timeout)
+            response.raise_for_status()
+        except Exception as e:
+            logger.error(f"Failed to send Feishu swing card: {e}")
+
+    def _construct_morning_card(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Constructs the Feishu Interactive Card for morning pre-market brief.
+        Layout: 🌍隔夜全球 → 📦大宗/汇率 → ⚠️风险事件 → 🎯A股预判 → 📋持仓策略
+        """
+        global_summary = data.get("global_overnight_summary", "暂无隔夜综述")
+        commodity_summary = data.get("commodity_summary", "")
+        treasury_impact = data.get("us_treasury_impact", "")
+        a_share_outlook = data.get("a_share_outlook", "平开")
+        risk_events = data.get("risk_events", [])
+        actions = data.get("actions", [])
+
+        # Header color based on outlook
+        header_color = "blue"
+        if "低开" in a_share_outlook or "LOW" in a_share_outlook.upper():
+            header_color = "red"
+        elif "高开" in a_share_outlook or "HIGH" in a_share_outlook.upper():
+            header_color = "green"
+
+        from datetime import datetime
+        date_str = datetime.now().strftime('%Y年%m月%d日')
+
+        elements = []
+
+        # 1. 🌍 隔夜全球市场
+        # Inject raw global indices if available
+        global_indices_info = data.get("global_indices_info", "")
+        global_section = f"**🌍 隔夜全球市场**\n{global_indices_info}\n{global_summary}"
+        elements.append({
+            "tag": "div",
+            "text": {"tag": "lark_md", "content": global_section}
+        })
+        elements.append({"tag": "hr"})
+
+        # 2. 📦 大宗商品 & 美债
+        commodities_info = data.get("commodities_info", "")
+        treasury_info = data.get("treasury_info", "")
+        commodity_section = f"**📦 大宗商品 & 汇率**\n{commodities_info}\n{commodity_summary}"
+        if treasury_impact:
+            commodity_section += f"\n**💰 美债**: {treasury_info}\n{treasury_impact}"
+        elements.append({
+            "tag": "div",
+            "text": {"tag": "lark_md", "content": commodity_section}
+        })
+        elements.append({"tag": "hr"})
+
+        # 3. ⚠️ 风险事件
+        if risk_events:
+            risk_text = "**⚠️ 今日风险事件**\n" + "\n".join(f"• {e}" for e in risk_events)
+            elements.append({
+                "tag": "div",
+                "text": {"tag": "lark_md", "content": risk_text}
+            })
+            elements.append({"tag": "hr"})
+
+        # 4. 🎯 A股预判
+        # Opening expectation emoji
+        if "高开" in a_share_outlook or "HIGH" in a_share_outlook.upper():
+            outlook_emoji = "⬆️"
+        elif "低开" in a_share_outlook or "LOW" in a_share_outlook.upper():
+            outlook_emoji = "⬇️"
+        else:
+            outlook_emoji = "➡️"
+
+        elements.append({
+            "tag": "div",
+            "text": {"tag": "lark_md", "content": f"**🎯 A股开盘预判** {outlook_emoji}\n{a_share_outlook}"}
+        })
+        elements.append({"tag": "hr"})
+
+        # 5. 📋 持仓策略
+        if actions:
+            elements.append({
+                "tag": "div",
+                "text": {"tag": "lark_md", "content": f"**📋 持仓开盘策略 ({len(actions)}只)**"}
+            })
+
+            for s in actions:
+                name = s.get('name', '')
+                code = s.get('code', '')
+                driver = s.get('overnight_driver', '')
+                expectation = s.get('opening_expectation', 'FLAT')
+                strategy = s.get('strategy', '')
+                ma20_status = s.get('ma20_status', '')
+                key_level = s.get('key_level', 0)
+
+                # Expectation emoji
+                if expectation == 'HIGH_OPEN':
+                    exp_emoji = "⬆️高开"
+                elif expectation == 'LOW_OPEN':
+                    exp_emoji = "⬇️低开"
+                else:
+                    exp_emoji = "➡️平开"
+
+                content = f"**{name}** ({code}) {exp_emoji}"
+                if driver:
+                    content += f"\n> 🌐 驱动: {driver}"
+                content += f"\n> 📊 MA20: {ma20_status}"
+                if strategy:
+                    content += f"\n> 🔥 **策略**: {strategy}"
+                if key_level:
+                    content += f"\n> 🎯 关键位: {key_level}"
+
+                elements.append({
+                    "tag": "div",
+                    "text": {"tag": "lark_md", "content": content}
+                })
+
+            elements.append({"tag": "hr"})
+
+        # Footer
+        elements.append({
+            "tag": "note",
+            "elements": [{
+                "tag": "plain_text",
+                "content": f"Sentinel AI V2.0 • {date_str} 盘前战备简报 • {time.strftime('%H:%M')}"
+            }]
+        })
+
+        return {
+            "config": {"wide_screen_mode": True},
+            "header": {
+                "template": header_color,
+                "title": {
+                    "tag": "plain_text",
+                    "content": "☀️ 哨兵盘前战备简报"
+                }
+            },
+            "elements": elements
+        }
+
+    def _construct_close_card(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Constructs the Feishu Interactive Card for close review.
+        """
+        data = normalize_report_for_display(data)
+        market_summary = data.get("market_summary", "暂无总结")
+        market_temperature = data.get("market_temperature", "N/A")
+        bull_case = data.get("bull_case", "")
+        bear_case = data.get("bear_case", "")
+        actions = data.get("actions", [])
+        # Temperature-based color
+        header_color = "blue"
+        if "冰点" in market_temperature:
+            header_color = "red"
+        elif "亢奋" in market_temperature:
+            header_color = "orange"
+
+        from datetime import datetime
+        date_str = datetime.now().strftime('%Y年%m月%d日')
+
+        elements = []
+        quality_notice = _build_quality_notice(data)
+        if quality_notice:
+            elements.extend([quality_notice, {"tag": "hr"}])
+        elements.extend([
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": f"**📊 市场温度**: {market_temperature}\n**📝 今日总结**: {market_summary}"
+                }
+            },
+            {"tag": "hr"}
+        ])
+
+        # Bull/Bear case section
+        if bull_case or bear_case:
+            perspectives = "**⚖️ 多空视角**\n"
+            if bull_case:
+                perspectives += f"> 🟢 **看多逻辑**: {bull_case}\n"
+            if bear_case:
+                perspectives += f"> 🔴 **看空逻辑**: {bear_case}\n"
+            elements.append({
+                "tag": "div",
+                "text": {"tag": "lark_md", "content": perspectives}
+            })
+            elements.append({"tag": "hr"})
+
+        # Signal Scorecard Section
+        scorecard = data.get('signal_scorecard')
+        if scorecard:
+            sc_text = f"**📊 {scorecard.get('comparison_label', '信号追踪')}** | {scorecard.get('summary_text', '')}\n"
+            for e in scorecard.get('yesterday_evaluation', []):
+                if e['result'] == 'NEUTRAL':
+                    continue
+                icon = "✅" if e['result'] == 'HIT' else "❌"
+                sc_text += f"{icon} {e['name']} {e['yesterday_signal']}→{e['today_change']}%\n"
+            elements.append({"tag": "div", "text": {"tag": "lark_md", "content": sc_text}})
+            elements.append({"tag": "hr"})
+
+        # Per-stock review
+        elements.append({
+            "tag": "div",
+            "text": {
+                "tag": "lark_md",
+                "content": f"**📈 个股复盘 ({len(actions)}只)**"
+            }
+        })
+
+        for s in actions:
+            name = s.get('name', '')
+            code = s.get('code', '')
+            today_review = s.get('today_review', '')
+            tomorrow_plan = s.get('tomorrow_plan', '')
+            support = s.get('support_level', 0)
+            resistance = s.get('resistance_level', 0)
+            
+            # Enhanced Header with Price and Pct
+            price = s.get('current_price', 0)
+            pct_str = s.get('pct_change_str', '')
+            
+            price_display = f" ¥{price}" if price else ""
+            
+            content = f"**{name}** ({code}){price_display} {pct_str}"
+            content += f"\n> 📋 **今日**: {today_review}"
+            content += f"\n> 🎯 **明日**: {tomorrow_plan}"
+            if support and resistance:
+                content += f"\n> 📐 支撑: {support} / 压力: {resistance}"
+
+            tech_summary = format_tech_summary_for_brief(s.get('tech_summary', ''))
+            confidence = s.get('confidence', '')
+            if tech_summary:
+                content += f"\n> 📊 技术面: {tech_summary}"
+            if confidence:
+                content += f" `置信度:{confidence}`"
+            
+            elements.append({
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": content
+                }
+            })
+        elements.append({"tag": "hr"})
+
+        # Risk disclaimer
+        elements.append({
+            "tag": "div",
+            "text": {
+                "tag": "lark_md",
+                "content": "> ⚠️ 以上分析由AI系统基于技术指标自动生成，不构成投资建议。市场存在不可预测的系统性风险，请结合自身风险承受能力独立决策。"
+            }
+        })
+
+        # Footer
+        elements.append({
+             "tag": "note",
+             "elements": [
+                 {
+                     "tag": "plain_text",
+                     "content": f"Sentinel AI V2.0 • {date_str} 收盘复盘 • {time.strftime('%H:%M')}"
+                 }
+             ]
+         })
+
+        return {
+            "config": {"wide_screen_mode": True},
+            "header": {
+                "template": header_color,
+                "title": {
+                    "tag": "plain_text",
+                    "content": "🌙 哨兵收盘复盘"
+                }
+            },
+            "elements": elements
+        }
+
+    def _construct_swing_card(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        position_plan = data.get("position_plan") or {}
+        header_hint = build_lab_hint_header(data.get("lab_hint") or {})
+        position_lines = [
+            f"- **当前总仓位**: {position_plan.get('current_total_exposure', 'N/A')}",
+            f"- **建议总仓位**: {position_plan.get('total_exposure', 'N/A')}",
+            f"- **现金目标**: {position_plan.get('cash_target', 'N/A')}",
+            f"- **优先动作**: {'；'.join(position_plan.get('execution_order', []) or []) or '暂无'}",
+        ]
+        watchlist_candidates = data.get("watchlist_candidates", []) or []
+        risk_lines = [f"- {issue}" for issue in (data.get("data_issues") or [])]
+        for action in data.get("actions", []):
+            if action.get("action_label") in {"减配", "回避"} and action.get("risk_line"):
+                risk_lines.append(f"- **{action.get('name', '')}**: {action.get('risk_line', '')}")
+        for candidate in watchlist_candidates:
+            if candidate.get("risk_line"):
+                risk_lines.append(f"- **{candidate.get('name', '')}**: {candidate.get('risk_line', '')}")
+
+        elements = [
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": f"🕒 时间: {data.get('data_timestamp', 'N/A')}\n🔎 来源: {', '.join(data.get('source_labels', [])) or 'N/A'}"
+                }
+            },
+            {"tag": "hr"},
+        ]
+        if header_hint:
+            elements.extend(
+                [
+                    {
+                        "tag": "div",
+                        "text": {
+                            "tag": "lark_md",
+                            "content": header_hint,
+                        },
+                    },
+                    {"tag": "hr"},
+                ]
+            )
+        elements.extend(
+            [
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": f"**今日结论**\n{data.get('market_conclusion', '暂无结论')}"
+                    }
+                },
+                {"tag": "hr"},
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": f"**验证摘要**\n{data.get('validation_summary', '暂无验证摘要')}"
+                    }
+                },
+                {"tag": "hr"},
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": "**账户动作**\n" + "\n".join(position_lines)
+                    }
+                },
+                {"tag": "hr"},
+            ]
+        )
+        execution_readiness = str(data.get("execution_readiness", "") or "").strip()
+        quality_summary = str(data.get("quality_summary", "") or "").strip()
+        if execution_readiness or quality_summary:
+            detail_lines = []
+            if execution_readiness:
+                detail_lines.append(f"- **可执行度**: {execution_readiness}")
+            if quality_summary:
+                detail_lines.append(f"- **说明**: {quality_summary}")
+            elements.extend(
+                [
+                    {
+                        "tag": "div",
+                        "text": {
+                            "tag": "lark_md",
+                            "content": "**执行提示**\n" + "\n".join(detail_lines),
+                        },
+                    },
+                    {"tag": "hr"},
+                ]
+            )
+        validation_budgets = position_plan.get("validation_budgets") or []
+        if validation_budgets:
+            elements.extend(
+                [
+                    {
+                        "tag": "div",
+                        "text": {
+                            "tag": "lark_md",
+                            "content": "**方向预算**\n"
+                            + "\n".join(
+                                f"- {budget.get('label', '')}: {budget.get('status', '正常')} | 预算:{budget.get('budget_range', 'N/A')}\n  {budget.get('reason', '')}"
+                                for budget in validation_budgets
+                            ),
+                        },
+                    },
+                    {"tag": "hr"},
+                ]
+            )
+        elements.extend(
+            [
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": f"**持仓处理 ({len(data.get('actions', []))}只)**"
+                    }
+                },
+            ]
+        )
+        validation_hint = _build_validation_hint(data)
+        if validation_hint:
+            elements.extend(
+                [
+                    {
+                        "tag": "div",
+                        "text": {
+                            "tag": "lark_md",
+                            "content": validation_hint,
+                        },
+                    },
+                    {"tag": "hr"},
+                ]
+            )
+        lab_hint = _build_lab_hint(data)
+        if lab_hint:
+            elements.extend(
+                [
+                    {
+                        "tag": "div",
+                        "text": {
+                            "tag": "lark_md",
+                            "content": lab_hint,
+                        },
+                    },
+                    {"tag": "hr"},
+                ]
+            )
+
+        for action in data.get("actions", []):
+            validation_line = f"> 验证: {action.get('validation_note', '')}\n" if action.get("validation_note") else ""
+            content = (
+                f"**{action.get('name', '')}** ({action.get('code', '')})\n"
+                f"> 结论: {action.get('conclusion', action.get('action_label', '观察'))}\n"
+                f"> 当前仓位: {action.get('current_weight', '0%')}\n"
+                f"> 目标仓位: {action.get('target_weight', 'N/A')}\n"
+                f"> 原因: {action.get('reason', '')}\n"
+                f"{validation_line}"
+                f"> 计划: {action.get('plan', '')}\n"
+                f"> 风险线: {action.get('risk_line', '')}"
+            )
+            elements.append({
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": content
+                }
+            })
+
+        elements.extend(
+            [
+                {"tag": "hr"},
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": "**观察池机会**",
+                    },
+                },
+            ]
+        )
+        if watchlist_candidates:
+            for candidate in watchlist_candidates[:3]:
+                content = (
+                    f"**{candidate.get('name', '')}** ({candidate.get('code', '')})\n"
+                    f"> 动作: {candidate.get('action_label', '继续观察')}\n"
+                    f"> 原因: {candidate.get('reason', '')}\n"
+                    f"> 计划: {candidate.get('plan', '')}\n"
+                    f"> 失效条件: {candidate.get('risk_line', '')}"
+                )
+                elements.append(
+                    {
+                        "tag": "div",
+                        "text": {
+                            "tag": "lark_md",
+                            "content": content,
+                        },
+                    }
+                )
+        else:
+            elements.append(
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": "- 当前没有值得试仓的新方向",
+                    },
+                }
+            )
+
+        elements.extend(
+            [
+                {"tag": "hr"},
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": "**风险清单**\n" + ("\n".join(risk_lines[:3]) if risk_lines else "- 暂无额外风险提示"),
+                    },
+                },
+            ]
+        )
+
+        return {
+            "config": {"wide_screen_mode": True},
+            "header": {
+                "template": "blue",
+                "title": {
+                    "tag": "plain_text",
+                    "content": "🧭 哨兵中期策略"
+                }
+            },
+            "elements": elements
+        }
+
+if __name__ == "__main__":
+    # Test
+    client = FeishuClient()
+    mock_data = {
+        "market_sentiment": "冰点 (Cold)",
+        "summary": "大盘缩量下跌，北向资金大幅流出，建议谨慎防御。",
+        "actions": [
+            {"code": "600519", "name": "贵州茅台", "action": "HOLD", "reason": "虽下跌但未破位"},
+            {"code": "300750", "name": "宁德时代", "action": "DANGER", "reason": "放量跌破MA20"}
+        ]
+    }
+    # client.send_card(mock_data) # Uncomment to test with real URL
+    print(json.dumps(client._construct_card(mock_data), indent=2, ensure_ascii=False))

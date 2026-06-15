@@ -1,0 +1,4 @@
+port = 4001
+command = "bundle exec jekyll serve --incremental --port 4001"
+[functions]
+  included_files = ["_site/index.html"]

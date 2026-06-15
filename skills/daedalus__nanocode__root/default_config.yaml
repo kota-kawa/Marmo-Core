@@ -1,0 +1,183 @@
+admin:
+  enabled: true
+  host: 127.0.0.1
+  port: 7890
+context:
+  max_tokens: 8000
+  preserve_last_n: 6
+  preserve_system: true
+  strategy: sliding_window
+  summarize_threshold: 0.8
+  tool_truncation: null
+exa:
+  api_key: ${EXA_API_KEY}
+  default_type: auto
+  num_results: 10
+file_tracker:
+  cache_dir: .nanocode/cache
+  enabled: true
+file_watcher:
+  enabled: true
+  ignore:
+  - .git
+  - __pycache__
+  - '*.pyc'
+  - .pytest_cache
+  - node_modules
+  - .DS_Store
+  - '*.swp'
+  - '*.tmp'
+  - .venv
+  - venv
+github: null
+llm:
+  default_model: opencode/big-pickle
+  default_connector: openai
+  connectors:
+    openai:
+      - name: lm-studio
+        base_url: http://localhost:1234/v1
+        model: local-model
+      - name: ollama
+        base_url: http://localhost:11434
+        model: llama3
+      - name: opencode
+        api_key: public
+        base_url: https://opencode.ai/zen/v1
+        model: big-pickle
+      - name: openrouter
+        api_key: ${OPENROUTER_API_KEY}
+        base_url: https://openrouter.ai/api/v1
+        model: openrouter/free
+      - name: mimo
+        api_key: anonymous
+        base_url: https://api.xiaomimimo.com/api/free-ai/openai
+        model: mimo-auto
+
+  use_model_registry: false
+  user_agent: opencode/1.4.8
+mcp:
+  servers:
+    exa:
+      enabled: true
+      url: https://mcp.exa.ai/mcp?tools=web_search_exa,deep_search_exa,get_code_context_exa
+    openwebsearch:
+      enabled: true
+      url: https://open-web-search.vercel.app/mcp
+messaging:
+  enabled: false
+planning:
+  checkpoint_enabled: true
+  max_retries: 3
+  max_steps: 20
+permissions:
+  agents:
+    build:
+    - permission: '*'
+      pattern: '*'
+      action: allow
+    - permission: doom_loop
+      pattern: '*'
+      action: ask
+    - permission: external_directory
+      pattern: '*'
+      action: ask
+    - permission: external_directory
+      pattern: ${HOME}/*
+      action: allow
+    - permission: question
+      pattern: '*'
+      action: deny
+    - permission: plan_enter
+      pattern: '*'
+      action: deny
+    - permission: plan_exit
+      pattern: '*'
+      action: deny
+    - permission: read
+      pattern: '*.env'
+      action: ask
+    - permission: read
+      pattern: '*.env.*'
+      action: ask
+    - permission: read
+      pattern: '*.env.example'
+      action: allow
+    - permission: task
+      pattern: '*'
+      action: allow
+    - permission: todo
+      pattern: '*'
+      action: allow
+    plan:
+    - permission: '*'
+      pattern: '*'
+      action: allow
+    - permission: doom_loop
+      pattern: '*'
+      action: ask
+    - permission: external_directory
+      pattern: ${HOME}/.opencode/plans/*
+      action: allow
+    - permission: question
+      pattern: '*'
+      action: allow
+    - permission: plan_enter
+      pattern: '*'
+      action: deny
+    - permission: plan_exit
+      pattern: '*'
+      action: allow
+    - permission: edit
+      pattern: '*'
+      action: deny
+    - permission: write
+      pattern: '*'
+      action: deny
+    - permission: patch
+      pattern: '*'
+      action: deny
+    - permission: apply_patch
+      pattern: '*'
+      action: deny
+    - permission: multiedit
+      pattern: '*'
+      action: deny
+    - permission: read
+      pattern: '*.env'
+      action: ask
+    - permission: read
+      pattern: '*.env.*'
+      action: ask
+    - permission: read
+      pattern: '*.env.example'
+      action: allow
+    - permission: todo
+      pattern: '*'
+      action: allow
+    - permission: task
+      pattern: '*'
+      action: allow
+snapshot:
+  enabled: true
+  prune_days: 7
+storage:
+  db_path: ~/.nanocode/data/nanocode.db
+  enabled: true
+tools:
+  enabled:
+  - bash
+  - read
+  - write
+  - edit
+  - glob
+  - grep
+  - ls
+  - webfetch
+  - websearch
+  - exa
+  - exa_fetch
+  - free_exa
+  - openwebsearch
+  - todo
+  - task

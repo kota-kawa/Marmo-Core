@@ -1,0 +1,144 @@
+---
+title: Data Table
+---
+
+# Data Table
+
+A declarative table component for displaying structured data with minimal configuration. Define columns and pass data to quickly render sortable, formatted tables. Ideal for admin panels, lists, and data-heavy interfaces.
+
+<Example>
+  <DataTable
+    data={[
+      { id: 1, name: 'Bob', title: 'CEO', email: <a href="#">bob@aol.com</a> },
+      { id: 2, name: 'Fred', title: 'VP Marketing', email: <a href="#">fred@aol.com</a> },
+      { id: 3, name: 'Ted', title: 'Engineer', email: <a href="#">ted@aol.com</a> },
+    ]}
+  >
+    <DataColumn id="id" label="ID" />
+    <DataColumn id="name" label="Name" />
+    <DataColumn id="title" label="Title" />
+    <DataColumn id="email" label="Email" />
+    <DataColumn id="actions" label="" align="end">
+      <MenuTrigger>
+        <Button variant="outline" size="xs">
+          {`⋯`}
+        </Button>
+        <Popover>
+          <Menu>
+            <MenuItem id="email">Send email</MenuItem>
+            <MenuItem id="phone">Call phone</MenuItem>
+          </Menu>
+        </Popover>
+      </MenuTrigger>
+    </DataColumn>
+  </DataTable>
+
+  ```jsx
+  <DataTable data={data}>
+    <DataColumn id="id" label="ID" />
+    <DataColumn id="name" label="Name" />
+    <DataColumn id="title" label="Title" />
+    <DataColumn id="email" label="Email" />
+  </DataTable>
+  ```
+</Example>
+
+## Column widths
+
+<Example>
+  <DataTable
+    data={[
+      { id: 1, name: 'Bob', title: 'CEO', email: <a href="#">bob@aol.com</a> },
+      { id: 2, name: 'Fred', title: 'VP Marketing', email: <a href="#">fred@aol.com</a> },
+      { id: 3, name: 'Ted', title: 'Engineer', email: <a href="#">ted@aol.com</a> },
+    ]}
+  >
+    <DataColumn id="id" label="ID" width="50px" />
+    <DataColumn id="name" label="Name" width="2fr" />
+    <DataColumn id="title" label="Title" />
+    <DataColumn id="email" label="Email" />
+    <DataColumn id="actions" label="" align="end">
+      <MenuTrigger>
+        <Button variant="outline" size="xs">
+          {`⋯`}
+        </Button>
+        <Popover>
+          <Menu>
+            <MenuItem id="email">Send email</MenuItem>
+            <MenuItem id="phone">Call phone</MenuItem>
+          </Menu>
+        </Popover>
+      </MenuTrigger>
+    </DataColumn>
+  </DataTable>
+
+  ```jsx
+  <DataTable data={data}>
+    <DataColumn id="id" label="ID" width="50px" />
+    <DataColumn id="name" label="Name" width="2fr" />
+    <DataColumn id="title" label="Title" />
+    <DataColumn id="email" label="Email" />
+  </DataTable>
+  ```
+</Example>
+
+## As cards
+
+<Example>
+  <DataTable
+    data={[
+      { id: 1, name: 'Bob', title: 'CEO', email: <a href="#">bob@aol.com</a> },
+      { id: 2, name: 'Fred', title: 'VP Marketing', email: <a href="#">fred@aol.com</a> },
+      { id: 3, name: 'Ted', title: 'Engineer', email: <a href="#">ted@aol.com</a> },
+    ]}
+    displayMode="cards"
+  >
+    <DataColumn id="id" label="ID" width="50px" />
+    <DataColumn id="name" label="Name" width="2fr" />
+    <DataColumn id="title" label="Title" />
+    <DataColumn id="email" label="Email" />
+  </DataTable>
+
+  ```jsx
+  <DataTable data={data} displayMode="cards">
+    <DataColumn id="id" label="ID" />
+    <DataColumn id="name" label="Name" />
+    <DataColumn id="title" label="Title" />
+    <DataColumn id="email" label="Email" />
+  </DataTable>
+  ```
+</Example>
+
+## Component props
+
+### DataTable
+
+<Example>
+  <DataTable
+    data={[
+      { name: 'data', value: 'object[]', description: 'Array of data objects to display' },
+      { name: 'displayMode', value: 'DisplayMode', description: '"table" | "cards"' },
+    ]}
+  >
+    <DataColumn id="name" label="Name" />
+    <DataColumn id="value" label="Type" />
+    <DataColumn id="description" label="Description" />
+  </DataTable>
+</Example>
+
+### DataColumn
+
+<Example>
+  <DataTable
+    data={[
+      { name: 'id', value: 'string', description: 'Column key matching data property (required)' },
+      { name: 'label', value: 'string', description: 'Column header text' },
+      { name: 'width', value: 'string', description: 'Column width (e.g., "100px", "2fr")' },
+      { name: 'align', value: 'Alignment', description: '"start" | "center" | "end"' },
+    ]}
+  >
+    <DataColumn id="name" label="Name" />
+    <DataColumn id="value" label="Type" />
+    <DataColumn id="description" label="Description" />
+  </DataTable>
+</Example>

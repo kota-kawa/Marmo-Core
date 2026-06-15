@@ -1,0 +1,18 @@
+{
+  "name": "vedic-astrology",
+  "version": "1.0.0",
+  "description": "Complete Vedic astrology chart generation and interpretation using KP system, Parashara principles, and traditional texts.",
+  "scripts": {
+    "generate": "bun scripts/generate-chart.ts",
+    "interpret": "bun scripts/interpret-chart.ts",
+    "panchanga": "bun scripts/panchanga.ts"
+  },
+  "keywords": ["vedic", "astrology", "jyotish", "kp", "horoscope", "panchanga", "birth-chart"],
+  "author": "Abhijeet Pranav Mishra",
+  "license": "MIT",
+  "type": "commonjs",
+  "devDependencies": {
+    "@types/node": "^25.3.5",
+    "typescript": "^5.9.3"
+  }
+}

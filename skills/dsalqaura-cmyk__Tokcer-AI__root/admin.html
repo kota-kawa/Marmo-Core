@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Internal Core | Tokcer AI</title>
+    <script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+    <script>
+      // Otomatis hapus tanda miring di akhir URL untuk cegah 404
+      if (window.location.pathname.endsWith('/') && window.location.pathname.includes('.html')) {
+        window.location.replace(window.location.href.replace(/\/$/, ""));
+      }
+    </script>
+  </head>
+  <body class="bg-slate-900">
+    <div id="root"></div>
+    <script type="module" src="/src/admin-main.jsx"></script>
+  </body>
+</html>

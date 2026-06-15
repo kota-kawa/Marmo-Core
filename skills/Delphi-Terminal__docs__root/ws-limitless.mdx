@@ -1,0 +1,140 @@
+---
+title: "Limitless WebSocket"
+description: "Real-time price, orderbook, and trade streaming for Limitless markets"
+---
+
+## Connection
+
+Connect to the Limitless WebSocket endpoint:
+
+```
+wss://api.delphiterminal.co/ws/limitless
+```
+
+No authentication is required for WebSocket connections.
+
+| Property | Value |
+|----------|-------|
+| Protocol | WebSocket (wss://) |
+| Keepalive | Ping every 54 seconds |
+| Timeout | 60 seconds without pong |
+| Max Message Size | 16 KB |
+
+## Subscribing to markets
+
+Once connected, send a JSON message to subscribe using `market_id`:
+
+```json
+{
+  "action": "subscribe",
+  "market_ids": ["market123", "market456"],
+  "message_types": ["prices", "orderbook", "trades"]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `action` | string | Yes | `subscribe` or `unsubscribe` |
+| `market_ids` | array | Yes | Array of Limitless market identifiers |
+| `message_types` | array | No | `["prices"]`, `["orderbook"]`, `["trades"]`, or any combination. Defaults to prices and orderbook if omitted |
+
+## Unsubscribing
+
+```json
+{
+  "action": "unsubscribe",
+  "market_ids": ["market123"]
+}
+```
+
+## Message types
+
+### Price messages
+
+```json
+{
+  "type": "prices",
+  "data": {
+    "exchange": "limitless",
+    "market_id": "market123",
+    "price": 0.65,
+    "yes_bid": 0.64,
+    "yes_ask": 0.66,
+    "volume": 15000,
+    "open_interest": 8500,
+    "last_update": "2026-02-06T12:00:00Z"
+  }
+}
+```
+
+### Orderbook messages
+
+```json
+{
+  "type": "orderbook",
+  "data": {
+    "exchange": "limitless",
+    "token_id": "token123",
+    "market_id": "market123",
+    "bid_side": [0.55, 0.54, 0.53, 0.52, 0.51],
+    "ask_side": [0.56, 0.57, 0.58, 0.59, 0.60],
+    "last_update": "2026-02-06T12:00:00Z"
+  }
+}
+```
+
+### Trade messages
+
+```json
+{
+  "type": "trades",
+  "data": {
+    "exchange": "limitless",
+    "market_id": "market123",
+    "yes_price": 0.65,
+    "no_price": 0.35,
+    "count": 10,
+    "taker_side": "buy",
+    "last_update": "2026-02-06T12:00:00Z"
+  }
+}
+```
+
+## Full example
+
+```javascript
+const ws = new WebSocket("wss://api.delphiterminal.co/ws/limitless");
+
+ws.onopen = () => {
+  console.log("Connected to Limitless WebSocket");
+
+  ws.send(JSON.stringify({
+    action: "subscribe",
+    market_ids: ["market123"],
+    message_types: ["prices", "orderbook", "trades"]
+  }));
+};
+
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+
+  if (data.type === "prices") {
+    console.log("Price update:", data.data);
+  } else if (data.type === "orderbook") {
+    console.log("Orderbook update:", data.data);
+  } else if (data.type === "trades") {
+    console.log("Trade:", data.data);
+  }
+};
+
+ws.onclose = () => console.log("Disconnected");
+ws.onerror = (error) => console.error("WebSocket error:", error);
+```
+
+## Important notes
+
+- **No authentication required** for WebSocket connections
+- Use `market_id` (Limitless market identifier) to subscribe
+- Messages are only sent for markets you have explicitly subscribed to
+- Multiple markets can be subscribed in a single message
+- Trades must be explicitly requested (not included in the default subscription)

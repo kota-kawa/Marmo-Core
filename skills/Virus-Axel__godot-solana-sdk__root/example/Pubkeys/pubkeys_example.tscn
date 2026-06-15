@@ -1,0 +1,24 @@
+[gd_scene load_steps=2 format=3 uid="uid://cunax25r7ml5v"]
+
+[ext_resource type="Script" uid="uid://c83nwk2x2nwgl" path="res://PubkeysExample.gd" id="1_6y4sq"]
+
+[node name="PubkeysExample" type="ItemList"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+auto_height = true
+item_count = 16
+max_columns = 2
+same_column_width = true
+fixed_column_width = 400
+item_0/text = "Pubkey from string"
+item_2/text = "Pubkey from bytes"
+item_4/text = "Metadata Program"
+item_6/text = "Token Program"
+item_8/text = "Candy Machine Program"
+item_10/text = "Candy Machine key bytes"
+item_12/text = "Associated Token key"
+item_14/text = "Program derived key"
+script = ExtResource("1_6y4sq")

@@ -1,0 +1,54 @@
+---
+title: "Authentication"
+description: "API keys, rate limits, and error handling"
+---
+
+All API requests require an API key passed in the `X-API-Key` header.
+
+```bash
+curl -X GET 'https://api.delphiterminal.co/api/v1/klsi/markets' \
+  -H 'X-API-Key: dphi_live_your_key_here'
+```
+
+## API key types
+
+| Type | Duration | Rate Limit | How to Get |
+|------|----------|------------|------------|
+| Test key | 10 minutes | 60 req/min | `POST /api/v1/test-key` (no auth required) |
+| Production key | Permanent | 300 req/min | [Contact us](https://delphimarkets.com) |
+
+Test keys are useful for exploring the API and building prototypes. For production workloads, request a permanent key.
+
+## Rate limits
+
+Requests are rate-limited per API key:
+
+- **Test keys**: 60 requests per minute
+- **Production keys**: 300 requests per minute
+
+When you exceed the limit, you'll receive a `429 Too Many Requests` response. Wait and retry.
+
+## Error codes
+
+All errors return JSON with an `error` field:
+
+```json
+{"error": "invalid api key format"}
+```
+
+| Code | Meaning |
+|------|---------|
+| `400` | Bad Request — invalid parameters |
+| `401` | Unauthorized — missing or invalid API key |
+| `404` | Not Found — resource doesn't exist |
+| `429` | Too Many Requests — rate limit exceeded |
+| `500` | Server Error — something went wrong on our end |
+
+## Unauthenticated endpoints
+
+A few endpoints don't require an API key:
+
+- `POST /api/v1/test-key` — generate a test key
+- `GET /health` — health check
+- `POST /api/v1/auth/signup` — create a user account
+- `POST /api/v1/auth/login` — authenticate and get a session token

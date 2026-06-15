@@ -1,0 +1,214 @@
+---
+title: 'Predict.fun'
+description: 'EIP-712 signed orders with Kernel smart wallet on BNB Chain'
+---
+
+Predict.fun runs on BNB Chain and supports two wallet models: a Predict Account (a Kernel-based smart wallet, the default for users who signed up via Privy) and a direct EOA. Most users will use the Predict Account flow.
+
+## At a glance
+
+| | |
+| --- | --- |
+| **Chain** | BNB Chain (chainId 56) |
+| **Wallet model** | Predict Account (Kernel smart wallet) or EOA |
+| **Quote token** | USDT (18 decimals on BSC) |
+| **Signing** | Client-side (EIP-712, Kernel-wrapped for smart wallets) |
+| **Auth** | Predict.fun API key + Privy private key + Predict Account address |
+
+## Prerequisites
+
+- A Predict.fun account
+- Your Predict.fun API key
+- The Privy wallet private key that controls your Predict Account
+- Your Predict Account address (the deposit/trading address shown in the Predict.fun UI)
+- USDT on BNB Chain in your Predict Account
+
+<Note>
+The Privy private key is the **EOA** that owns your Kernel smart wallet (Predict Account). The Predict Account is the address that holds positions and pays fees; the Privy EOA is what signs.
+</Note>
+
+## One-time setup
+
+### 1. Approve exchange contracts
+
+The Predict Account must approve the right CTF Exchange contract to spend USDT and Conditional Tokens. There are **four exchange contract variants** depending on the market type, so the approval needs to match the market you're trading.
+
+| `isNegRisk` | `isYieldBearing` | Exchange contract |
+| --- | --- | --- |
+| `false` | `false` | `0x8BC070BEdAB741406F4B1Eb65A72bee27894B689` (CTF) |
+| `true` | `false` | `0x365fb81bd4A24D6303cd2F19c349dE6894D8d58A` (NegRisk) |
+| `false` | `true` | `0x6bEb5a40C032AFc305961162d8204CDA16DECFa5` (YieldBearing) |
+| `true` | `true` | `0x8A289d458f5a134bA40015085A8F50Ffb681B41d` (Both) |
+
+```typescript
+import {
+  approvePredictFunExchange,
+  getPredictFunApprovalStatus,
+} from '@delphimarkets/sdk';
+import { createWalletClient, createPublicClient, http } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+import { bsc } from 'viem/chains';
+
+const account = privateKeyToAccount(`0x${process.env.PREDICTFUN_PRIVY_KEY!}`);
+const walletClient = createWalletClient({ account, chain: bsc, transport: http() });
+const publicClient = createPublicClient({ chain: bsc, transport: http() });
+
+const predictAccount = process.env.PREDICTFUN_PREDICT_ACCOUNT as `0x${string}`;
+
+// Pull these flags from the market data: market.isNegRisk and market.isYieldBearing
+const marketFlags = { isNegRisk: false, isYieldBearing: true };
+
+const status = await getPredictFunApprovalStatus(publicClient, predictAccount, marketFlags);
+if (!status.usdtApproved || !status.ctfApproved) {
+  const hashes = await approvePredictFunExchange(walletClient, publicClient, {
+    ...marketFlags,
+    predictAccount,
+  });
+  for (const hash of hashes) {
+    await publicClient.waitForTransactionReceipt({ hash });
+  }
+  console.log('Approvals confirmed');
+}
+```
+
+You only need to approve each of the four variants once — if you trade in different market types, repeat this with the matching `marketFlags`.
+
+### 2. Register credentials with Delphi
+
+```typescript
+const client = new DelphiClient({
+  apiKey: process.env.DELPHI_API_KEY!,
+  baseUrl: 'https://api.delphiterminal.co',
+});
+
+await client.registerCredentials('predictfun', {
+  api_key: process.env.PREDICTFUN_API_KEY!,
+  api_secret: process.env.PREDICTFUN_PRIVY_KEY!,    // Privy EOA private key, hex
+  api_passphrase: '',                                 // unused
+  signer_address: predictAccount,                     // your Predict Account address
+});
+```
+
+The Privy key is stored encrypted server-side. The server uses it to perform Predict.fun's JWT challenge-response auth flow (which is separate from the EIP-712 signing of orders).
+
+## Build and place an order
+
+```typescript
+import { DelphiClient, buildPredictFunOrder } from '@delphimarkets/sdk';
+
+const signedOrder = await buildPredictFunOrder(
+  {
+    tokenId: '11050832...',                  // from market.outcomes[i].onChainId
+    side: 'BUY',
+    price: 0.50,                              // 0.01 to 0.99
+    size: (50n * 10n ** 18n).toString(),     // 50 shares (1e18 per share)
+    feeRateBps: '200',                        // from market.feeRateBps
+    isNegRisk: false,                         // from market.isNegRisk
+    isYieldBearing: true,                     // from market.isYieldBearing
+    predictAccount,                           // enables Kernel signing
+    strategy: 'LIMIT',                        // optional, default 'LIMIT'
+  },
+  walletClient,
+);
+
+const order = await client.placeOrder({
+  exchange: 'predictfun',
+  market_id: '174032',
+  order_type: 'GTC',
+  signed_order: signedOrder,
+});
+
+console.log(`Placed: ${order.order_id} (${order.status})`);
+```
+
+### Build parameters
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `tokenId` | `string` | Outcome token ID, from `market.outcomes[i].onChainId`. |
+| `side` | `'BUY' \| 'SELL'` | |
+| `price` | `number` | Price per share in [0.01, 0.99]. |
+| `size` | `string` | Shares in 1e18 base units. 50 shares = `"50000000000000000000"`. |
+| `feeRateBps` | `string` | From `market.feeRateBps`. **Must match the market**. |
+| `isNegRisk` | `boolean` | From `market.isNegRisk`. **Must match the market**. |
+| `isYieldBearing` | `boolean` | From `market.isYieldBearing`. **Must match the market**. |
+| `predictAccount` | `0x${string}?` | Pass to enable Kernel-wrapped signing. Omit to sign as the EOA directly. |
+| `strategy` | `'LIMIT' \| 'MARKET'?` | Default `'LIMIT'`. |
+| `slippageBps` | `string?` | For market orders only. |
+| `expiration` | `number?` | Unix seconds. Default `0` (no expiry). |
+
+<Warning>
+The combination of `isNegRisk`, `isYieldBearing`, and `feeRateBps` **must match the on-chain market exactly**. The signature is bound to the specific exchange contract address, which is selected by these flags. A mismatch produces a valid signature for the wrong contract, and the order will fail validation.
+
+Always pull these three values fresh from the Predict.fun market data API before building an order.
+</Warning>
+
+### EOA vs Predict Account flow
+
+If your Predict.fun account is an EOA (no smart wallet), omit `predictAccount` from `buildPredictFunOrder` and use a different env var:
+
+```typescript
+const account = privateKeyToAccount(`0x${process.env.PREDICTFUN_PRIVATE_KEY!}`);
+const walletClient = createWalletClient({ account, chain: bsc, transport: http() });
+
+const signedOrder = await buildPredictFunOrder(
+  {
+    tokenId,
+    side: 'BUY',
+    price: 0.50,
+    size: '50000000000000000000',
+    feeRateBps: '200',
+    isNegRisk: false,
+    isYieldBearing: false,
+    // no predictAccount — signs as the EOA directly
+  },
+  walletClient,
+);
+```
+
+The SDK switches to direct EOA signing automatically when `predictAccount` is omitted.
+
+## Query and cancel
+
+```typescript
+const status = await client.getOrder(order.order_id, 'predictfun');
+const all = await client.listOrders('predictfun');
+await client.cancelOrder(order.order_id, 'predictfun');
+```
+
+## Common pitfalls
+
+<AccordionGroup>
+  <Accordion title="Order rejected: 'invalid signature'">
+    Almost always a mismatch between the market flags you passed (`isNegRisk`, `isYieldBearing`) and the actual market. There are four exchange contracts; the signature is only valid against one. Re-fetch the market and copy the flags directly:
+
+    ```typescript
+    const market = await fetch(`.../markets/${marketId}`).then(r => r.json());
+    // pass market.isNegRisk, market.isYieldBearing, market.feeRateBps verbatim
+    ```
+  </Accordion>
+
+  <Accordion title="USDT amounts look wrong">
+    USDT on BNB Chain uses **18 decimals**. The SDK takes `size` in base units (`1e18 = 1 share`). 50 shares = `(50n * 10n ** 18n).toString()`. Don't confuse this with the 6-decimal USDT on Ethereum.
+  </Accordion>
+
+  <Accordion title="ApprovalForAll for Conditional Tokens fails">
+    The CTF approval is an `ERC-1155 setApprovalForAll` from your Predict Account to the right exchange contract. If your Predict Account has zero ETH/BNB to pay gas (it's a smart wallet, so it sponsors its own gas via Kernel), the approval transaction will fail. Top up the Predict Account with a small amount of BNB (~0.001) for gas before approving.
+  </Accordion>
+
+  <Accordion title="signatureType differences">
+    - `0` (EOA) — used when `predictAccount` is omitted
+    - `2` (POLY_GNOSIS_SAFE) — used when `predictAccount` is set, even though Predict.fun uses a Kernel wallet rather than a Gnosis Safe. The signature wrapping is Kernel-specific (uses the ECDSA validator at `0x845ADb2C711129d4f3966735eD98a9F09fC4cE57`) but reuses the `2` signatureType slot.
+
+    The SDK picks the right one based on whether you passed `predictAccount`.
+  </Accordion>
+
+  <Accordion title="JWT auth keeps expiring">
+    Predict.fun's JWT tokens expire after a short window. The Delphi server handles refreshes automatically using your stored Privy private key. If you keep getting 401s on Predict.fun specifically, your registered `api_secret` (Privy key) might be wrong — re-register it.
+  </Accordion>
+</AccordionGroup>
+
+## API reference
+
+- [`POST /api/v1/orders`](/trading/api/place-order) — accepts a `PredictFunOrderPayload` in `signed_order`
+- [`POST /api/v1/users/{userID}/credentials`](/trading/api/register-credentials) — pass `_` as the path segment
