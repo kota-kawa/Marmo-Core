@@ -1,1 +1,0 @@
-ALTER TABLE rooms ADD COLUMN human_code_expires_at TIMESTAMPTZ;

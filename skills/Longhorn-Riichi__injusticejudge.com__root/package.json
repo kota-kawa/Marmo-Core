@@ -1,7 +1,0 @@
-{
-  "dependencies": {
-    "@netlify/functions": "^2.8.0",
-    "@upstash/redis": "^1.31.6",
-    "axios": "^1.7.2"
-  }
-}

@@ -1,1 +1,0 @@
-"""Weather plugin tool handlers."""

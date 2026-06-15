@@ -49,6 +49,12 @@ SKILL_NAME = "skill.md"     # matched case-insensitively
 API = "https://api.github.com"
 RAW = "https://raw.githubusercontent.com"
 
+# Only redistribute skills under permissive licenses ("completely fine").
+ALLOW_LICENSES = {
+    "MIT", "MIT-0", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause",
+    "BSD-3-Clause-Clear", "ISC", "0BSD", "Unlicense", "CC0-1.0", "Zlib",
+}
+
 REPO_WORKERS = int(os.environ.get("REPO_WORKERS", "16"))
 FILE_WORKERS = int(os.environ.get("FILE_WORKERS", "8"))
 STOP = threading.Event()
@@ -247,6 +253,9 @@ def process_repo(repo, ctx):
     info = api_get(f"/repos/{repo}")
     if not info:
         return
+    lic = (info.get("license") or {}).get("spdx_id")
+    if lic not in ALLOW_LICENSES:
+        return  # skip non-permissive / unlicensed repos
     branch = info.get("default_branch", "main")
     tree = api_get(f"/repos/{repo}/git/trees/{branch}", {"recursive": "1"})
     if not tree or "tree" not in tree:
@@ -313,6 +322,7 @@ def process_repo(repo, ctx):
                 "name": name,
                 "description": desc,
                 "repo": repo,
+                "license": lic,
                 "path": skill_md,
                 "local": folder,
                 "files": len(files),

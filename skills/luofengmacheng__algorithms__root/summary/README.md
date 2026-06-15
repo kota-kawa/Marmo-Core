@@ -1,1 +1,0 @@
-### [2016年终总结](https://github.com/luofengmacheng/algorithms/blob/master/summary/2016.md)
