@@ -1,3 +1,15 @@
 skills_collect.log
 skills/.state.json
 skills/.repos.json
+
+# Python build artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# WSL / Windows "mark of the web" metadata
+*:Zone.Identifier
