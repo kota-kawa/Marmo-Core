@@ -554,6 +554,9 @@ class Kernel:
         )
         pending_calls: list[ToolCall] = [_tool_call_from_dict(item) for item in frame.get("calls", ())]
         llm_calls = int(frame.get("llm_calls", 0))
+        # Counts callables actually dispatched, not model rounds: one round can
+        # request several calls, and it is the side effects that need bounding.
+        executed_calls = int(frame.get("executed_calls", 0))
         tool_results = [ToolResult.from_dict(item) for item in state.step_results if "tool_id" in item]
         agent_results = [AgentResult.from_dict(item) for item in state.step_results if "agent_id" in item]
         # A human's replacement arguments, carried until the call they name runs.
@@ -573,6 +576,7 @@ class Kernel:
                 "messages": [message.to_dict() for message in messages],
                 "calls": [call.to_dict() for call in pending_calls],
                 "llm_calls": llm_calls,
+                "executed_calls": executed_calls,
             }
             if override is not None:
                 saved["override"] = override
@@ -624,10 +628,6 @@ class Kernel:
 
         while True:
             if not pending_calls:
-                if llm_calls > self.max_tool_calls:
-                    return failed(
-                        f"exceeded max_tool_calls={self.max_tool_calls}; raise the limit or simplify the task"
-                    )
                 call_untrusted_sources = tuple(untrusted_sources)
                 call_prompt_findings = tuple(prompt_findings)
                 response = self.llm.complete(messages, compiled.tools)
@@ -662,6 +662,10 @@ class Kernel:
                 pending_calls = list(response.tool_calls)
 
             while pending_calls:
+                if executed_calls >= self.max_tool_calls:
+                    return failed(
+                        f"exceeded max_tool_calls={self.max_tool_calls}; raise the limit or simplify the task"
+                    )
                 call = pending_calls[0]
                 tool = tools_by_name.get(call.name)
                 called_agent = agents_by_name.get(call.name)
@@ -693,6 +697,9 @@ class Kernel:
                 result = outcome.result
                 assert result is not None  # no control means the call produced a result
 
+                # Counted only once the call ran to a result: a paused call is
+                # replayed on resume and must not be charged to the budget twice.
+                executed_calls += 1
                 pending_calls.pop(0)
                 recovery_state.pop(call.id, None)
                 if outcome.tool is not None:
