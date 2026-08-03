@@ -1,0 +1,32 @@
+{
+  "id": "tool.compat.echo",
+  "kind": "tool",
+  "name": "Compatibility echo",
+  "version": "0.3.0",
+  "description": "A pre-optional-metadata resource fixture.",
+  "capabilities": [
+    "echo"
+  ],
+  "input_summary": "Text to echo",
+  "output_summary": "Echoed text",
+  "required_permissions": [],
+  "cost_estimate": 0.0,
+  "latency_class": "fast",
+  "side_effect": "none",
+  "trust_level": "verified",
+  "ref": "tool://compat/echo",
+  "tags": [
+    "compatibility"
+  ],
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "text"
+    ],
+    "properties": {
+      "text": {
+        "type": "string"
+      }
+    }
+  }
+}

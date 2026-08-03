@@ -1,0 +1,960 @@
+{
+  "corpus_size": 100063,
+  "scale_size": 100000,
+  "scenarios": 34,
+  "pool": 50,
+  "route_k": 3,
+  "min_score": 0.45,
+  "min_relevance": 0.55,
+  "selector": "greedy",
+  "retrievers": {
+    "lexical": {
+      "set_precision": 0.656,
+      "set_recall": 0.596,
+      "set_f1": 0.617,
+      "set_exact_match": 0.5,
+      "dependency_closure_rate": 1.0,
+      "conflict_free_rate": 1.0,
+      "policy_feasible_rate": 1.0,
+      "status_accuracy": 0.824,
+      "abstain_escalate_accuracy": 1.0,
+      "coverage": 0.706,
+      "latency_ms_mean": 156.988,
+      "mistakes": [
+        {
+          "task": "bill our clients for last month and get the paperwork out",
+          "selected": [],
+          "gold": [
+            "agent.invoicing.specialist",
+            "memory.invoicing.context",
+            "skill.invoicing.procedure",
+            "tool.invoicing.workbench"
+          ]
+        },
+        {
+          "task": "customers keep leaving after the first month, figure out why and stop it",
+          "selected": [],
+          "gold": [
+            "agent.retention.specialist",
+            "memory.retention.context",
+            "skill.retention.procedure",
+            "tool.retention.workbench"
+          ]
+        },
+        {
+          "task": "check whether attackers could break into our code and report the holes",
+          "selected": [],
+          "gold": [
+            "agent.secaudit.specialist",
+            "memory.secaudit.context",
+            "skill.secaudit.procedure",
+            "tool.secaudit.workbench"
+          ]
+        },
+        {
+          "task": "ship the new version to live users carefully and be ready to undo it",
+          "selected": [],
+          "gold": [
+            "agent.deploy.specialist",
+            "memory.deploy.context",
+            "skill.deploy.procedure",
+            "tool.deploy.workbench"
+          ]
+        },
+        {
+          "task": "production broke last night, run the cleanup and write up what went wrong",
+          "selected": [
+            "memory.deploy.context",
+            "skill.deploy.procedure",
+            "tool.deploy.quickdraft"
+          ],
+          "gold": [
+            "agent.incident.specialist",
+            "memory.incident.context",
+            "skill.incident.procedure",
+            "tool.incident.workbench"
+          ]
+        },
+        {
+          "task": "sketch how our app's storage layer should be structured",
+          "selected": [],
+          "gold": [
+            "agent.dbdesign.specialist",
+            "memory.dbdesign.context",
+            "skill.dbdesign.procedure",
+            "tool.dbdesign.workbench"
+          ]
+        },
+        {
+          "task": "stretch one long article into a month of smaller content pieces",
+          "selected": [
+            "memory.contentmkt.context",
+            "skill.contentmkt.procedure",
+            "tool.contentmkt.quickdraft"
+          ],
+          "gold": [
+            "agent.contentmkt.specialist",
+            "memory.contentmkt.context",
+            "skill.contentmkt.procedure",
+            "tool.contentmkt.workbench"
+          ]
+        },
+        {
+          "task": "go through this supplier agreement and flag anything risky before we sign",
+          "selected": [
+            "skill.travel-procurement.archival-19.procedure"
+          ],
+          "gold": [
+            "agent.contracts.specialist",
+            "memory.contracts.context",
+            "skill.contracts.procedure",
+            "tool.contracts.workbench"
+          ]
+        },
+        {
+          "task": "sort the pile of customer complaints so the urgent ones get handled first",
+          "selected": [
+            "memory.retention.context",
+            "skill.retention.procedure",
+            "tool.retention.quickdraft"
+          ],
+          "gold": [
+            "agent.support.specialist",
+            "memory.support.context",
+            "skill.support.procedure",
+            "tool.support.workbench"
+          ]
+        },
+        {
+          "task": "translate and localize the product strings into Japanese and German",
+          "selected": [
+            "skill.travel-catalog.archival-19.procedure"
+          ],
+          "gold": [
+            "agent.l10n.specialist",
+            "memory.l10n.context",
+            "skill.l10n.procedure",
+            "tool.l10n.workbench"
+          ]
+        },
+        {
+          "task": "make the app speak other languages, starting with Japanese",
+          "selected": [],
+          "gold": [
+            "agent.l10n.specialist",
+            "memory.l10n.context",
+            "skill.l10n.procedure",
+            "tool.l10n.workbench"
+          ]
+        },
+        {
+          "task": "run a security audit of the release and then execute the production deployment with a canary rollout",
+          "selected": [
+            "agent.deploy.specialist",
+            "memory.deploy.context",
+            "skill.deploy.procedure",
+            "tool.deploy.workbench"
+          ],
+          "gold": [
+            "agent.deploy.specialist",
+            "agent.secaudit.specialist",
+            "memory.deploy.context",
+            "memory.secaudit.context",
+            "skill.deploy.procedure",
+            "skill.secaudit.procedure",
+            "tool.deploy.workbench",
+            "tool.secaudit.workbench"
+          ]
+        },
+        {
+          "task": "bill the monthly customer invoices and analyze which invoiced customers are churning",
+          "selected": [
+            "agent.invoicing.specialist",
+            "memory.invoicing.context",
+            "skill.invoicing.procedure",
+            "tool.invoicing.workbench"
+          ],
+          "gold": [
+            "agent.invoicing.specialist",
+            "agent.retention.specialist",
+            "memory.invoicing.context",
+            "memory.retention.context",
+            "skill.invoicing.procedure",
+            "skill.retention.procedure",
+            "tool.invoicing.workbench",
+            "tool.retention.workbench"
+          ]
+        },
+        {
+          "task": "design the database schema and build the ETL pipeline that loads it",
+          "selected": [
+            "agent.dbdesign.specialist",
+            "agent.etl.specialist",
+            "memory.dbdesign.context",
+            "skill.dbdesign.procedure",
+            "skill.etl.procedure",
+            "tool.dbdesign.workbench",
+            "tool.etl.workbench"
+          ],
+          "gold": [
+            "agent.dbdesign.specialist",
+            "agent.etl.specialist",
+            "memory.dbdesign.context",
+            "memory.etl.context",
+            "skill.dbdesign.procedure",
+            "skill.etl.procedure",
+            "tool.dbdesign.workbench",
+            "tool.etl.workbench"
+          ]
+        },
+        {
+          "task": "repurpose the whitepaper into blog posts and localize them into Japanese",
+          "selected": [
+            "agent.contentmkt.specialist",
+            "memory.contentmkt.context",
+            "skill.contentmkt.procedure",
+            "tool.contentmkt.workbench"
+          ],
+          "gold": [
+            "agent.contentmkt.specialist",
+            "agent.l10n.specialist",
+            "memory.contentmkt.context",
+            "memory.l10n.context",
+            "skill.contentmkt.procedure",
+            "skill.l10n.procedure",
+            "tool.contentmkt.workbench",
+            "tool.l10n.workbench"
+          ]
+        },
+        {
+          "task": "bill our clients for last month and get the paperwork out",
+          "expected_status": "selected",
+          "status": "abstain",
+          "status_ok": false
+        },
+        {
+          "task": "customers keep leaving after the first month, figure out why and stop it",
+          "expected_status": "selected",
+          "status": "abstain",
+          "status_ok": false
+        },
+        {
+          "task": "check whether attackers could break into our code and report the holes",
+          "expected_status": "selected",
+          "status": "abstain",
+          "status_ok": false
+        },
+        {
+          "task": "ship the new version to live users carefully and be ready to undo it",
+          "expected_status": "selected",
+          "status": "abstain",
+          "status_ok": false
+        },
+        {
+          "task": "sketch how our app's storage layer should be structured",
+          "expected_status": "selected",
+          "status": "abstain",
+          "status_ok": false
+        },
+        {
+          "task": "make the app speak other languages, starting with Japanese",
+          "expected_status": "selected",
+          "status": "abstain",
+          "status_ok": false
+        }
+      ],
+      "latency_ms_p50": 37.761,
+      "latency_ms_p95": 808.61,
+      "warmup_seconds": 7.15,
+      "retrieval_gold_recall": 0.642,
+      "pool_tokens_mean": 1412.6,
+      "standard": {
+        "set_precision": 0.569,
+        "set_recall": 0.562,
+        "set_f1": 0.565,
+        "set_exact_match": 0.542,
+        "dependency_closure_rate": 1.0,
+        "conflict_free_rate": 1.0,
+        "policy_feasible_rate": 1.0,
+        "status_accuracy": 0.786,
+        "abstain_escalate_accuracy": 1.0,
+        "coverage": 0.643
+      },
+      "cross_domain": {
+        "set_precision": 1.0,
+        "set_recall": 0.729,
+        "set_f1": 0.822,
+        "set_exact_match": 0.333,
+        "dependency_closure_rate": 1.0,
+        "conflict_free_rate": 1.0,
+        "policy_feasible_rate": 1.0,
+        "status_accuracy": 1.0,
+        "abstain_escalate_accuracy": 0.0,
+        "coverage": 1.0
+      }
+    },
+    "hier-namespace-lexical": {
+      "set_precision": 0.6,
+      "set_recall": 0.521,
+      "set_f1": 0.549,
+      "set_exact_match": 0.4,
+      "dependency_closure_rate": 1.0,
+      "conflict_free_rate": 1.0,
+      "policy_feasible_rate": 1.0,
+      "status_accuracy": 0.794,
+      "abstain_escalate_accuracy": 1.0,
+      "coverage": 0.676,
+      "latency_ms_mean": 226.596,
+      "mistakes": [
+        {
+          "task": "create and send the monthly customer invoices for the billing run",
+          "selected": [],
+          "gold": [
+            "agent.invoicing.specialist",
+            "memory.invoicing.context",
+            "skill.invoicing.procedure",
+            "tool.invoicing.workbench"
+          ]
+        },
+        {
+          "task": "bill our clients for last month and get the paperwork out",
+          "selected": [],
+          "gold": [
+            "agent.invoicing.specialist",
+            "memory.invoicing.context",
+            "skill.invoicing.procedure",
+            "tool.invoicing.workbench"
+          ]
+        },
+        {
+          "task": "customers keep leaving after the first month, figure out why and stop it",
+          "selected": [],
+          "gold": [
+            "agent.retention.specialist",
+            "memory.retention.context",
+            "skill.retention.procedure",
+            "tool.retention.workbench"
+          ]
+        },
+        {
+          "task": "check whether attackers could break into our code and report the holes",
+          "selected": [],
+          "gold": [
+            "agent.secaudit.specialist",
+            "memory.secaudit.context",
+            "skill.secaudit.procedure",
+            "tool.secaudit.workbench"
+          ]
+        },
+        {
+          "task": "ship the new version to live users carefully and be ready to undo it",
+          "selected": [],
+          "gold": [
+            "agent.deploy.specialist",
+            "memory.deploy.context",
+            "skill.deploy.procedure",
+            "tool.deploy.workbench"
+          ]
+        },
+        {
+          "task": "production broke last night, run the cleanup and write up what went wrong",
+          "selected": [
+            "memory.deploy.context",
+            "skill.deploy.procedure",
+            "tool.deploy.quickdraft"
+          ],
+          "gold": [
+            "agent.incident.specialist",
+            "memory.incident.context",
+            "skill.incident.procedure",
+            "tool.incident.workbench"
+          ]
+        },
+        {
+          "task": "sketch how our app's storage layer should be structured",
+          "selected": [],
+          "gold": [
+            "agent.dbdesign.specialist",
+            "memory.dbdesign.context",
+            "skill.dbdesign.procedure",
+            "tool.dbdesign.workbench"
+          ]
+        },
+        {
+          "task": "stretch one long article into a month of smaller content pieces",
+          "selected": [
+            "skill.travel-moderation.archival-19.procedure"
+          ],
+          "gold": [
+            "agent.contentmkt.specialist",
+            "memory.contentmkt.context",
+            "skill.contentmkt.procedure",
+            "tool.contentmkt.workbench"
+          ]
+        },
+        {
+          "task": "go through this supplier agreement and flag anything risky before we sign",
+          "selected": [
+            "skill.travel-procurement.archival-19.procedure"
+          ],
+          "gold": [
+            "agent.contracts.specialist",
+            "memory.contracts.context",
+            "skill.contracts.procedure",
+            "tool.contracts.workbench"
+          ]
+        },
+        {
+          "task": "sort the pile of customer complaints so the urgent ones get handled first",
+          "selected": [
+            "skill.retailops-onboarding.archival-19.procedure"
+          ],
+          "gold": [
+            "agent.support.specialist",
+            "memory.support.context",
+            "skill.support.procedure",
+            "tool.support.workbench"
+          ]
+        },
+        {
+          "task": "the nightly job that moves data between systems needs to be rebuilt properly",
+          "selected": [
+            "agent.etl.specialist",
+            "skill.etl.procedure",
+            "tool.etl.workbench"
+          ],
+          "gold": [
+            "agent.etl.specialist",
+            "memory.etl.context",
+            "skill.etl.procedure",
+            "tool.etl.workbench"
+          ]
+        },
+        {
+          "task": "translate and localize the product strings into Japanese and German",
+          "selected": [
+            "skill.travel-catalog.archival-19.procedure"
+          ],
+          "gold": [
+            "agent.l10n.specialist",
+            "memory.l10n.context",
+            "skill.l10n.procedure",
+            "tool.l10n.workbench"
+          ]
+        },
+        {
+          "task": "make the app speak other languages, starting with Japanese",
+          "selected": [],
+          "gold": [
+            "agent.l10n.specialist",
+            "memory.l10n.context",
+            "skill.l10n.procedure",
+            "tool.l10n.workbench"
+          ]
+        },
+        {
+          "task": "run a security audit of the release and then execute the production deployment with a canary rollout",
+          "selected": [
+            "agent.deploy.specialist",
+            "memory.deploy.context",
+            "skill.deploy.procedure",
+            "tool.deploy.workbench"
+          ],
+          "gold": [
+            "agent.deploy.specialist",
+            "agent.secaudit.specialist",
+            "memory.deploy.context",
+            "memory.secaudit.context",
+            "skill.deploy.procedure",
+            "skill.secaudit.procedure",
+            "tool.deploy.workbench",
+            "tool.secaudit.workbench"
+          ]
+        },
+        {
+          "task": "bill the monthly customer invoices and analyze which invoiced customers are churning",
+          "selected": [
+            "agent.invoicing.specialist",
+            "memory.invoicing.context",
+            "skill.invoicing.procedure",
+            "tool.invoicing.workbench"
+          ],
+          "gold": [
+            "agent.invoicing.specialist",
+            "agent.retention.specialist",
+            "memory.invoicing.context",
+            "memory.retention.context",
+            "skill.invoicing.procedure",
+            "skill.retention.procedure",
+            "tool.invoicing.workbench",
+            "tool.retention.workbench"
+          ]
+        },
+        {
+          "task": "design the database schema and build the ETL pipeline that loads it",
+          "selected": [
+            "agent.dbdesign.specialist",
+            "agent.etl.specialist",
+            "memory.dbdesign.context",
+            "skill.dbdesign.procedure",
+            "skill.etl.procedure",
+            "tool.dbdesign.workbench",
+            "tool.etl.workbench"
+          ],
+          "gold": [
+            "agent.dbdesign.specialist",
+            "agent.etl.specialist",
+            "memory.dbdesign.context",
+            "memory.etl.context",
+            "skill.dbdesign.procedure",
+            "skill.etl.procedure",
+            "tool.dbdesign.workbench",
+            "tool.etl.workbench"
+          ]
+        },
+        {
+          "task": "repurpose the whitepaper into blog posts and localize them into Japanese",
+          "selected": [
+            "agent.contentmkt.specialist",
+            "memory.contentmkt.context",
+            "skill.contentmkt.procedure",
+            "tool.contentmkt.workbench"
+          ],
+          "gold": [
+            "agent.contentmkt.specialist",
+            "agent.l10n.specialist",
+            "memory.contentmkt.context",
+            "memory.l10n.context",
+            "skill.contentmkt.procedure",
+            "skill.l10n.procedure",
+            "tool.contentmkt.workbench",
+            "tool.l10n.workbench"
+          ]
+        },
+        {
+          "task": "prepare the interview loop for the engineer role and review the contractor agreement clauses",
+          "selected": [
+            "agent.recruiting.specialist",
+            "memory.recruiting.context",
+            "skill.recruiting.procedure",
+            "tool.recruiting.workbench"
+          ],
+          "gold": [
+            "agent.contracts.specialist",
+            "agent.recruiting.specialist",
+            "memory.contracts.context",
+            "memory.recruiting.context",
+            "skill.contracts.procedure",
+            "skill.recruiting.procedure",
+            "tool.contracts.workbench",
+            "tool.recruiting.workbench"
+          ]
+        },
+        {
+          "task": "create and send the monthly customer invoices for the billing run",
+          "expected_status": "selected",
+          "status": "escalate",
+          "status_ok": false
+        },
+        {
+          "task": "bill our clients for last month and get the paperwork out",
+          "expected_status": "selected",
+          "status": "abstain",
+          "status_ok": false
+        },
+        {
+          "task": "customers keep leaving after the first month, figure out why and stop it",
+          "expected_status": "selected",
+          "status": "abstain",
+          "status_ok": false
+        },
+        {
+          "task": "check whether attackers could break into our code and report the holes",
+          "expected_status": "selected",
+          "status": "abstain",
+          "status_ok": false
+        },
+        {
+          "task": "ship the new version to live users carefully and be ready to undo it",
+          "expected_status": "selected",
+          "status": "abstain",
+          "status_ok": false
+        },
+        {
+          "task": "sketch how our app's storage layer should be structured",
+          "expected_status": "selected",
+          "status": "abstain",
+          "status_ok": false
+        },
+        {
+          "task": "make the app speak other languages, starting with Japanese",
+          "expected_status": "selected",
+          "status": "abstain",
+          "status_ok": false
+        }
+      ],
+      "latency_ms_p50": 18.097,
+      "latency_ms_p95": 52.323,
+      "warmup_seconds": 3.57,
+      "retrieval_gold_recall": 0.596,
+      "pool_tokens_mean": 1370.4,
+      "standard": {
+        "set_precision": 0.5,
+        "set_recall": 0.49,
+        "set_f1": 0.494,
+        "set_exact_match": 0.458,
+        "dependency_closure_rate": 1.0,
+        "conflict_free_rate": 1.0,
+        "policy_feasible_rate": 1.0,
+        "status_accuracy": 0.75,
+        "abstain_escalate_accuracy": 1.0,
+        "coverage": 0.607
+      },
+      "cross_domain": {
+        "set_precision": 1.0,
+        "set_recall": 0.646,
+        "set_f1": 0.767,
+        "set_exact_match": 0.167,
+        "dependency_closure_rate": 1.0,
+        "conflict_free_rate": 1.0,
+        "policy_feasible_rate": 1.0,
+        "status_accuracy": 1.0,
+        "abstain_escalate_accuracy": 0.0,
+        "coverage": 1.0
+      },
+      "hierarchy": {
+        "groups": 414,
+        "route_k": 3,
+        "scanned_fraction_mean": 0.1794,
+        "routed_cluster_recall": 0.8,
+        "oracle_cluster_recall": 1.0,
+        "flat_fallbacks": 6
+      }
+    },
+    "hier-provider-lexical": {
+      "set_precision": 0.633,
+      "set_recall": 0.567,
+      "set_f1": 0.591,
+      "set_exact_match": 0.433,
+      "dependency_closure_rate": 1.0,
+      "conflict_free_rate": 1.0,
+      "policy_feasible_rate": 1.0,
+      "status_accuracy": 0.824,
+      "abstain_escalate_accuracy": 1.0,
+      "coverage": 0.706,
+      "latency_ms_mean": 254.762,
+      "mistakes": [
+        {
+          "task": "bill our clients for last month and get the paperwork out",
+          "selected": [],
+          "gold": [
+            "agent.invoicing.specialist",
+            "memory.invoicing.context",
+            "skill.invoicing.procedure",
+            "tool.invoicing.workbench"
+          ]
+        },
+        {
+          "task": "customers keep leaving after the first month, figure out why and stop it",
+          "selected": [],
+          "gold": [
+            "agent.retention.specialist",
+            "memory.retention.context",
+            "skill.retention.procedure",
+            "tool.retention.workbench"
+          ]
+        },
+        {
+          "task": "check whether attackers could break into our code and report the holes",
+          "selected": [],
+          "gold": [
+            "agent.secaudit.specialist",
+            "memory.secaudit.context",
+            "skill.secaudit.procedure",
+            "tool.secaudit.workbench"
+          ]
+        },
+        {
+          "task": "ship the new version to live users carefully and be ready to undo it",
+          "selected": [],
+          "gold": [
+            "agent.deploy.specialist",
+            "memory.deploy.context",
+            "skill.deploy.procedure",
+            "tool.deploy.workbench"
+          ]
+        },
+        {
+          "task": "production broke last night, run the cleanup and write up what went wrong",
+          "selected": [
+            "memory.deploy.context",
+            "skill.deploy.procedure",
+            "tool.deploy.quickdraft"
+          ],
+          "gold": [
+            "agent.incident.specialist",
+            "memory.incident.context",
+            "skill.incident.procedure",
+            "tool.incident.workbench"
+          ]
+        },
+        {
+          "task": "sketch how our app's storage layer should be structured",
+          "selected": [],
+          "gold": [
+            "agent.dbdesign.specialist",
+            "memory.dbdesign.context",
+            "skill.dbdesign.procedure",
+            "tool.dbdesign.workbench"
+          ]
+        },
+        {
+          "task": "stretch one long article into a month of smaller content pieces",
+          "selected": [
+            "skill.realestate-moderation.archival-19.procedure"
+          ],
+          "gold": [
+            "agent.contentmkt.specialist",
+            "memory.contentmkt.context",
+            "skill.contentmkt.procedure",
+            "tool.contentmkt.workbench"
+          ]
+        },
+        {
+          "task": "go through this supplier agreement and flag anything risky before we sign",
+          "selected": [
+            "skill.edtech-procurement.archival-19.procedure"
+          ],
+          "gold": [
+            "agent.contracts.specialist",
+            "memory.contracts.context",
+            "skill.contracts.procedure",
+            "tool.contracts.workbench"
+          ]
+        },
+        {
+          "task": "sort the pile of customer complaints so the urgent ones get handled first",
+          "selected": [
+            "skill.retailops-onboarding.archival-19.procedure"
+          ],
+          "gold": [
+            "agent.support.specialist",
+            "memory.support.context",
+            "skill.support.procedure",
+            "tool.support.workbench"
+          ]
+        },
+        {
+          "task": "the nightly job that moves data between systems needs to be rebuilt properly",
+          "selected": [
+            "agent.etl.specialist",
+            "skill.etl.procedure",
+            "tool.etl.workbench"
+          ],
+          "gold": [
+            "agent.etl.specialist",
+            "memory.etl.context",
+            "skill.etl.procedure",
+            "tool.etl.workbench"
+          ]
+        },
+        {
+          "task": "translate and localize the product strings into Japanese and German",
+          "selected": [
+            "skill.realestate-catalog.archival-19.procedure"
+          ],
+          "gold": [
+            "agent.l10n.specialist",
+            "memory.l10n.context",
+            "skill.l10n.procedure",
+            "tool.l10n.workbench"
+          ]
+        },
+        {
+          "task": "make the app speak other languages, starting with Japanese",
+          "selected": [],
+          "gold": [
+            "agent.l10n.specialist",
+            "memory.l10n.context",
+            "skill.l10n.procedure",
+            "tool.l10n.workbench"
+          ]
+        },
+        {
+          "task": "run a security audit of the release and then execute the production deployment with a canary rollout",
+          "selected": [
+            "agent.deploy.specialist",
+            "memory.deploy.context",
+            "skill.deploy.procedure",
+            "tool.deploy.workbench"
+          ],
+          "gold": [
+            "agent.deploy.specialist",
+            "agent.secaudit.specialist",
+            "memory.deploy.context",
+            "memory.secaudit.context",
+            "skill.deploy.procedure",
+            "skill.secaudit.procedure",
+            "tool.deploy.workbench",
+            "tool.secaudit.workbench"
+          ]
+        },
+        {
+          "task": "bill the monthly customer invoices and analyze which invoiced customers are churning",
+          "selected": [
+            "agent.invoicing.specialist",
+            "memory.invoicing.context",
+            "skill.invoicing.procedure",
+            "tool.invoicing.workbench"
+          ],
+          "gold": [
+            "agent.invoicing.specialist",
+            "agent.retention.specialist",
+            "memory.invoicing.context",
+            "memory.retention.context",
+            "skill.invoicing.procedure",
+            "skill.retention.procedure",
+            "tool.invoicing.workbench",
+            "tool.retention.workbench"
+          ]
+        },
+        {
+          "task": "design the database schema and build the ETL pipeline that loads it",
+          "selected": [
+            "agent.dbdesign.specialist",
+            "agent.etl.specialist",
+            "memory.dbdesign.context",
+            "skill.dbdesign.procedure",
+            "skill.etl.procedure",
+            "tool.dbdesign.workbench",
+            "tool.etl.workbench"
+          ],
+          "gold": [
+            "agent.dbdesign.specialist",
+            "agent.etl.specialist",
+            "memory.dbdesign.context",
+            "memory.etl.context",
+            "skill.dbdesign.procedure",
+            "skill.etl.procedure",
+            "tool.dbdesign.workbench",
+            "tool.etl.workbench"
+          ]
+        },
+        {
+          "task": "repurpose the whitepaper into blog posts and localize them into Japanese",
+          "selected": [
+            "agent.contentmkt.specialist",
+            "memory.contentmkt.context",
+            "skill.contentmkt.procedure",
+            "tool.contentmkt.workbench"
+          ],
+          "gold": [
+            "agent.contentmkt.specialist",
+            "agent.l10n.specialist",
+            "memory.contentmkt.context",
+            "memory.l10n.context",
+            "skill.contentmkt.procedure",
+            "skill.l10n.procedure",
+            "tool.contentmkt.workbench",
+            "tool.l10n.workbench"
+          ]
+        },
+        {
+          "task": "prepare the interview loop for the engineer role and review the contractor agreement clauses",
+          "selected": [
+            "agent.contracts.specialist",
+            "agent.recruiting.specialist",
+            "memory.recruiting.context",
+            "skill.contracts.procedure",
+            "skill.recruiting.procedure",
+            "tool.contracts.workbench",
+            "tool.recruiting.workbench"
+          ],
+          "gold": [
+            "agent.contracts.specialist",
+            "agent.recruiting.specialist",
+            "memory.contracts.context",
+            "memory.recruiting.context",
+            "skill.contracts.procedure",
+            "skill.recruiting.procedure",
+            "tool.contracts.workbench",
+            "tool.recruiting.workbench"
+          ]
+        },
+        {
+          "task": "bill our clients for last month and get the paperwork out",
+          "expected_status": "selected",
+          "status": "abstain",
+          "status_ok": false
+        },
+        {
+          "task": "customers keep leaving after the first month, figure out why and stop it",
+          "expected_status": "selected",
+          "status": "abstain",
+          "status_ok": false
+        },
+        {
+          "task": "check whether attackers could break into our code and report the holes",
+          "expected_status": "selected",
+          "status": "abstain",
+          "status_ok": false
+        },
+        {
+          "task": "ship the new version to live users carefully and be ready to undo it",
+          "expected_status": "selected",
+          "status": "abstain",
+          "status_ok": false
+        },
+        {
+          "task": "sketch how our app's storage layer should be structured",
+          "expected_status": "selected",
+          "status": "abstain",
+          "status_ok": false
+        },
+        {
+          "task": "make the app speak other languages, starting with Japanese",
+          "expected_status": "selected",
+          "status": "abstain",
+          "status_ok": false
+        }
+      ],
+      "latency_ms_p50": 56.002,
+      "latency_ms_p95": 273.791,
+      "warmup_seconds": 3.16,
+      "retrieval_gold_recall": 0.6,
+      "pool_tokens_mean": 1378.7,
+      "standard": {
+        "set_precision": 0.542,
+        "set_recall": 0.531,
+        "set_f1": 0.536,
+        "set_exact_match": 0.5,
+        "dependency_closure_rate": 1.0,
+        "conflict_free_rate": 1.0,
+        "policy_feasible_rate": 1.0,
+        "status_accuracy": 0.786,
+        "abstain_escalate_accuracy": 1.0,
+        "coverage": 0.643
+      },
+      "cross_domain": {
+        "set_precision": 1.0,
+        "set_recall": 0.708,
+        "set_f1": 0.811,
+        "set_exact_match": 0.167,
+        "dependency_closure_rate": 1.0,
+        "conflict_free_rate": 1.0,
+        "policy_feasible_rate": 1.0,
+        "status_accuracy": 1.0,
+        "abstain_escalate_accuracy": 0.0,
+        "coverage": 1.0
+      },
+      "hierarchy": {
+        "groups": 93,
+        "route_k": 3,
+        "scanned_fraction_mean": 0.1897,
+        "routed_cluster_recall": 0.8,
+        "oracle_cluster_recall": 1.0,
+        "flat_fallbacks": 6
+      }
+    }
+  }
+}

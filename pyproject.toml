@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "marmo-core"
+version = "0.4.0"
+description = "Zero-dependency AI Agent Kernel core primitives: unified resource registry, search CLI, and a guarded execution loop."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+  { name = "Marmo-Core Contributors" }
+]
+keywords = ["ai-agent", "kernel", "resource-registry", "retrieval", "cli"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = []
+
+[project.scripts]
+marmo = "marmo_core.cli:main"
+marmo-core = "marmo_core.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["marmo_core*"]
+
+[tool.setuptools.package-data]
+marmo_core = ["py.typed"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.mypy]
+python_version = "3.10"
+files = ["marmo_core"]
+pretty = true

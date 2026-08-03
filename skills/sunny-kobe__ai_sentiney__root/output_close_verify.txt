@@ -1,103 +1,0 @@
-/Users/lan/Desktop/code/ai_sentiney/src/analyst/gemini_client.py:1: FutureWarning: 
-
-All support for the `google.generativeai` package has ended. It will no longer be receiving 
-updates or bug fixes. Please switch to the `google.genai` package as soon as possible.
-See README for more details:
-
-https://github.com/google-gemini/deprecated-generative-ai-python/blob/main/README.md
-
-  import google.generativeai as genai
-[32m19:03:28 [INFO] sentinel: Configuration loaded successfully.[0m
-[32m19:03:28 [INFO] sentinel: === Starting Analysis (CLOSE) ===[0m
-[32m19:03:28 [INFO] sentinel: Circuit breaker states loaded from disk.[0m
-[32m19:03:28 [INFO] sentinel: Starting Batch Data Collection (Dual Source)...[0m
-[32m19:03:28 [INFO] sentinel: Circuit Breaker: Efinance entering half-open state (trying recovery)[0m
-[31m19:03:33 [ERROR] sentinel: Command fetch_spot_data timed out after 5s.[0m
-[33m19:03:33 [WARNING] sentinel: Source Efinance failed for fetch_spot_data: [0m
-[33m19:03:33 [WARNING] sentinel: Circuit Breaker: Efinance OPEN after 6 consecutive failures. Will retry in 30.0s.[0m
-[32m19:03:33 [INFO] sentinel: Circuit Breaker: AkShare entering half-open state (trying recovery)[0m
-/Users/lan/Desktop/code/ai_sentiney/.venv/lib/python3.13/site-packages/urllib3/poolmanager.py:199: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x10c2ad030>
-  def __init__(
-ResourceWarning: Enable tracemalloc to get the object allocation traceback
-[31m19:03:38 [ERROR] sentinel: AkShare spot fetch failed: HTTPSConnectionPool(host='82.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A0+t%3A6%2Cm%3A0+t%3A80%2Cm%3A1+t%3A2%2Cm%3A1+t%3A23%2Cm%3A0+t%3A81+s%3A2048&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))[0m
-[31m19:03:38 [ERROR] sentinel: All sources failed for fetch_spot_data.[0m
-[33m19:03:38 [WARNING] sentinel: All sources failed to fetch bulk spot data. Will rely on individual fetch.[0m
-[32m19:03:38 [INFO] sentinel: Fetching market breadth...[0m
-[32m19:03:38 [INFO] sentinel: Fetching Northbound funds...[0m
-[32m19:03:38 [INFO] sentinel: Fetching macro news...[0m
-  0%|          | 0/8 [00:00<?, ?it/s] 12%|█▎        | 1/8 [00:00<00:00,  8.48it/s] 25%|██▌       | 2/8 [00:00<00:00,  8.38it/s] 38%|███▊      | 3/8 [00:00<00:00,  7.98it/s] 50%|█████     | 4/8 [00:00<00:00,  8.24it/s] 62%|██████▎   | 5/8 [00:00<00:00,  6.58it/s] 75%|███████▌  | 6/8 [00:00<00:00,  7.04it/s] 88%|████████▊ | 7/8 [00:00<00:00,  7.18it/s]100%|██████████| 8/8 [00:01<00:00,  6.88it/s]                                             0it [00:00, ?it/s]                    0%|          | 0/14 [00:00<?, ?it/s]  7%|▋         | 1/14 [00:00<00:01,  7.91it/s] 21%|██▏       | 3/14 [00:00<00:01,  6.75it/s] 36%|███▌      | 5/14 [00:00<00:01,  7.98it/s] 43%|████▎     | 6/14 [00:00<00:01,  6.96it/s] 50%|█████     | 7/14 [00:01<00:01,  5.52it/s] 57%|█████▋    | 8/14 [00:01<00:01,  5.20it/s] 64%|██████▍   | 9/14 [00:01<00:00,  5.05it/s] 71%|███████▏  | 10/14 [00:01<00:00,  5.59it/s] 79%|███████▊  | 11/14 [00:01<00:00,  5.19it/s] 86%|████████▌ | 12/14 [00:02<00:00,  5.39it/s] 93%|█████████▎| 13/14 [00:02<00:00,  4.64it/s]100%|██████████| 14/14 [00:02<00:00,  5.19it/s]                                               [32m19:03:42 [INFO] sentinel: Tencent Fetching Single Quote: http://qt.gtimg.cn/q=sh510500[0m
-[32m19:03:42 [INFO] sentinel: Tencent Fetching Single Quote: http://qt.gtimg.cn/q=sh512480[0m
-[32m19:03:42 [INFO] sentinel: Tencent Fetching Single Quote: http://qt.gtimg.cn/q=sh588760[0m
-[32m19:03:42 [INFO] sentinel: Tencent Fetching Single Quote: http://qt.gtimg.cn/q=sh563300[0m
-[32m19:03:42 [INFO] sentinel: Tencent Fetching Single Quote: http://qt.gtimg.cn/q=sz159819[0m
-[32m19:03:42 [INFO] sentinel: Tencent Fetching Single Quote: http://qt.gtimg.cn/q=sz159934[0m
-[32m19:03:42 [INFO] sentinel: Tencent Fetching Single Quote: http://qt.gtimg.cn/q=sh510300[0m
-[32m19:03:42 [INFO] sentinel: Tencent Fetching Single Quote: http://qt.gtimg.cn/q=sz159338[0m
-[32m19:03:42 [INFO] sentinel: Tencent Fetching Single Quote: http://qt.gtimg.cn/q=sh560780[0m
-[32m19:03:42 [INFO] sentinel: Tencent Fetching Single Quote: http://qt.gtimg.cn/q=sh510980[0m
-[32m19:03:42 [INFO] sentinel: Tencent Fetching Single Quote: http://qt.gtimg.cn/q=sh601899[0m
-[32m19:03:42 [INFO] sentinel: Tencent Fetching Single Quote: http://qt.gtimg.cn/q=sz000603[0m
-[32m19:03:42 [INFO] sentinel: Tencent Fetching Single Quote: http://qt.gtimg.cn/q=sh600089[0m
-[32m19:03:42 [INFO] sentinel: ✅ Tencent Quote Success: 588760 -> 0.851 (2.04%) Vol:1918464.0[0m
-[32m19:03:42 [INFO] sentinel: ✅ Tencent Quote Success: 510500 -> 8.377 (-0.21%) Vol:3443425.0[0m
-[32m19:03:42 [INFO] sentinel: ✅ Tencent Quote Success: 563300 -> 1.51 (-0.13%) Vol:2164190.0[0m
-[32m19:03:42 [INFO] sentinel: ✅ Tencent Quote Success: 512480 -> 1.636 (0.49%) Vol:6386633.0[0m
-[32m19:03:42 [INFO] sentinel: ✅ Tencent Quote Success: 159819 -> 1.602 (0.88%) Vol:2513130.0[0m
-[32m19:03:42 [INFO] sentinel: ✅ Tencent Quote Success: 159934 -> 11.155 (-0.49%) Vol:1657575.0[0m
-[32m19:03:42 [INFO] sentinel: ✅ Tencent Quote Success: 000603 -> 47.17 (-3.5%) Vol:286937.0[0m
-[32m19:03:42 [INFO] sentinel: ✅ Tencent Quote Success: 560780 -> 2.007 (-0.25%) Vol:526050.0[0m
-[32m19:03:42 [INFO] sentinel: ✅ Tencent Quote Success: 601899 -> 38.81 (0.47%) Vol:1996571.0[0m
-[32m19:03:42 [INFO] sentinel: ✅ Tencent Quote Success: 600089 -> 27.84 (-0.82%) Vol:1364762.0[0m
-[32m19:03:42 [INFO] sentinel: ✅ Tencent Quote Success: 510300 -> 4.733 (0.13%) Vol:6804617.0[0m
-[32m19:03:42 [INFO] sentinel: ✅ Tencent Quote Success: 159338 -> 1.251 (0.24%) Vol:44534860.0[0m
-[32m19:03:42 [INFO] sentinel: ✅ Tencent Quote Success: 510980 -> 1.434 (0.07%) Vol:168672.0[0m
-[32m19:03:43 [INFO] sentinel: Data Collected. Market Breadth: N/A (Tencent), North Funds: 0.0[0m
-[32m19:03:43 [INFO] sentinel: Signal Tracker: 近7日命中率52%(14/27)[0m
-[32m19:03:43 [INFO] sentinel: Initializing Gemini Client with model: gemini-3-pro-preview[0m
-[32m19:03:43 [INFO] sentinel: Sending request to Gemini (custom prompt)...[0m
-[31m19:04:07 [ERROR] sentinel: Efinance spot fetch failed: Expecting value: line 1 column 1 (char 0)[0m
-[32m19:04:15 [INFO] sentinel: Schema validation passed: 5 reviews[0m
-[32m19:04:15 [INFO] sentinel: Close Analysis Completed.[0m
-[32m19:04:15 [INFO] sentinel: Publish not requested: Skipping Feishu Push.[0m
-[32m19:04:15 [INFO] sentinel: ✅ Saved close record to DB for 2026-02-10.[0m
-[32m19:04:15 [INFO] sentinel: === Analysis (CLOSE) Finished ===[0m
-=== 收盘复盘 ===
-总结: 复盘: 典型的节前缩量整固行情。全市场量能显著萎缩（持仓标的量比普遍低于0.7），表明增量资金已提前休假，当前为纯粹的存量博弈。主线方面，今日虽有科创AI（+2.04%）试图引导反弹，但受制于整体流动性不足，且大部分科技ETF仍处于MA20下方，定性为'超跌反抽'而非趋势反转。权重股（沪深300、A500）维持在MA20附近窄幅震荡，充当市场定海神针。有色板块内部出现显著分化，铜金（紫金）抗跌，高波动的白银（盛达）破位补跌，需警惕高位股的获利了结风险。
-温度: 存量博弈 (低温)
-
-📊 信号追踪: 近7日命中率52%(14/27)
-  ✅ 盛达资源（白银） DANGER[中] → -3.5%
-  ✅ 紫金矿业 SAFE[低] → 0.47%
-  ✅ 中证2000ETF SAFE[低] → -0.13%
-
-  [000603] 盛达资源
-    今日: 放量下跌(-3.5%)，收盘价(47.17)远低于MA20(50.47)，乖离率达-6.54%，技术形态破位。MACD空头动能增强，虽然RSI未进超卖区，但作为高贝塔周期股，跌破短期趋势线意味着资金正在进行节前避险。
-    明日: 减仓/止损。今日验证了昨日的DANGER信号，趋势已坏。若明日不能快速收复48元一线，需防止进一步回踩60日线支撑。不宜博反弹。
-    支撑:46.23 / 压力:50.47
-    指标: MACD空头 | RSI=50.56 | 布林下半区 | 量比0.51x
-  [601899] 紫金矿业
-    今日: 缩量上涨(+0.47%)，收盘价(38.81)主要运行在MA20(38.74)之上，表现远强于盛达。作为行业龙头，在量能萎缩背景下显示出极强的承接力，MACD虽为空头但绿柱未明显放大。
-    明日: 持仓观望。只要守住MA20生命线，即可视为上升趋势中的正常整理。关注国际金价/铜价夜盘波动。
-    支撑:38.74 / 压力:40.75
-    指标: MACD空头 | RSI=54.17 | 布林上半区 | 量比0.57x
-  [588760] 科创人工智能ETF
-    今日: 缩量反弹(+2.04%)，是今日组合中反弹最强品种。但需注意收盘价(0.85)仍被压制在MA20(0.86)之下，且量比仅0.72，属于无量反抽，布林带下轨支撑有效但上攻动能不足。
-    明日: 观察/逢高减磅。明日关键看能否带量突破MA20(0.86)。若缩量触及MA20回落，则确认为下跌中继，应降低仓位；若放量站稳，方可看高一线。
-    支撑:0.83 / 压力:0.86
-    指标: MACD空头 | RSI=54.43 | 布林下半区 | 量比0.72x
-  [159338] 中证A500ETF
-    今日: 十字星震荡(+0.24%)，收盘价(1.25)恰好卡位在MA20(1.25)，多空平衡点。量比0.75显示抛压衰竭，MACD空头趋势减缓。
-    明日: 底仓持有。作为核心宽基，目前处于胜负手位置。若明日跌破1.25且无法收回，需警惕系统性回调风险；目前看作是节前维稳工具，暂不乱动。
-    支撑:1.22 / 压力:1.31
-    指标: MACD空头 | RSI=55.78 | 布林上半区 | 量比0.75x
-  [512480] 半导体ETF
-    今日: 弱势震荡(+0.49%)，收盘价(1.64)仍位于MA20(1.67)下方，乖离率-2.25%。虽然RSI回到50附近，但整体受制于空头排列，缺乏板块合力。
-    明日: 保持警惕。继续维持WATCH状态。在有效站上MA20之前，不进行左侧加仓。若继续缩量阴跌，需注意布林下轨开口风险。
-    支撑:1.6 / 压力:1.67
-    指标: MACD空头 | RSI=51.52 | 布林下半区 | 量比0.67x
-<sys>:0: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x10c2af880>
-ResourceWarning: Enable tracemalloc to get the object allocation traceback
-<sys>:0: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x10c2afd30>
-ResourceWarning: Enable tracemalloc to get the object allocation traceback
-<sys>:0: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x10c3331f0>
-ResourceWarning: Enable tracemalloc to get the object allocation traceback

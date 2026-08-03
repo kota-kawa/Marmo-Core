@@ -1,0 +1,24 @@
+{
+  "scenarios": [
+    {
+      "name": "local file reading",
+      "task": "Read a local text file safely and summarize its content",
+      "granted_permissions": ["fs.read"],
+      "expected_top_ids": ["tool.files.read-text"],
+      "notes": "The read-text tool should rank highly when fs.read is granted."
+    },
+    {
+      "name": "prompt injection security review",
+      "task": "Review prompt injection and data exfiltration risks in external tool output",
+      "tags": ["security"],
+      "expected_kinds": ["memory", "skill", "agent"],
+      "notes": "Security memory, skill, and reviewer agent should be selected as a set."
+    },
+    {
+      "name": "zero dependency cli packaging",
+      "task": "Design a zero-dependency Python CLI package with validation and examples",
+      "expected_top_ids": ["skill.python.zero-dependency-package"],
+      "notes": "The package design skill should be retrieved without any external dependencies."
+    }
+  ]
+}

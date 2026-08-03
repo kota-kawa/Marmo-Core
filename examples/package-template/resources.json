@@ -1,0 +1,91 @@
+{
+  "resources": [
+    {
+      "id": "memory.example.starter.project-rules",
+      "kind": "memory",
+      "name": "Project rules",
+      "version": "1.0.0",
+      "description": "Small reusable project conventions.",
+      "capabilities": ["project context"],
+      "input_summary": "A project task",
+      "output_summary": "Relevant project conventions",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "memory://example.starter/project-rules",
+      "tags": ["template", "project"],
+      "dependencies": [],
+      "content": "Prefer deterministic, testable changes with explicit error handling."
+    },
+    {
+      "id": "skill.example.starter.review",
+      "kind": "skill",
+      "name": "Review change",
+      "version": "1.0.0",
+      "description": "Review a change against the packaged project rules.",
+      "capabilities": ["code review"],
+      "input_summary": "A proposed change",
+      "output_summary": "Review findings",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "skill://example.starter/review",
+      "tags": ["template", "review"],
+      "dependencies": ["memory.example.starter.project-rules@1.0.0"],
+      "instructions": "Check correctness, safety, tests, and compatibility."
+    },
+    {
+      "id": "tool.example.starter.echo",
+      "kind": "tool",
+      "name": "Echo text",
+      "version": "1.0.0",
+      "description": "Return the supplied text without side effects.",
+      "capabilities": ["echo text"],
+      "input_summary": "Text",
+      "output_summary": "The same text",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "tool://example.starter/echo",
+      "tags": ["template", "tool"],
+      "dependencies": [],
+      "input_schema": {
+        "type": "object",
+        "required": ["text"],
+        "properties": {
+          "text": {"type": "string"}
+        },
+        "additionalProperties": false
+      },
+      "output_schema": {"type": "object"},
+      "isolation_level": "L0"
+    },
+    {
+      "id": "agent.example.starter.reviewer",
+      "kind": "agent",
+      "name": "Review agent",
+      "version": "1.0.0",
+      "description": "A Tool-wrapped synchronous review delegate.",
+      "capabilities": ["delegated review"],
+      "input_summary": "A review task",
+      "output_summary": "A review result",
+      "required_permissions": [],
+      "cost_estimate": 0.01,
+      "latency_class": "medium",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "agent://example.starter/reviewer",
+      "tags": ["template", "agent"],
+      "dependencies": ["skill.example.starter.review@1.0.0"],
+      "delegation_interface": "tool_wrap",
+      "model": "provider/model-name",
+      "system_prompt": "Review only the task supplied by the parent."
+    }
+  ]
+}

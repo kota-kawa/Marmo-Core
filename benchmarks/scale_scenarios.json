@@ -1,0 +1,122 @@
+{
+  "scenarios": [
+    {
+      "task": "run a security audit of the release and then execute the production deployment with a canary rollout",
+      "style": "cross-domain",
+      "cross_domain": true,
+      "granted_permissions": [
+        "deploy.production",
+        "kernel.read"
+      ],
+      "gold_set": [
+        "memory.secaudit.context",
+        "skill.secaudit.procedure",
+        "tool.secaudit.workbench",
+        "agent.secaudit.specialist",
+        "memory.deploy.context",
+        "skill.deploy.procedure",
+        "tool.deploy.workbench",
+        "agent.deploy.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "bill the monthly customer invoices and analyze which invoiced customers are churning",
+      "style": "cross-domain",
+      "cross_domain": true,
+      "granted_permissions": [
+        "kernel.read"
+      ],
+      "gold_set": [
+        "memory.invoicing.context",
+        "skill.invoicing.procedure",
+        "tool.invoicing.workbench",
+        "agent.invoicing.specialist",
+        "memory.retention.context",
+        "skill.retention.procedure",
+        "tool.retention.workbench",
+        "agent.retention.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "coordinate the incident response and triage the customer support tickets it caused",
+      "style": "cross-domain",
+      "cross_domain": true,
+      "granted_permissions": [
+        "kernel.read"
+      ],
+      "gold_set": [
+        "memory.incident.context",
+        "skill.incident.procedure",
+        "tool.incident.workbench",
+        "agent.incident.specialist",
+        "memory.support.context",
+        "skill.support.procedure",
+        "tool.support.workbench",
+        "agent.support.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "design the database schema and build the ETL pipeline that loads it",
+      "style": "cross-domain",
+      "cross_domain": true,
+      "granted_permissions": [
+        "db.write",
+        "kernel.read",
+        "net.external"
+      ],
+      "gold_set": [
+        "memory.dbdesign.context",
+        "skill.dbdesign.procedure",
+        "tool.dbdesign.workbench",
+        "agent.dbdesign.specialist",
+        "memory.etl.context",
+        "skill.etl.procedure",
+        "tool.etl.workbench",
+        "agent.etl.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "repurpose the whitepaper into blog posts and localize them into Japanese",
+      "style": "cross-domain",
+      "cross_domain": true,
+      "granted_permissions": [
+        "kernel.read"
+      ],
+      "gold_set": [
+        "memory.contentmkt.context",
+        "skill.contentmkt.procedure",
+        "tool.contentmkt.workbench",
+        "agent.contentmkt.specialist",
+        "memory.l10n.context",
+        "skill.l10n.procedure",
+        "tool.l10n.workbench",
+        "agent.l10n.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "prepare the interview loop for the engineer role and review the contractor agreement clauses",
+      "style": "cross-domain",
+      "cross_domain": true,
+      "granted_permissions": [
+        "hr.records",
+        "kernel.read"
+      ],
+      "gold_set": [
+        "memory.recruiting.context",
+        "skill.recruiting.procedure",
+        "tool.recruiting.workbench",
+        "agent.recruiting.specialist",
+        "memory.contracts.context",
+        "skill.contracts.procedure",
+        "tool.contracts.workbench",
+        "agent.contracts.specialist"
+      ],
+      "expected_status": "selected"
+    }
+  ]
+}

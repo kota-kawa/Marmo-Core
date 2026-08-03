@@ -1,0 +1,376 @@
+{
+  "scenarios": [
+    {
+      "task": "create and send the monthly customer invoices for the billing run",
+      "style": "direct",
+      "granted_permissions": [
+        "kernel.read"
+      ],
+      "gold_set": [
+        "memory.invoicing.context",
+        "skill.invoicing.procedure",
+        "tool.invoicing.workbench",
+        "agent.invoicing.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "bill our clients for last month and get the paperwork out",
+      "style": "paraphrase",
+      "granted_permissions": [
+        "kernel.read"
+      ],
+      "gold_set": [
+        "memory.invoicing.context",
+        "skill.invoicing.procedure",
+        "tool.invoicing.workbench",
+        "agent.invoicing.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "analyze customer churn cohorts and design a retention campaign",
+      "style": "direct",
+      "granted_permissions": [
+        "kernel.read"
+      ],
+      "gold_set": [
+        "memory.retention.context",
+        "skill.retention.procedure",
+        "tool.retention.workbench",
+        "agent.retention.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "customers keep leaving after the first month, figure out why and stop it",
+      "style": "paraphrase",
+      "granted_permissions": [
+        "kernel.read"
+      ],
+      "gold_set": [
+        "memory.retention.context",
+        "skill.retention.procedure",
+        "tool.retention.workbench",
+        "agent.retention.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "run a security audit and scan the codebase for vulnerabilities",
+      "style": "direct",
+      "granted_permissions": [
+        "kernel.read"
+      ],
+      "gold_set": [
+        "memory.secaudit.context",
+        "skill.secaudit.procedure",
+        "tool.secaudit.workbench",
+        "agent.secaudit.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "check whether attackers could break into our code and report the holes",
+      "style": "paraphrase",
+      "granted_permissions": [
+        "kernel.read"
+      ],
+      "gold_set": [
+        "memory.secaudit.context",
+        "skill.secaudit.procedure",
+        "tool.secaudit.workbench",
+        "agent.secaudit.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "prepare and execute the production deployment with a canary rollout",
+      "style": "direct",
+      "granted_permissions": [
+        "kernel.read",
+        "deploy.production"
+      ],
+      "gold_set": [
+        "memory.deploy.context",
+        "skill.deploy.procedure",
+        "tool.deploy.workbench",
+        "agent.deploy.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "ship the new version to live users carefully and be ready to undo it",
+      "style": "paraphrase",
+      "granted_permissions": [
+        "kernel.read",
+        "deploy.production"
+      ],
+      "gold_set": [
+        "memory.deploy.context",
+        "skill.deploy.procedure",
+        "tool.deploy.workbench",
+        "agent.deploy.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "coordinate the incident response and write the postmortem report",
+      "style": "direct",
+      "granted_permissions": [
+        "kernel.read"
+      ],
+      "gold_set": [
+        "memory.incident.context",
+        "skill.incident.procedure",
+        "tool.incident.workbench",
+        "agent.incident.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "production broke last night, run the cleanup and write up what went wrong",
+      "style": "paraphrase",
+      "granted_permissions": [
+        "kernel.read"
+      ],
+      "gold_set": [
+        "memory.incident.context",
+        "skill.incident.procedure",
+        "tool.incident.workbench",
+        "agent.incident.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "design the database schema with tables, relations, and indexes",
+      "style": "direct",
+      "granted_permissions": [
+        "kernel.read",
+        "db.write"
+      ],
+      "gold_set": [
+        "memory.dbdesign.context",
+        "skill.dbdesign.procedure",
+        "tool.dbdesign.workbench",
+        "agent.dbdesign.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "sketch how our app's storage layer should be structured",
+      "style": "paraphrase",
+      "granted_permissions": [
+        "kernel.read",
+        "db.write"
+      ],
+      "gold_set": [
+        "memory.dbdesign.context",
+        "skill.dbdesign.procedure",
+        "tool.dbdesign.workbench",
+        "agent.dbdesign.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "repurpose the whitepaper into blog posts, newsletters, and social threads",
+      "style": "direct",
+      "granted_permissions": [
+        "kernel.read"
+      ],
+      "gold_set": [
+        "memory.contentmkt.context",
+        "skill.contentmkt.procedure",
+        "tool.contentmkt.workbench",
+        "agent.contentmkt.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "stretch one long article into a month of smaller content pieces",
+      "style": "paraphrase",
+      "granted_permissions": [
+        "kernel.read"
+      ],
+      "gold_set": [
+        "memory.contentmkt.context",
+        "skill.contentmkt.procedure",
+        "tool.contentmkt.workbench",
+        "agent.contentmkt.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "prepare the interview loop and scorecards for the backend engineer role",
+      "style": "direct",
+      "granted_permissions": [
+        "kernel.read",
+        "hr.records"
+      ],
+      "gold_set": [
+        "memory.recruiting.context",
+        "skill.recruiting.procedure",
+        "tool.recruiting.workbench",
+        "agent.recruiting.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "we are hiring an engineer, set up how we will interview and grade candidates",
+      "style": "paraphrase",
+      "granted_permissions": [
+        "kernel.read",
+        "hr.records"
+      ],
+      "gold_set": [
+        "memory.recruiting.context",
+        "skill.recruiting.procedure",
+        "tool.recruiting.workbench",
+        "agent.recruiting.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "review the vendor contract clauses and prepare redlines",
+      "style": "direct",
+      "granted_permissions": [
+        "kernel.read"
+      ],
+      "gold_set": [
+        "memory.contracts.context",
+        "skill.contracts.procedure",
+        "tool.contracts.workbench",
+        "agent.contracts.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "go through this supplier agreement and flag anything risky before we sign",
+      "style": "paraphrase",
+      "granted_permissions": [
+        "kernel.read"
+      ],
+      "gold_set": [
+        "memory.contracts.context",
+        "skill.contracts.procedure",
+        "tool.contracts.workbench",
+        "agent.contracts.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "triage the customer support ticket queue by severity and SLA",
+      "style": "direct",
+      "granted_permissions": [
+        "kernel.read"
+      ],
+      "gold_set": [
+        "memory.support.context",
+        "skill.support.procedure",
+        "tool.support.workbench",
+        "agent.support.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "sort the pile of customer complaints so the urgent ones get handled first",
+      "style": "paraphrase",
+      "granted_permissions": [
+        "kernel.read"
+      ],
+      "gold_set": [
+        "memory.support.context",
+        "skill.support.procedure",
+        "tool.support.workbench",
+        "agent.support.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "build the ETL pipeline with DAG orchestration and data quality checks",
+      "style": "direct",
+      "granted_permissions": [
+        "kernel.read",
+        "net.external"
+      ],
+      "gold_set": [
+        "memory.etl.context",
+        "skill.etl.procedure",
+        "tool.etl.workbench",
+        "agent.etl.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "the nightly job that moves data between systems needs to be rebuilt properly",
+      "style": "paraphrase",
+      "granted_permissions": [
+        "kernel.read",
+        "net.external"
+      ],
+      "gold_set": [
+        "memory.etl.context",
+        "skill.etl.procedure",
+        "tool.etl.workbench",
+        "agent.etl.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "translate and localize the product strings into Japanese and German",
+      "style": "direct",
+      "granted_permissions": [
+        "kernel.read"
+      ],
+      "gold_set": [
+        "memory.l10n.context",
+        "skill.l10n.procedure",
+        "tool.l10n.workbench",
+        "agent.l10n.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "make the app speak other languages, starting with Japanese",
+      "style": "paraphrase",
+      "granted_permissions": [
+        "kernel.read"
+      ],
+      "gold_set": [
+        "memory.l10n.context",
+        "skill.l10n.procedure",
+        "tool.l10n.workbench",
+        "agent.l10n.specialist"
+      ],
+      "expected_status": "selected"
+    },
+    {
+      "task": "refund the customer's duplicate payment from last week",
+      "style": "direct",
+      "granted_permissions": [],
+      "gold_set": [],
+      "expected_status": "escalate"
+    },
+    {
+      "task": "check the payment ledger for the refund history of this account",
+      "style": "direct",
+      "granted_permissions": [],
+      "gold_set": [],
+      "expected_status": "escalate"
+    },
+    {
+      "task": "plan a driving route from Osaka to Tokyo with two waypoints",
+      "style": "direct",
+      "granted_permissions": [],
+      "gold_set": [],
+      "expected_status": "abstain"
+    },
+    {
+      "task": "compose a four-movement symphony for a full orchestra",
+      "style": "direct",
+      "granted_permissions": [],
+      "gold_set": [],
+      "expected_status": "abstain"
+    }
+  ]
+}

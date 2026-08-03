@@ -1,4 +1,0 @@
-[gd_resource type="ServiceDelegationHiveControl" format=3 uid="uid://yd1afn10fspq"]
-
-[resource]
-permission = "ManageProfiles"

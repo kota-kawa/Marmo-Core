@@ -1,0 +1,12 @@
+{
+  "files": {
+    "resources.json": "sha256:c0a3741985a58c43e3402272bc4f2243bcb0941c45ddb924cbeb8ec4448963d6"
+  },
+  "manifest_sha256": "sha256:80ab33d678cd7831115cfdcad45d4045ffc76e62a528b197165155fa33b546d2",
+  "package": "example.starter/four-resources@1.0.0",
+  "schema_version": 1,
+  "source": {
+    "path": ".",
+    "type": "local"
+  }
+}

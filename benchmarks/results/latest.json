@@ -1,0 +1,522 @@
+{
+  "retriever": "lexical",
+  "retriever_config": null,
+  "corpus_size": 1000,
+  "scenarios": 120,
+  "top_k": 5,
+  "load_seconds": 0.57,
+  "index_build_seconds": 0.974,
+  "warm_latency_ms_mean": 3.88,
+  "warm_latency_ms_p95": 6.15,
+  "hit_at_1": 0.608,
+  "hit_at_5": 0.758,
+  "mrr": 0.664,
+  "recall_at_20": 0.842,
+  "recall_at_50": 0.9,
+  "by_style": {
+    "abstract": {
+      "scenarios": 33,
+      "hit_at_1": 0.485,
+      "hit_at_5": 0.697,
+      "mrr": 0.551,
+      "recall_at_20": 0.788,
+      "recall_at_50": 0.848
+    },
+    "direct": {
+      "scenarios": 52,
+      "hit_at_1": 0.904,
+      "hit_at_5": 0.923,
+      "mrr": 0.913,
+      "recall_at_20": 0.942,
+      "recall_at_50": 0.981
+    },
+    "paraphrase": {
+      "scenarios": 35,
+      "hit_at_1": 0.286,
+      "hit_at_5": 0.571,
+      "mrr": 0.4,
+      "recall_at_20": 0.743,
+      "recall_at_50": 0.829
+    }
+  },
+  "catalog_metadata_tokens": 221094,
+  "routed_top_k_tokens": 1408,
+  "context_token_savings": 0.9936,
+  "misses": [
+    {
+      "task": "run a security audit to find vulnerabilities in the codebase",
+      "expected": [
+        "security-audit",
+        "vulnerability-scanner",
+        "007"
+      ],
+      "style": "direct",
+      "rank": 30,
+      "top1": "skill.matthewbspeicher__remembr-dev__parallel-agents"
+    },
+    {
+      "task": "debug a failing system systematically by isolating the root cause",
+      "expected": [
+        "systematic-debugging",
+        "investigate",
+        "debugging-patterns"
+      ],
+      "style": "direct",
+      "rank": 6,
+      "top1": "skill.anthropics__knowledge-work-plugins__debug-zoom"
+    },
+    {
+      "task": "draft German AGB terms and conditions from scratch",
+      "expected": [
+        "agb-entwurf-kaltstart"
+      ],
+      "style": "direct",
+      "rank": 25,
+      "top1": "skill.anthropics__knowledge-work-plugins__brand-voice-enforcement"
+    },
+    {
+      "task": "review this plan adversarially and attack its weak points",
+      "expected": [
+        "adversarial-review"
+      ],
+      "style": "direct",
+      "rank": null,
+      "top1": "skill.matthewbspeicher__remembr-dev__vulnerability-scanner"
+    },
+    {
+      "task": "embed Zoom meetings in a native iOS app",
+      "expected": [
+        "plugins__ios",
+        "meeting-sdk"
+      ],
+      "style": "direct",
+      "rank": 2,
+      "top1": "skill.anthropics__knowledge-work-plugins__general"
+    },
+    {
+      "task": "my key results feel vague, make sure they are actually measurable",
+      "expected": [
+        "okr-quality-checker"
+      ],
+      "style": "paraphrase",
+      "rank": 9,
+      "top1": "skill.majiayu000__claude-skill-registry__39-agent-skills-mcp-code-execution-panaversity-agentfactory"
+    },
+    {
+      "task": "the app slows down under load, find where the time is going",
+      "expected": [
+        "performance-profiling",
+        "performance-optimizer",
+        "team-perf-opt",
+        "maister__performance"
+      ],
+      "style": "paraphrase",
+      "rank": null,
+      "top1": "skill.onlypfachi__chief__root"
+    },
+    {
+      "task": "the build broke and I cannot tell why, help me narrow it down step by step",
+      "expected": [
+        "systematic-debugging",
+        "investigate",
+        "debugging-patterns",
+        "rca-methodology"
+      ],
+      "style": "paraphrase",
+      "rank": 17,
+      "top1": "skill.anthropics__knowledge-work-plugins__debug"
+    },
+    {
+      "task": "I want to write the checks before the code so I know when I am done",
+      "expected": [
+        "test-driven-development",
+        "tdd-workflow"
+      ],
+      "style": "paraphrase",
+      "rank": 20,
+      "top1": "skill.majiayu000__claude-skill-registry__80-livekit-agents-majiayu000-claude-skill-registr"
+    },
+    {
+      "task": "decide which features to build first given reach and effort",
+      "expected": [
+        "rice-prioritizer"
+      ],
+      "style": "paraphrase",
+      "rank": 2,
+      "top1": "skill.anthropics__knowledge-work-plugins__campaign-plan"
+    },
+    {
+      "task": "log how many hours I spend on each project",
+      "expected": [
+        "clockify"
+      ],
+      "style": "paraphrase",
+      "rank": null,
+      "top1": "skill.anthropics__knowledge-work-plugins__customer-escalation"
+    },
+    {
+      "task": "make my newsletters land in the inbox instead of the spam folder",
+      "expected": [
+        "deliverability-optimization"
+      ],
+      "style": "paraphrase",
+      "rank": 2,
+      "top1": "skill.cosmoblk__email-marketing-bible__root"
+    },
+    {
+      "task": "sketch the tables and relations for our new app's storage layer",
+      "expected": [
+        "database-design",
+        "database-architect",
+        "normalization-patterns"
+      ],
+      "style": "paraphrase",
+      "rank": null,
+      "top1": "skill.fizznix__mini-context-graph__root"
+    },
+    {
+      "task": "someone should try to poke holes in this proposal before we commit to it",
+      "expected": [
+        "adversarial-review",
+        "plan-ceo-review",
+        "plan-eng-review"
+      ],
+      "style": "paraphrase",
+      "rank": 8,
+      "top1": "skill.belos-street__skill-kit__brainstorming"
+    },
+    {
+      "task": "turn our whitepaper into tweets, a newsletter issue, and a slide deck",
+      "expected": [
+        "content-repurposer",
+        "content-atomization"
+      ],
+      "style": "paraphrase",
+      "rank": 5,
+      "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__ink-distribute"
+    },
+    {
+      "task": "estimate what we would pay AWS each month and how to cut it",
+      "expected": [
+        "cloud-cost-models"
+      ],
+      "style": "paraphrase",
+      "rank": 26,
+      "top1": "skill.majiayu000__claude-skill-registry__39-agent-skills-mcp-code-execution-panaversity-agentfactory"
+    },
+    {
+      "task": "our customers keep leaving, figure out why and how to stop it",
+      "expected": [
+        "keep-churn",
+        "surge-retention"
+      ],
+      "style": "paraphrase",
+      "rank": 23,
+      "top1": "skill.thatrebeccarae__claude-marketing__copywriting-frameworks"
+    },
+    {
+      "task": "write questions to ask candidates for a backend engineering role",
+      "expected": [
+        "interview-prep"
+      ],
+      "style": "paraphrase",
+      "rank": 4,
+      "top1": "skill.utkusen__sast-skills__sast-hardcodedsecrets"
+    },
+    {
+      "task": "draft the paperwork offering the job to our chosen candidate",
+      "expected": [
+        "draft-offer"
+      ],
+      "style": "paraphrase",
+      "rank": 2,
+      "top1": "skill.anthropics__knowledge-work-plugins__draft-response"
+    },
+    {
+      "task": "how many vacation days am I allowed to take",
+      "expected": [
+        "policy-lookup"
+      ],
+      "style": "paraphrase",
+      "rank": 5,
+      "top1": "skill.microsoft__fluidframework__using-skills"
+    },
+    {
+      "task": "make a slideshow presentation out of this research paper",
+      "expected": [
+        "paper-to-course",
+        "2slides-ppt-generator",
+        "presentation-designer"
+      ],
+      "style": "paraphrase",
+      "rank": 18,
+      "top1": "skill.junshi-research__research-junshi__root"
+    },
+    {
+      "task": "check my X timeline and post an update to my account",
+      "expected": [
+        "openclaw-x"
+      ],
+      "style": "paraphrase",
+      "rank": null,
+      "top1": "skill.daedalus__nanocode__root"
+    },
+    {
+      "task": "figure out the going salary for a senior engineer in our market",
+      "expected": [
+        "comp-analysis"
+      ],
+      "style": "paraphrase",
+      "rank": 2,
+      "top1": "skill.sickn33__antigravity-awesome-skills__ai-dev-jobs-mcp"
+    },
+    {
+      "task": "did we already sign anything with this supplier",
+      "expected": [
+        "vendor-check"
+      ],
+      "style": "paraphrase",
+      "rank": null,
+      "top1": "skill.onlypfachi__chief__office-hours"
+    },
+    {
+      "task": "catch me up on everything that happened while I was away",
+      "expected": [
+        "digest"
+      ],
+      "style": "paraphrase",
+      "rank": 6,
+      "top1": "skill.revfactory__harness-100__hook-writing"
+    },
+    {
+      "task": "our monthly books need closing, sequence the tasks",
+      "expected": [
+        "close-management",
+        "month-end-close"
+      ],
+      "style": "paraphrase",
+      "rank": 2,
+      "top1": "skill.anthropics__knowledge-work-plugins__financial-statements"
+    },
+    {
+      "task": "will we run out of cash next quarter",
+      "expected": [
+        "cash-flow-forecast"
+      ],
+      "style": "paraphrase",
+      "rank": 3,
+      "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__keep-qbr"
+    },
+    {
+      "task": "respond to a German cease-and-desist warning letter",
+      "expected": [
+        "abmahnung"
+      ],
+      "style": "paraphrase",
+      "rank": null,
+      "top1": "skill.anthropics__knowledge-work-plugins__draft-offer"
+    },
+    {
+      "task": "take my plain English idea all the way to a deployed working app",
+      "expected": [
+        "shipwright-pipeline",
+        "fullstack-webapp",
+        "remembr-dev__app-builder"
+      ],
+      "style": "paraphrase",
+      "rank": 42,
+      "top1": "skill.onlypfachi__chief__root"
+    },
+    {
+      "task": "hunt for passwords and API keys accidentally committed to the repo",
+      "expected": [
+        "sast-hardcodedsecrets",
+        "vulnerability-scanner"
+      ],
+      "style": "paraphrase",
+      "rank": 2,
+      "top1": "skill.revfactory__harness-100__api-security-checklist"
+    },
+    {
+      "task": "we shipped something broken to production and need to write up what went wrong for the team",
+      "expected": [
+        "incident-postmortem",
+        "incident-response"
+      ],
+      "style": "abstract",
+      "rank": 3,
+      "top1": "skill.anthropics__knowledge-work-plugins__ticket-triage"
+    },
+    {
+      "task": "people sign up, try it once, and never come back",
+      "expected": [
+        "surge-retention",
+        "surge-activation",
+        "keep-churn"
+      ],
+      "style": "abstract",
+      "rank": 15,
+      "top1": "skill.thatrebeccarae__claude-marketing__copywriting-frameworks"
+    },
+    {
+      "task": "this ancient codebase scares everyone, make it maintainable again without a rewrite",
+      "expected": [
+        "legacy-modernizer",
+        "strangler-fig",
+        "refactoring-catalog",
+        "apex-takeover"
+      ],
+      "style": "abstract",
+      "rank": 41,
+      "top1": "skill.gmickel__flow-next__flow-next-prime"
+    },
+    {
+      "task": "how should we carve this monolith into smaller services",
+      "expected": [
+        "microservice-designer",
+        "ddd-context-mapping",
+        "distributed-patterns",
+        "strangler-fig"
+      ],
+      "style": "abstract",
+      "rank": 3,
+      "top1": "skill.utkusen__sast-skills__sast-analysis"
+    },
+    {
+      "task": "plan what gets tested and by whom before the release ships",
+      "expected": [
+        "testing-strategy",
+        "test-automation",
+        "deploy-checklist"
+      ],
+      "style": "abstract",
+      "rank": 3,
+      "top1": "skill.pglejzer__timepicker-ui__release"
+    },
+    {
+      "task": "the nightly job that moves data between systems keeps failing silently",
+      "expected": [
+        "airflow-dag-patterns",
+        "dag-orchestration-patterns",
+        "data-quality-framework",
+        "data-pipeline"
+      ],
+      "style": "abstract",
+      "rank": null,
+      "top1": "skill.gavdalf__total-recall__root"
+    },
+    {
+      "task": "stretch one blog post into a month of social media content",
+      "expected": [
+        "content-repurposer",
+        "content-atomization",
+        "platform-adaptation",
+        "social-media-manager"
+      ],
+      "style": "abstract",
+      "rank": 3,
+      "top1": "skill.anthropics__knowledge-work-plugins__draft-content"
+    },
+    {
+      "task": "we need a name for the new product line",
+      "expected": [
+        "naming-methodology",
+        "brand-identity"
+      ],
+      "style": "abstract",
+      "rank": null,
+      "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__buzz-outreach"
+    },
+    {
+      "task": "figure out what to charge for our SaaS tiers",
+      "expected": [
+        "pricing-strategy",
+        "price-elasticity-calculator",
+        "unit-economics-calculator"
+      ],
+      "style": "abstract",
+      "rank": 19,
+      "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__buzz-devrel"
+    },
+    {
+      "task": "are we even allowed to launch this feature in Europe",
+      "expected": [
+        "compliance-check",
+        "legal-risk-assessment"
+      ],
+      "style": "abstract",
+      "rank": 23,
+      "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__pitch-launch"
+    },
+    {
+      "task": "get me ready for tomorrow's meeting with the client",
+      "expected": [
+        "call-prep",
+        "meeting-briefing",
+        "weekly-prep-brief"
+      ],
+      "style": "abstract",
+      "rank": 4,
+      "top1": "skill.ankitjh4__indic-ai-skills__zoho"
+    },
+    {
+      "task": "find out everything public about this company before I pitch them",
+      "expected": [
+        "account-research",
+        "market-research"
+      ],
+      "style": "abstract",
+      "rank": 20,
+      "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__buzz-outreach"
+    },
+    {
+      "task": "design preview images people cannot help clicking",
+      "expected": [
+        "thumbnail-psychology"
+      ],
+      "style": "abstract",
+      "rank": null,
+      "top1": "skill.peixl__ifq-design-skills__root"
+    },
+    {
+      "task": "turn my expertise into a structured online class",
+      "expected": [
+        "course-builder",
+        "learning-design"
+      ],
+      "style": "abstract",
+      "rank": 3,
+      "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__hyperflow-amplify"
+    },
+    {
+      "task": "get more listeners to discover my show",
+      "expected": [
+        "podcast-growth"
+      ],
+      "style": "abstract",
+      "rank": null,
+      "top1": "skill.revfactory__harness-100__interview-techniques"
+    },
+    {
+      "task": "which of my design mockups breaks visual consistency",
+      "expected": [
+        "chief__design-review",
+        "design-critique",
+        "web-design-guidelines",
+        "design-system"
+      ],
+      "style": "abstract",
+      "rank": 4,
+      "top1": "skill.skillpanel__maister__product-design"
+    },
+    {
+      "task": "our error messages confuse users, rewrite the little texts in the UI",
+      "expected": [
+        "ux-copy"
+      ],
+      "style": "abstract",
+      "rank": null,
+      "top1": "skill.anthropics__knowledge-work-plugins__ticket-triage"
+    }
+  ]
+}

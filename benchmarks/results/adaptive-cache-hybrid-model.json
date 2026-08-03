@@ -1,0 +1,258 @@
+{
+  "retriever": "hybrid-model",
+  "selector": "greedy",
+  "corpus_size": 63,
+  "distractors": null,
+  "scenarios": 28,
+  "epochs": 3,
+  "seed": 7,
+  "threshold": 0.72,
+  "pool": 50,
+  "task_success_model": "selected: gold set ⊆ routed set, dependency-closed and policy-feasible; abstain/escalate: routed status equals the expected status",
+  "mode": "cache",
+  "configs": {
+    "no-cache": {
+      "requests": 84,
+      "task_success_rate": 0.679,
+      "cache_hit_rate": 0.0,
+      "set_f1": 0.72,
+      "set_exact_match": 0.625,
+      "status_accuracy": 0.857,
+      "abstain_escalate_accuracy": 1.0,
+      "latency_ms_mean": 2.973,
+      "latency_ms_p50": 2.619,
+      "latency_ms_p95": 5.149,
+      "latency_ms_hit": 0.0,
+      "latency_ms_hit_p50": 0.0,
+      "latency_ms_miss": 2.973,
+      "latency_ms_miss_p50": 2.619,
+      "hit_regret": 0,
+      "hit_rescue": 0,
+      "hit_regret_rate": 0.0,
+      "by_epoch": {
+        "0": {
+          "task_success_rate": 0.679,
+          "cache_hit_rate": 0.0
+        },
+        "1": {
+          "task_success_rate": 0.679,
+          "cache_hit_rate": 0.0
+        },
+        "2": {
+          "task_success_rate": 0.679,
+          "cache_hit_rate": 0.0
+        }
+      },
+      "by_style": {
+        "direct": {
+          "task_success_rate": 1.0,
+          "cache_hit_rate": 0.0
+        },
+        "paraphrase": {
+          "task_success_rate": 0.25,
+          "cache_hit_rate": 0.0
+        }
+      },
+      "cases_stored": 0,
+      "evictions": 0,
+      "miss_reasons": {}
+    },
+    "cache-lexical": {
+      "requests": 84,
+      "task_success_rate": 0.679,
+      "cache_hit_rate": 0.452,
+      "set_f1": 0.72,
+      "set_exact_match": 0.625,
+      "status_accuracy": 0.857,
+      "abstain_escalate_accuracy": 1.0,
+      "latency_ms_mean": 1.492,
+      "latency_ms_p50": 2.209,
+      "latency_ms_p95": 3.217,
+      "latency_ms_hit": 0.083,
+      "latency_ms_hit_p50": 0.081,
+      "latency_ms_miss": 2.656,
+      "latency_ms_miss_p50": 2.559,
+      "hit_regret": 0,
+      "hit_rescue": 0,
+      "hit_regret_rate": 0.0,
+      "by_epoch": {
+        "0": {
+          "task_success_rate": 0.679,
+          "cache_hit_rate": 0.0
+        },
+        "1": {
+          "task_success_rate": 0.679,
+          "cache_hit_rate": 0.679
+        },
+        "2": {
+          "task_success_rate": 0.679,
+          "cache_hit_rate": 0.679
+        }
+      },
+      "by_style": {
+        "direct": {
+          "task_success_rate": 1.0,
+          "cache_hit_rate": 0.667
+        },
+        "paraphrase": {
+          "task_success_rate": 0.25,
+          "cache_hit_rate": 0.167
+        }
+      },
+      "cases_stored": 19,
+      "evictions": 0,
+      "miss_reasons": {
+        "below-threshold": 43,
+        "empty-cache": 3
+      }
+    },
+    "cache-semantic": {
+      "requests": 84,
+      "task_success_rate": 0.679,
+      "cache_hit_rate": 0.452,
+      "set_f1": 0.72,
+      "set_exact_match": 0.625,
+      "status_accuracy": 0.857,
+      "abstain_escalate_accuracy": 1.0,
+      "latency_ms_mean": 2.045,
+      "latency_ms_p50": 2.269,
+      "latency_ms_p95": 3.761,
+      "latency_ms_hit": 0.818,
+      "latency_ms_hit_p50": 0.719,
+      "latency_ms_miss": 3.058,
+      "latency_ms_miss_p50": 2.983,
+      "hit_regret": 0,
+      "hit_rescue": 0,
+      "hit_regret_rate": 0.0,
+      "by_epoch": {
+        "0": {
+          "task_success_rate": 0.679,
+          "cache_hit_rate": 0.0
+        },
+        "1": {
+          "task_success_rate": 0.679,
+          "cache_hit_rate": 0.679
+        },
+        "2": {
+          "task_success_rate": 0.679,
+          "cache_hit_rate": 0.679
+        }
+      },
+      "by_style": {
+        "direct": {
+          "task_success_rate": 1.0,
+          "cache_hit_rate": 0.667
+        },
+        "paraphrase": {
+          "task_success_rate": 0.25,
+          "cache_hit_rate": 0.167
+        }
+      },
+      "cases_stored": 19,
+      "evictions": 0,
+      "miss_reasons": {
+        "below-threshold": 43,
+        "empty-cache": 3
+      }
+    },
+    "cache-poisoned": {
+      "requests": 84,
+      "task_success_rate": 0.679,
+      "cache_hit_rate": 0.452,
+      "set_f1": 0.72,
+      "set_exact_match": 0.625,
+      "status_accuracy": 0.857,
+      "abstain_escalate_accuracy": 1.0,
+      "latency_ms_mean": 1.563,
+      "latency_ms_p50": 2.169,
+      "latency_ms_p95": 3.094,
+      "latency_ms_hit": 0.19,
+      "latency_ms_hit_p50": 0.109,
+      "latency_ms_miss": 2.696,
+      "latency_ms_miss_p50": 2.644,
+      "hit_regret": 0,
+      "hit_rescue": 0,
+      "hit_regret_rate": 0.0,
+      "by_epoch": {
+        "0": {
+          "task_success_rate": 0.679,
+          "cache_hit_rate": 0.0
+        },
+        "1": {
+          "task_success_rate": 0.679,
+          "cache_hit_rate": 0.679
+        },
+        "2": {
+          "task_success_rate": 0.679,
+          "cache_hit_rate": 0.679
+        }
+      },
+      "by_style": {
+        "direct": {
+          "task_success_rate": 1.0,
+          "cache_hit_rate": 0.667
+        },
+        "paraphrase": {
+          "task_success_rate": 0.25,
+          "cache_hit_rate": 0.167
+        }
+      },
+      "cases_stored": 28,
+      "evictions": 0,
+      "miss_reasons": {
+        "below-threshold": 45,
+        "empty-cache": 1,
+        "failed-case": 18
+      }
+    },
+    "cache-stale-blind": {
+      "requests": 84,
+      "task_success_rate": 0.679,
+      "cache_hit_rate": 0.452,
+      "set_f1": 0.72,
+      "set_exact_match": 0.625,
+      "status_accuracy": 0.857,
+      "abstain_escalate_accuracy": 1.0,
+      "latency_ms_mean": 1.386,
+      "latency_ms_p50": 2.225,
+      "latency_ms_p95": 2.646,
+      "latency_ms_hit": 0.083,
+      "latency_ms_hit_p50": 0.08,
+      "latency_ms_miss": 2.462,
+      "latency_ms_miss_p50": 2.447,
+      "hit_regret": 0,
+      "hit_rescue": 0,
+      "hit_regret_rate": 0.0,
+      "by_epoch": {
+        "0": {
+          "task_success_rate": 0.679,
+          "cache_hit_rate": 0.0
+        },
+        "1": {
+          "task_success_rate": 0.679,
+          "cache_hit_rate": 0.679
+        },
+        "2": {
+          "task_success_rate": 0.679,
+          "cache_hit_rate": 0.679
+        }
+      },
+      "by_style": {
+        "direct": {
+          "task_success_rate": 1.0,
+          "cache_hit_rate": 0.667
+        },
+        "paraphrase": {
+          "task_success_rate": 0.25,
+          "cache_hit_rate": 0.167
+        }
+      },
+      "cases_stored": 19,
+      "evictions": 0,
+      "miss_reasons": {
+        "below-threshold": 43,
+        "empty-cache": 3
+      }
+    }
+  }
+}

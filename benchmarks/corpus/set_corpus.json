@@ -1,0 +1,1570 @@
+{
+  "resources": [
+    {
+      "id": "memory.invoicing.context",
+      "kind": "memory",
+      "name": "Invoice Creation And Billing Notes",
+      "version": "1.0.0",
+      "description": "Accumulated knowledge and past decisions about invoice creation and billing: invoices, billing runs, payment terms, dunning, accounts receivable.",
+      "capabilities": [
+        "invoicing.context"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "memory://memory.invoicing.context",
+      "tags": [
+        "invoicing",
+        "context"
+      ],
+      "content_type": "notes"
+    },
+    {
+      "id": "skill.invoicing.procedure",
+      "kind": "skill",
+      "name": "Invoice Creation And Billing Procedure",
+      "version": "1.0.0",
+      "description": "Step-by-step procedure and quality checklist for invoice creation and billing, covering invoices, billing runs, payment terms, dunning, accounts receivable.",
+      "capabilities": [
+        "invoicing.procedure"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "skill://skill.invoicing.procedure",
+      "tags": [
+        "invoicing",
+        "procedure"
+      ]
+    },
+    {
+      "id": "tool.invoicing.workbench",
+      "kind": "tool",
+      "name": "Invoice Creation And Billing Workbench",
+      "version": "1.0.0",
+      "description": "Full workbench tool for invoice creation and billing: executes invoices, billing runs, payment terms, dunning, accounts receivable end to end.",
+      "capabilities": [
+        "invoicing.execution"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 2.0,
+      "latency_class": "medium",
+      "side_effect": "read",
+      "trust_level": "community",
+      "ref": "tool://tool.invoicing.workbench",
+      "tags": [
+        "invoicing",
+        "tool"
+      ],
+      "dependencies": [
+        "skill.invoicing.procedure"
+      ],
+      "conflicts_with": [
+        "tool.invoicing.quickdraft"
+      ]
+    },
+    {
+      "id": "tool.invoicing.quickdraft",
+      "kind": "tool",
+      "name": "Invoice Creation And Billing Quick Draft",
+      "version": "1.0.0",
+      "description": "Lightweight draft-only alternative tool for invoice creation and billing; supports invoices, billing runs, payment terms, dunning, accounts receivable superficially.",
+      "capabilities": [
+        "invoicing.drafting"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "tool://tool.invoicing.quickdraft",
+      "tags": [
+        "invoicing",
+        "tool",
+        "draft"
+      ],
+      "conflicts_with": [
+        "tool.invoicing.workbench"
+      ]
+    },
+    {
+      "id": "agent.invoicing.specialist",
+      "kind": "agent",
+      "name": "Invoice Creation And Billing Specialist",
+      "version": "1.0.0",
+      "description": "Specialist agent that plans and delegates invoice creation and billing work using the workbench: invoices, billing runs, payment terms, dunning, accounts receivable.",
+      "capabilities": [
+        "invoicing.orchestration"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 1.0,
+      "latency_class": "slow",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "agent://agent.invoicing.specialist",
+      "tags": [
+        "invoicing",
+        "agent"
+      ],
+      "dependencies": [
+        "tool.invoicing.workbench"
+      ]
+    },
+    {
+      "id": "memory.retention.context",
+      "kind": "memory",
+      "name": "Customer Churn And Retention Analytics Notes",
+      "version": "1.0.0",
+      "description": "Accumulated knowledge and past decisions about customer churn and retention analytics: churn cohorts, retention curves, activation funnels, win-back campaigns.",
+      "capabilities": [
+        "retention.context"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "memory://memory.retention.context",
+      "tags": [
+        "retention",
+        "context"
+      ],
+      "content_type": "notes"
+    },
+    {
+      "id": "skill.retention.procedure",
+      "kind": "skill",
+      "name": "Customer Churn And Retention Analytics Procedure",
+      "version": "1.0.0",
+      "description": "Step-by-step procedure and quality checklist for customer churn and retention analytics, covering churn cohorts, retention curves, activation funnels, win-back campaigns.",
+      "capabilities": [
+        "retention.procedure"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "skill://skill.retention.procedure",
+      "tags": [
+        "retention",
+        "procedure"
+      ]
+    },
+    {
+      "id": "tool.retention.workbench",
+      "kind": "tool",
+      "name": "Customer Churn And Retention Analytics Workbench",
+      "version": "1.0.0",
+      "description": "Full workbench tool for customer churn and retention analytics: executes churn cohorts, retention curves, activation funnels, win-back campaigns end to end.",
+      "capabilities": [
+        "retention.execution"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 2.0,
+      "latency_class": "medium",
+      "side_effect": "read",
+      "trust_level": "community",
+      "ref": "tool://tool.retention.workbench",
+      "tags": [
+        "retention",
+        "tool"
+      ],
+      "dependencies": [
+        "skill.retention.procedure"
+      ],
+      "conflicts_with": [
+        "tool.retention.quickdraft"
+      ]
+    },
+    {
+      "id": "tool.retention.quickdraft",
+      "kind": "tool",
+      "name": "Customer Churn And Retention Analytics Quick Draft",
+      "version": "1.0.0",
+      "description": "Lightweight draft-only alternative tool for customer churn and retention analytics; supports churn cohorts, retention curves, activation funnels, win-back campaigns superficially.",
+      "capabilities": [
+        "retention.drafting"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "tool://tool.retention.quickdraft",
+      "tags": [
+        "retention",
+        "tool",
+        "draft"
+      ],
+      "conflicts_with": [
+        "tool.retention.workbench"
+      ]
+    },
+    {
+      "id": "agent.retention.specialist",
+      "kind": "agent",
+      "name": "Customer Churn And Retention Analytics Specialist",
+      "version": "1.0.0",
+      "description": "Specialist agent that plans and delegates customer churn and retention analytics work using the workbench: churn cohorts, retention curves, activation funnels, win-back campaigns.",
+      "capabilities": [
+        "retention.orchestration"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 1.0,
+      "latency_class": "slow",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "agent://agent.retention.specialist",
+      "tags": [
+        "retention",
+        "agent"
+      ],
+      "dependencies": [
+        "tool.retention.workbench"
+      ]
+    },
+    {
+      "id": "memory.secaudit.context",
+      "kind": "memory",
+      "name": "Security Audit And Vulnerability Scanning Notes",
+      "version": "1.0.0",
+      "description": "Accumulated knowledge and past decisions about security audit and vulnerability scanning: vulnerabilities, CVEs, dependency scanning, OWASP checks, remediation.",
+      "capabilities": [
+        "secaudit.context"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "memory://memory.secaudit.context",
+      "tags": [
+        "secaudit",
+        "context"
+      ],
+      "content_type": "notes"
+    },
+    {
+      "id": "skill.secaudit.procedure",
+      "kind": "skill",
+      "name": "Security Audit And Vulnerability Scanning Procedure",
+      "version": "1.0.0",
+      "description": "Step-by-step procedure and quality checklist for security audit and vulnerability scanning, covering vulnerabilities, CVEs, dependency scanning, OWASP checks, remediation.",
+      "capabilities": [
+        "secaudit.procedure"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "skill://skill.secaudit.procedure",
+      "tags": [
+        "secaudit",
+        "procedure"
+      ]
+    },
+    {
+      "id": "tool.secaudit.workbench",
+      "kind": "tool",
+      "name": "Security Audit And Vulnerability Scanning Workbench",
+      "version": "1.0.0",
+      "description": "Full workbench tool for security audit and vulnerability scanning: executes vulnerabilities, CVEs, dependency scanning, OWASP checks, remediation end to end.",
+      "capabilities": [
+        "secaudit.execution"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 2.0,
+      "latency_class": "medium",
+      "side_effect": "read",
+      "trust_level": "community",
+      "ref": "tool://tool.secaudit.workbench",
+      "tags": [
+        "secaudit",
+        "tool"
+      ],
+      "dependencies": [
+        "skill.secaudit.procedure"
+      ],
+      "conflicts_with": [
+        "tool.secaudit.quickdraft"
+      ]
+    },
+    {
+      "id": "tool.secaudit.quickdraft",
+      "kind": "tool",
+      "name": "Security Audit And Vulnerability Scanning Quick Draft",
+      "version": "1.0.0",
+      "description": "Lightweight draft-only alternative tool for security audit and vulnerability scanning; supports vulnerabilities, CVEs, dependency scanning, OWASP checks, remediation superficially.",
+      "capabilities": [
+        "secaudit.drafting"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "tool://tool.secaudit.quickdraft",
+      "tags": [
+        "secaudit",
+        "tool",
+        "draft"
+      ],
+      "conflicts_with": [
+        "tool.secaudit.workbench"
+      ]
+    },
+    {
+      "id": "agent.secaudit.specialist",
+      "kind": "agent",
+      "name": "Security Audit And Vulnerability Scanning Specialist",
+      "version": "1.0.0",
+      "description": "Specialist agent that plans and delegates security audit and vulnerability scanning work using the workbench: vulnerabilities, CVEs, dependency scanning, OWASP checks, remediation.",
+      "capabilities": [
+        "secaudit.orchestration"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 1.0,
+      "latency_class": "slow",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "agent://agent.secaudit.specialist",
+      "tags": [
+        "secaudit",
+        "agent"
+      ],
+      "dependencies": [
+        "tool.secaudit.workbench"
+      ]
+    },
+    {
+      "id": "memory.deploy.context",
+      "kind": "memory",
+      "name": "Production Deployment And Release Management Notes",
+      "version": "1.0.0",
+      "description": "Accumulated knowledge and past decisions about production deployment and release management: release pipelines, canary rollouts, rollback plans, deployment checklists.",
+      "capabilities": [
+        "deploy.context"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "memory://memory.deploy.context",
+      "tags": [
+        "deploy",
+        "context"
+      ],
+      "content_type": "notes"
+    },
+    {
+      "id": "skill.deploy.procedure",
+      "kind": "skill",
+      "name": "Production Deployment And Release Management Procedure",
+      "version": "1.0.0",
+      "description": "Step-by-step procedure and quality checklist for production deployment and release management, covering release pipelines, canary rollouts, rollback plans, deployment checklists.",
+      "capabilities": [
+        "deploy.procedure"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "skill://skill.deploy.procedure",
+      "tags": [
+        "deploy",
+        "procedure"
+      ]
+    },
+    {
+      "id": "tool.deploy.workbench",
+      "kind": "tool",
+      "name": "Production Deployment And Release Management Workbench",
+      "version": "1.0.0",
+      "description": "Full workbench tool for production deployment and release management: executes release pipelines, canary rollouts, rollback plans, deployment checklists end to end.",
+      "capabilities": [
+        "deploy.execution"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [
+        "deploy.production"
+      ],
+      "cost_estimate": 2.0,
+      "latency_class": "medium",
+      "side_effect": "read",
+      "trust_level": "community",
+      "ref": "tool://tool.deploy.workbench",
+      "tags": [
+        "deploy",
+        "tool"
+      ],
+      "dependencies": [
+        "skill.deploy.procedure"
+      ],
+      "conflicts_with": [
+        "tool.deploy.quickdraft"
+      ]
+    },
+    {
+      "id": "tool.deploy.quickdraft",
+      "kind": "tool",
+      "name": "Production Deployment And Release Management Quick Draft",
+      "version": "1.0.0",
+      "description": "Lightweight draft-only alternative tool for production deployment and release management; supports release pipelines, canary rollouts, rollback plans, deployment checklists superficially.",
+      "capabilities": [
+        "deploy.drafting"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "tool://tool.deploy.quickdraft",
+      "tags": [
+        "deploy",
+        "tool",
+        "draft"
+      ],
+      "conflicts_with": [
+        "tool.deploy.workbench"
+      ]
+    },
+    {
+      "id": "agent.deploy.specialist",
+      "kind": "agent",
+      "name": "Production Deployment And Release Management Specialist",
+      "version": "1.0.0",
+      "description": "Specialist agent that plans and delegates production deployment and release management work using the workbench: release pipelines, canary rollouts, rollback plans, deployment checklists.",
+      "capabilities": [
+        "deploy.orchestration"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 1.0,
+      "latency_class": "slow",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "agent://agent.deploy.specialist",
+      "tags": [
+        "deploy",
+        "agent"
+      ],
+      "dependencies": [
+        "tool.deploy.workbench"
+      ]
+    },
+    {
+      "id": "memory.incident.context",
+      "kind": "memory",
+      "name": "Incident Response And Postmortems Notes",
+      "version": "1.0.0",
+      "description": "Accumulated knowledge and past decisions about incident response and postmortems: incident triage, on-call escalation, root cause analysis, postmortem reports.",
+      "capabilities": [
+        "incident.context"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "memory://memory.incident.context",
+      "tags": [
+        "incident",
+        "context"
+      ],
+      "content_type": "notes"
+    },
+    {
+      "id": "skill.incident.procedure",
+      "kind": "skill",
+      "name": "Incident Response And Postmortems Procedure",
+      "version": "1.0.0",
+      "description": "Step-by-step procedure and quality checklist for incident response and postmortems, covering incident triage, on-call escalation, root cause analysis, postmortem reports.",
+      "capabilities": [
+        "incident.procedure"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "skill://skill.incident.procedure",
+      "tags": [
+        "incident",
+        "procedure"
+      ]
+    },
+    {
+      "id": "tool.incident.workbench",
+      "kind": "tool",
+      "name": "Incident Response And Postmortems Workbench",
+      "version": "1.0.0",
+      "description": "Full workbench tool for incident response and postmortems: executes incident triage, on-call escalation, root cause analysis, postmortem reports end to end.",
+      "capabilities": [
+        "incident.execution"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 2.0,
+      "latency_class": "medium",
+      "side_effect": "read",
+      "trust_level": "community",
+      "ref": "tool://tool.incident.workbench",
+      "tags": [
+        "incident",
+        "tool"
+      ],
+      "dependencies": [
+        "skill.incident.procedure"
+      ],
+      "conflicts_with": [
+        "tool.incident.quickdraft"
+      ]
+    },
+    {
+      "id": "tool.incident.quickdraft",
+      "kind": "tool",
+      "name": "Incident Response And Postmortems Quick Draft",
+      "version": "1.0.0",
+      "description": "Lightweight draft-only alternative tool for incident response and postmortems; supports incident triage, on-call escalation, root cause analysis, postmortem reports superficially.",
+      "capabilities": [
+        "incident.drafting"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "tool://tool.incident.quickdraft",
+      "tags": [
+        "incident",
+        "tool",
+        "draft"
+      ],
+      "conflicts_with": [
+        "tool.incident.workbench"
+      ]
+    },
+    {
+      "id": "agent.incident.specialist",
+      "kind": "agent",
+      "name": "Incident Response And Postmortems Specialist",
+      "version": "1.0.0",
+      "description": "Specialist agent that plans and delegates incident response and postmortems work using the workbench: incident triage, on-call escalation, root cause analysis, postmortem reports.",
+      "capabilities": [
+        "incident.orchestration"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 1.0,
+      "latency_class": "slow",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "agent://agent.incident.specialist",
+      "tags": [
+        "incident",
+        "agent"
+      ],
+      "dependencies": [
+        "tool.incident.workbench"
+      ]
+    },
+    {
+      "id": "memory.dbdesign.context",
+      "kind": "memory",
+      "name": "Database Schema Design Notes",
+      "version": "1.0.0",
+      "description": "Accumulated knowledge and past decisions about database schema design: tables, relations, normalization, indexes, migrations, entity models.",
+      "capabilities": [
+        "dbdesign.context"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "memory://memory.dbdesign.context",
+      "tags": [
+        "dbdesign",
+        "context"
+      ],
+      "content_type": "notes"
+    },
+    {
+      "id": "skill.dbdesign.procedure",
+      "kind": "skill",
+      "name": "Database Schema Design Procedure",
+      "version": "1.0.0",
+      "description": "Step-by-step procedure and quality checklist for database schema design, covering tables, relations, normalization, indexes, migrations, entity models.",
+      "capabilities": [
+        "dbdesign.procedure"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "skill://skill.dbdesign.procedure",
+      "tags": [
+        "dbdesign",
+        "procedure"
+      ]
+    },
+    {
+      "id": "tool.dbdesign.workbench",
+      "kind": "tool",
+      "name": "Database Schema Design Workbench",
+      "version": "1.0.0",
+      "description": "Full workbench tool for database schema design: executes tables, relations, normalization, indexes, migrations, entity models end to end.",
+      "capabilities": [
+        "dbdesign.execution"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [
+        "db.write"
+      ],
+      "cost_estimate": 2.0,
+      "latency_class": "medium",
+      "side_effect": "read",
+      "trust_level": "community",
+      "ref": "tool://tool.dbdesign.workbench",
+      "tags": [
+        "dbdesign",
+        "tool"
+      ],
+      "dependencies": [
+        "skill.dbdesign.procedure"
+      ],
+      "conflicts_with": [
+        "tool.dbdesign.quickdraft"
+      ]
+    },
+    {
+      "id": "tool.dbdesign.quickdraft",
+      "kind": "tool",
+      "name": "Database Schema Design Quick Draft",
+      "version": "1.0.0",
+      "description": "Lightweight draft-only alternative tool for database schema design; supports tables, relations, normalization, indexes, migrations, entity models superficially.",
+      "capabilities": [
+        "dbdesign.drafting"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "tool://tool.dbdesign.quickdraft",
+      "tags": [
+        "dbdesign",
+        "tool",
+        "draft"
+      ],
+      "conflicts_with": [
+        "tool.dbdesign.workbench"
+      ]
+    },
+    {
+      "id": "agent.dbdesign.specialist",
+      "kind": "agent",
+      "name": "Database Schema Design Specialist",
+      "version": "1.0.0",
+      "description": "Specialist agent that plans and delegates database schema design work using the workbench: tables, relations, normalization, indexes, migrations, entity models.",
+      "capabilities": [
+        "dbdesign.orchestration"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 1.0,
+      "latency_class": "slow",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "agent://agent.dbdesign.specialist",
+      "tags": [
+        "dbdesign",
+        "agent"
+      ],
+      "dependencies": [
+        "tool.dbdesign.workbench"
+      ]
+    },
+    {
+      "id": "memory.contentmkt.context",
+      "kind": "memory",
+      "name": "Content Marketing And Repurposing Notes",
+      "version": "1.0.0",
+      "description": "Accumulated knowledge and past decisions about content marketing and repurposing: blog posts, newsletters, social media threads, content calendars, repurposing.",
+      "capabilities": [
+        "contentmkt.context"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "memory://memory.contentmkt.context",
+      "tags": [
+        "contentmkt",
+        "context"
+      ],
+      "content_type": "notes"
+    },
+    {
+      "id": "skill.contentmkt.procedure",
+      "kind": "skill",
+      "name": "Content Marketing And Repurposing Procedure",
+      "version": "1.0.0",
+      "description": "Step-by-step procedure and quality checklist for content marketing and repurposing, covering blog posts, newsletters, social media threads, content calendars, repurposing.",
+      "capabilities": [
+        "contentmkt.procedure"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "skill://skill.contentmkt.procedure",
+      "tags": [
+        "contentmkt",
+        "procedure"
+      ]
+    },
+    {
+      "id": "tool.contentmkt.workbench",
+      "kind": "tool",
+      "name": "Content Marketing And Repurposing Workbench",
+      "version": "1.0.0",
+      "description": "Full workbench tool for content marketing and repurposing: executes blog posts, newsletters, social media threads, content calendars, repurposing end to end.",
+      "capabilities": [
+        "contentmkt.execution"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 2.0,
+      "latency_class": "medium",
+      "side_effect": "read",
+      "trust_level": "community",
+      "ref": "tool://tool.contentmkt.workbench",
+      "tags": [
+        "contentmkt",
+        "tool"
+      ],
+      "dependencies": [
+        "skill.contentmkt.procedure"
+      ],
+      "conflicts_with": [
+        "tool.contentmkt.quickdraft"
+      ]
+    },
+    {
+      "id": "tool.contentmkt.quickdraft",
+      "kind": "tool",
+      "name": "Content Marketing And Repurposing Quick Draft",
+      "version": "1.0.0",
+      "description": "Lightweight draft-only alternative tool for content marketing and repurposing; supports blog posts, newsletters, social media threads, content calendars, repurposing superficially.",
+      "capabilities": [
+        "contentmkt.drafting"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "tool://tool.contentmkt.quickdraft",
+      "tags": [
+        "contentmkt",
+        "tool",
+        "draft"
+      ],
+      "conflicts_with": [
+        "tool.contentmkt.workbench"
+      ]
+    },
+    {
+      "id": "agent.contentmkt.specialist",
+      "kind": "agent",
+      "name": "Content Marketing And Repurposing Specialist",
+      "version": "1.0.0",
+      "description": "Specialist agent that plans and delegates content marketing and repurposing work using the workbench: blog posts, newsletters, social media threads, content calendars, repurposing.",
+      "capabilities": [
+        "contentmkt.orchestration"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 1.0,
+      "latency_class": "slow",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "agent://agent.contentmkt.specialist",
+      "tags": [
+        "contentmkt",
+        "agent"
+      ],
+      "dependencies": [
+        "tool.contentmkt.workbench"
+      ]
+    },
+    {
+      "id": "memory.recruiting.context",
+      "kind": "memory",
+      "name": "Recruiting And Interview Preparation Notes",
+      "version": "1.0.0",
+      "description": "Accumulated knowledge and past decisions about recruiting and interview preparation: job descriptions, interview loops, candidate scorecards, offer letters.",
+      "capabilities": [
+        "recruiting.context"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "memory://memory.recruiting.context",
+      "tags": [
+        "recruiting",
+        "context"
+      ],
+      "content_type": "notes"
+    },
+    {
+      "id": "skill.recruiting.procedure",
+      "kind": "skill",
+      "name": "Recruiting And Interview Preparation Procedure",
+      "version": "1.0.0",
+      "description": "Step-by-step procedure and quality checklist for recruiting and interview preparation, covering job descriptions, interview loops, candidate scorecards, offer letters.",
+      "capabilities": [
+        "recruiting.procedure"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "skill://skill.recruiting.procedure",
+      "tags": [
+        "recruiting",
+        "procedure"
+      ]
+    },
+    {
+      "id": "tool.recruiting.workbench",
+      "kind": "tool",
+      "name": "Recruiting And Interview Preparation Workbench",
+      "version": "1.0.0",
+      "description": "Full workbench tool for recruiting and interview preparation: executes job descriptions, interview loops, candidate scorecards, offer letters end to end.",
+      "capabilities": [
+        "recruiting.execution"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [
+        "hr.records"
+      ],
+      "cost_estimate": 2.0,
+      "latency_class": "medium",
+      "side_effect": "read",
+      "trust_level": "community",
+      "ref": "tool://tool.recruiting.workbench",
+      "tags": [
+        "recruiting",
+        "tool"
+      ],
+      "dependencies": [
+        "skill.recruiting.procedure"
+      ],
+      "conflicts_with": [
+        "tool.recruiting.quickdraft"
+      ]
+    },
+    {
+      "id": "tool.recruiting.quickdraft",
+      "kind": "tool",
+      "name": "Recruiting And Interview Preparation Quick Draft",
+      "version": "1.0.0",
+      "description": "Lightweight draft-only alternative tool for recruiting and interview preparation; supports job descriptions, interview loops, candidate scorecards, offer letters superficially.",
+      "capabilities": [
+        "recruiting.drafting"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "tool://tool.recruiting.quickdraft",
+      "tags": [
+        "recruiting",
+        "tool",
+        "draft"
+      ],
+      "conflicts_with": [
+        "tool.recruiting.workbench"
+      ]
+    },
+    {
+      "id": "agent.recruiting.specialist",
+      "kind": "agent",
+      "name": "Recruiting And Interview Preparation Specialist",
+      "version": "1.0.0",
+      "description": "Specialist agent that plans and delegates recruiting and interview preparation work using the workbench: job descriptions, interview loops, candidate scorecards, offer letters.",
+      "capabilities": [
+        "recruiting.orchestration"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 1.0,
+      "latency_class": "slow",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "agent://agent.recruiting.specialist",
+      "tags": [
+        "recruiting",
+        "agent"
+      ],
+      "dependencies": [
+        "tool.recruiting.workbench"
+      ]
+    },
+    {
+      "id": "memory.contracts.context",
+      "kind": "memory",
+      "name": "Legal Contract Review Notes",
+      "version": "1.0.0",
+      "description": "Accumulated knowledge and past decisions about legal contract review: contracts, clauses, liability, indemnification, renewal terms, redlines.",
+      "capabilities": [
+        "contracts.context"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "memory://memory.contracts.context",
+      "tags": [
+        "contracts",
+        "context"
+      ],
+      "content_type": "notes"
+    },
+    {
+      "id": "skill.contracts.procedure",
+      "kind": "skill",
+      "name": "Legal Contract Review Procedure",
+      "version": "1.0.0",
+      "description": "Step-by-step procedure and quality checklist for legal contract review, covering contracts, clauses, liability, indemnification, renewal terms, redlines.",
+      "capabilities": [
+        "contracts.procedure"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "skill://skill.contracts.procedure",
+      "tags": [
+        "contracts",
+        "procedure"
+      ]
+    },
+    {
+      "id": "tool.contracts.workbench",
+      "kind": "tool",
+      "name": "Legal Contract Review Workbench",
+      "version": "1.0.0",
+      "description": "Full workbench tool for legal contract review: executes contracts, clauses, liability, indemnification, renewal terms, redlines end to end.",
+      "capabilities": [
+        "contracts.execution"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 2.0,
+      "latency_class": "medium",
+      "side_effect": "read",
+      "trust_level": "community",
+      "ref": "tool://tool.contracts.workbench",
+      "tags": [
+        "contracts",
+        "tool"
+      ],
+      "dependencies": [
+        "skill.contracts.procedure"
+      ],
+      "conflicts_with": [
+        "tool.contracts.quickdraft"
+      ]
+    },
+    {
+      "id": "tool.contracts.quickdraft",
+      "kind": "tool",
+      "name": "Legal Contract Review Quick Draft",
+      "version": "1.0.0",
+      "description": "Lightweight draft-only alternative tool for legal contract review; supports contracts, clauses, liability, indemnification, renewal terms, redlines superficially.",
+      "capabilities": [
+        "contracts.drafting"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "tool://tool.contracts.quickdraft",
+      "tags": [
+        "contracts",
+        "tool",
+        "draft"
+      ],
+      "conflicts_with": [
+        "tool.contracts.workbench"
+      ]
+    },
+    {
+      "id": "agent.contracts.specialist",
+      "kind": "agent",
+      "name": "Legal Contract Review Specialist",
+      "version": "1.0.0",
+      "description": "Specialist agent that plans and delegates legal contract review work using the workbench: contracts, clauses, liability, indemnification, renewal terms, redlines.",
+      "capabilities": [
+        "contracts.orchestration"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 1.0,
+      "latency_class": "slow",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "agent://agent.contracts.specialist",
+      "tags": [
+        "contracts",
+        "agent"
+      ],
+      "dependencies": [
+        "tool.contracts.workbench"
+      ]
+    },
+    {
+      "id": "memory.support.context",
+      "kind": "memory",
+      "name": "Customer Support Ticket Triage Notes",
+      "version": "1.0.0",
+      "description": "Accumulated knowledge and past decisions about customer support ticket triage: support tickets, severity levels, SLAs, escalation queues, canned replies.",
+      "capabilities": [
+        "support.context"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "memory://memory.support.context",
+      "tags": [
+        "support",
+        "context"
+      ],
+      "content_type": "notes"
+    },
+    {
+      "id": "skill.support.procedure",
+      "kind": "skill",
+      "name": "Customer Support Ticket Triage Procedure",
+      "version": "1.0.0",
+      "description": "Step-by-step procedure and quality checklist for customer support ticket triage, covering support tickets, severity levels, SLAs, escalation queues, canned replies.",
+      "capabilities": [
+        "support.procedure"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "skill://skill.support.procedure",
+      "tags": [
+        "support",
+        "procedure"
+      ]
+    },
+    {
+      "id": "tool.support.workbench",
+      "kind": "tool",
+      "name": "Customer Support Ticket Triage Workbench",
+      "version": "1.0.0",
+      "description": "Full workbench tool for customer support ticket triage: executes support tickets, severity levels, SLAs, escalation queues, canned replies end to end.",
+      "capabilities": [
+        "support.execution"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 2.0,
+      "latency_class": "medium",
+      "side_effect": "read",
+      "trust_level": "community",
+      "ref": "tool://tool.support.workbench",
+      "tags": [
+        "support",
+        "tool"
+      ],
+      "dependencies": [
+        "skill.support.procedure"
+      ],
+      "conflicts_with": [
+        "tool.support.quickdraft"
+      ]
+    },
+    {
+      "id": "tool.support.quickdraft",
+      "kind": "tool",
+      "name": "Customer Support Ticket Triage Quick Draft",
+      "version": "1.0.0",
+      "description": "Lightweight draft-only alternative tool for customer support ticket triage; supports support tickets, severity levels, SLAs, escalation queues, canned replies superficially.",
+      "capabilities": [
+        "support.drafting"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "tool://tool.support.quickdraft",
+      "tags": [
+        "support",
+        "tool",
+        "draft"
+      ],
+      "conflicts_with": [
+        "tool.support.workbench"
+      ]
+    },
+    {
+      "id": "agent.support.specialist",
+      "kind": "agent",
+      "name": "Customer Support Ticket Triage Specialist",
+      "version": "1.0.0",
+      "description": "Specialist agent that plans and delegates customer support ticket triage work using the workbench: support tickets, severity levels, SLAs, escalation queues, canned replies.",
+      "capabilities": [
+        "support.orchestration"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 1.0,
+      "latency_class": "slow",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "agent://agent.support.specialist",
+      "tags": [
+        "support",
+        "agent"
+      ],
+      "dependencies": [
+        "tool.support.workbench"
+      ]
+    },
+    {
+      "id": "memory.etl.context",
+      "kind": "memory",
+      "name": "Data Pipeline And Etl Orchestration Notes",
+      "version": "1.0.0",
+      "description": "Accumulated knowledge and past decisions about data pipeline and ETL orchestration: ETL jobs, DAG orchestration, data quality checks, backfills, schedules.",
+      "capabilities": [
+        "etl.context"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "memory://memory.etl.context",
+      "tags": [
+        "etl",
+        "context"
+      ],
+      "content_type": "notes"
+    },
+    {
+      "id": "skill.etl.procedure",
+      "kind": "skill",
+      "name": "Data Pipeline And Etl Orchestration Procedure",
+      "version": "1.0.0",
+      "description": "Step-by-step procedure and quality checklist for data pipeline and ETL orchestration, covering ETL jobs, DAG orchestration, data quality checks, backfills, schedules.",
+      "capabilities": [
+        "etl.procedure"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "skill://skill.etl.procedure",
+      "tags": [
+        "etl",
+        "procedure"
+      ]
+    },
+    {
+      "id": "tool.etl.workbench",
+      "kind": "tool",
+      "name": "Data Pipeline And Etl Orchestration Workbench",
+      "version": "1.0.0",
+      "description": "Full workbench tool for data pipeline and ETL orchestration: executes ETL jobs, DAG orchestration, data quality checks, backfills, schedules end to end.",
+      "capabilities": [
+        "etl.execution"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [
+        "net.external"
+      ],
+      "cost_estimate": 2.0,
+      "latency_class": "medium",
+      "side_effect": "read",
+      "trust_level": "community",
+      "ref": "tool://tool.etl.workbench",
+      "tags": [
+        "etl",
+        "tool"
+      ],
+      "dependencies": [
+        "skill.etl.procedure"
+      ],
+      "conflicts_with": [
+        "tool.etl.quickdraft"
+      ]
+    },
+    {
+      "id": "tool.etl.quickdraft",
+      "kind": "tool",
+      "name": "Data Pipeline And Etl Orchestration Quick Draft",
+      "version": "1.0.0",
+      "description": "Lightweight draft-only alternative tool for data pipeline and ETL orchestration; supports ETL jobs, DAG orchestration, data quality checks, backfills, schedules superficially.",
+      "capabilities": [
+        "etl.drafting"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "tool://tool.etl.quickdraft",
+      "tags": [
+        "etl",
+        "tool",
+        "draft"
+      ],
+      "conflicts_with": [
+        "tool.etl.workbench"
+      ]
+    },
+    {
+      "id": "agent.etl.specialist",
+      "kind": "agent",
+      "name": "Data Pipeline And Etl Orchestration Specialist",
+      "version": "1.0.0",
+      "description": "Specialist agent that plans and delegates data pipeline and ETL orchestration work using the workbench: ETL jobs, DAG orchestration, data quality checks, backfills, schedules.",
+      "capabilities": [
+        "etl.orchestration"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 1.0,
+      "latency_class": "slow",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "agent://agent.etl.specialist",
+      "tags": [
+        "etl",
+        "agent"
+      ],
+      "dependencies": [
+        "tool.etl.workbench"
+      ]
+    },
+    {
+      "id": "memory.l10n.context",
+      "kind": "memory",
+      "name": "Translation And Localization Notes",
+      "version": "1.0.0",
+      "description": "Accumulated knowledge and past decisions about translation and localization: translation memories, locale files, glossaries, plural rules, review passes.",
+      "capabilities": [
+        "l10n.context"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "memory://memory.l10n.context",
+      "tags": [
+        "l10n",
+        "context"
+      ],
+      "content_type": "notes"
+    },
+    {
+      "id": "skill.l10n.procedure",
+      "kind": "skill",
+      "name": "Translation And Localization Procedure",
+      "version": "1.0.0",
+      "description": "Step-by-step procedure and quality checklist for translation and localization, covering translation memories, locale files, glossaries, plural rules, review passes.",
+      "capabilities": [
+        "l10n.procedure"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "skill://skill.l10n.procedure",
+      "tags": [
+        "l10n",
+        "procedure"
+      ]
+    },
+    {
+      "id": "tool.l10n.workbench",
+      "kind": "tool",
+      "name": "Translation And Localization Workbench",
+      "version": "1.0.0",
+      "description": "Full workbench tool for translation and localization: executes translation memories, locale files, glossaries, plural rules, review passes end to end.",
+      "capabilities": [
+        "l10n.execution"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 2.0,
+      "latency_class": "medium",
+      "side_effect": "read",
+      "trust_level": "community",
+      "ref": "tool://tool.l10n.workbench",
+      "tags": [
+        "l10n",
+        "tool"
+      ],
+      "dependencies": [
+        "skill.l10n.procedure"
+      ],
+      "conflicts_with": [
+        "tool.l10n.quickdraft"
+      ]
+    },
+    {
+      "id": "tool.l10n.quickdraft",
+      "kind": "tool",
+      "name": "Translation And Localization Quick Draft",
+      "version": "1.0.0",
+      "description": "Lightweight draft-only alternative tool for translation and localization; supports translation memories, locale files, glossaries, plural rules, review passes superficially.",
+      "capabilities": [
+        "l10n.drafting"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "tool://tool.l10n.quickdraft",
+      "tags": [
+        "l10n",
+        "tool",
+        "draft"
+      ],
+      "conflicts_with": [
+        "tool.l10n.workbench"
+      ]
+    },
+    {
+      "id": "agent.l10n.specialist",
+      "kind": "agent",
+      "name": "Translation And Localization Specialist",
+      "version": "1.0.0",
+      "description": "Specialist agent that plans and delegates translation and localization work using the workbench: translation memories, locale files, glossaries, plural rules, review passes.",
+      "capabilities": [
+        "l10n.orchestration"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 1.0,
+      "latency_class": "slow",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "agent://agent.l10n.specialist",
+      "tags": [
+        "l10n",
+        "agent"
+      ],
+      "dependencies": [
+        "tool.l10n.workbench"
+      ]
+    },
+    {
+      "id": "tool.payments.refund",
+      "kind": "tool",
+      "name": "Payment Refund Processor",
+      "version": "1.0.0",
+      "description": "Process customer payment refunds and chargebacks against the billing provider.",
+      "capabilities": [
+        "payments.refund"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [
+        "payments.write"
+      ],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "external",
+      "trust_level": "community",
+      "ref": "tool://tool.payments.refund",
+      "tags": [
+        "payments"
+      ]
+    },
+    {
+      "id": "tool.payments.ledger",
+      "kind": "tool",
+      "name": "Payments Ledger Reader",
+      "version": "1.0.0",
+      "description": "Read refund history and payment ledger entries from the billing provider.",
+      "capabilities": [
+        "payments.ledger"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [
+        "payments.read"
+      ],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "read",
+      "trust_level": "community",
+      "ref": "tool://tool.payments.ledger",
+      "tags": [
+        "payments"
+      ]
+    },
+    {
+      "id": "tool.geo.route-planner",
+      "kind": "tool",
+      "name": "Driving Route Planner",
+      "version": "1.0.0",
+      "description": "Plan driving routes between cities with waypoints, tolls, and travel time estimates.",
+      "capabilities": [
+        "geo.routing"
+      ],
+      "input_summary": "Task description for this domain.",
+      "output_summary": "Domain-specific result.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "tool://tool.geo.route-planner",
+      "tags": [
+        "geo"
+      ],
+      "dependencies": [
+        "skill.geo.map-projections"
+      ]
+    }
+  ]
+}
