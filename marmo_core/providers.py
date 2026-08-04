@@ -22,8 +22,8 @@ from .llm import ChatMessage, LLMProvider, LLMResponse, LLMToolSpec, ToolCall
 from .semantic import _post_json
 
 ANTHROPIC_VERSION = "2023-06-01"
-DEFAULT_ANTHROPIC_MODEL = "claude-opus-4-8"
-DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+DEFAULT_ANTHROPIC_MODEL = "claude-opus-5"
+DEFAULT_OPENAI_MODEL = "gpt-5.6-terra"
 
 Transport = Callable[[str, dict, dict, float], dict]
 
@@ -126,6 +126,7 @@ class OpenAICompatibleLLMProvider(LLMProvider):
         max_tokens: int = 4096,
         timeout: float = 120.0,
         temperature: float | None = None,
+        reasoning_effort: str | None = None,
         transport: Transport | None = None,
     ) -> None:
         self.model = model
@@ -134,6 +135,7 @@ class OpenAICompatibleLLMProvider(LLMProvider):
         self.max_tokens = max_tokens
         self.timeout = timeout
         self.temperature = temperature
+        self.reasoning_effort = reasoning_effort
         self.transport = transport or _post_json
 
     def complete(self, messages: Sequence[ChatMessage], tools: Sequence[LLMToolSpec] = ()) -> LLMResponse:
@@ -152,6 +154,13 @@ class OpenAICompatibleLLMProvider(LLMProvider):
         }
         if self.temperature is not None:
             payload["temperature"] = self.temperature
+        # GPT-5.6 defaults to medium reasoning.  The previous mini default had
+        # no reasoning budget, and Chat Completions function tools require
+        # `none`, so preserve the original latency/cost/tool behavior.
+        if self.reasoning_effort is not None:
+            payload["reasoning_effort"] = self.reasoning_effort
+        elif self.model.startswith("gpt-5.6"):
+            payload["reasoning_effort"] = "none"
         if tools:
             payload["tools"] = [
                 {

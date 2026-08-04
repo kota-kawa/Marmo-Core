@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+import re
 from typing import Any, Mapping, Sequence
 
 from .secrets import sanitize_secret_inputs
@@ -188,3 +189,9 @@ def estimate_tokens(text: str) -> int:
     """Cheap token estimate used until a tokenizer extra is installed (F-CTX-07)."""
 
     return max(len(text) // 4, 1) if text else 0
+
+
+def tokenize(text: str) -> tuple[str, ...]:
+    """Split text into deterministic word and punctuation tokens without extras."""
+
+    return tuple(re.findall(r"\w+|[^\w\s]", text.lower(), flags=re.UNICODE))

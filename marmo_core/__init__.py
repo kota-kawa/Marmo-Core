@@ -75,6 +75,8 @@ from .llm import (
     LLMToolSpec,
     MockLLMProvider,
     ToolCall,
+    estimate_tokens,
+    tokenize,
 )
 from .graph_routing import CapabilityGraphRetriever
 from .hierarchy import (
@@ -335,6 +337,7 @@ __all__ = [
     "compensation_for",
     "connect_mcp_server",
     "discover_package_roots",
+    "estimate_tokens",
     "load_registry",
     "label_untrusted_content",
     "load_resource_definitions",
@@ -345,6 +348,7 @@ __all__ = [
     "resolve_case",
     "validate_arguments",
     "validate_plan",
+    "tokenize",
     "connector_implementations",
     "connector_resources",
     "connector_tools",
