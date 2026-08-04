@@ -280,10 +280,19 @@ class ProviderTests(unittest.TestCase):
         )
         self.assertTrue(seen["url"].endswith("/chat/completions"))
         self.assertEqual(seen["headers"]["Authorization"], "Bearer sk")
+        self.assertEqual(seen["payload"]["model"], "gpt-5.6-terra")
+        self.assertEqual(seen["payload"]["reasoning_effort"], "none")
         self.assertEqual(seen["payload"]["tools"][0]["function"]["name"], "add")
         self.assertEqual(response.finish_reason, "tool_calls")
         self.assertEqual(response.tool_calls[0].arguments, {"a": 1, "b": 2})
         self.assertEqual(response.usage["input_tokens"], 7)
+
+    def test_openai_custom_model_keeps_request_compatible(self) -> None:
+        provider = OpenAICompatibleLLMProvider(model="local-model", transport=lambda *args: {"choices": []})
+
+        payload = provider.build_request([ChatMessage(role="user", content="hello")], ())
+
+        self.assertNotIn("reasoning_effort", payload)
 
 
 if __name__ == "__main__":

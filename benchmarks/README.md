@@ -8,7 +8,7 @@ Marmo-Core の中核主張 —「大量のリソースから、必要なもの�
 python3 benchmarks/run_benchmark.py                          # BM25(ゼロ依存)
 python3 benchmarks/run_benchmark.py --retriever hybrid-hash  # BM25 + ハッシュ埋め込み
 python3 benchmarks/run_benchmark.py --retriever hybrid-model --semantic-weight 0.9
-                                                             # BM25 ∪ 実埋め込み(要 pip install fastembed)
+                                                             # BM25 ∪ 実埋め込み(要 pip install '.[benchmark]')
 python3 benchmarks/run_benchmark.py --query-transform hyde   # HyDE クエリ変換(案A 派生。要 OPENAI_API_KEY)
 python3 benchmarks/run_benchmark.py --llm-rerank             # LLM 再ランク(案C 最小。要 OPENAI_API_KEY)
 ```

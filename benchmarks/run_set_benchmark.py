@@ -363,7 +363,7 @@ def main() -> None:
     parser.add_argument("--beam-width", type=int, default=5, help="beam width for beam search selector")
     parser.add_argument("--max-nodes", type=int, default=100_000, help="node budget for the branch-and-bound selector")
     parser.add_argument("--llm-selector", action="store_true", help="also run the LLM Set Selector (15.3 案C 第2層適用)")
-    parser.add_argument("--llm-model", default="gpt-4o-mini", help="OpenAI-compatible chat model for --llm-selector")
+    parser.add_argument("--llm-model", default="gpt-5.6-terra", help="OpenAI-compatible chat model for --llm-selector")
     parser.add_argument("--ce-weight", type=float, default=1.0, help="blend weight of the cross-encoder score in relevance, for ce-* retrievers (15.7 項目4)")
     parser.add_argument("--ce-model", default="Xenova/ms-marco-MiniLM-L-6-v2", help="fastembed cross-encoder model for ce-* retrievers")
     parser.add_argument("--policy-ablation", action="store_true", help="run the §15.6 policy ablation (none/gate-only/selector/pushdown/full)")

@@ -21,7 +21,7 @@ Usage:
                                         [--query-transform hyde] [--llm-rerank]
 
 `hybrid-model` re-ranks with a real embedding model via fastembed (ONNX, CPU).
-It needs `pip install fastembed`; the core library stays zero-dependency.
+It needs `pip install '.[benchmark]'`; the core library stays zero-dependency.
 
 `--cross-encoder` (§15.7 項目4) re-ranks the candidate pool with a local
 cross-encoder via fastembed — the zero-LLM comparison target for
@@ -74,7 +74,7 @@ class FastembedEmbeddingProvider(EmbeddingProvider):
             from fastembed import TextEmbedding
         except ImportError as error:
             raise SystemExit(
-                "hybrid-model requires fastembed: pip install fastembed"
+                "hybrid-model requires fastembed: pip install '.[benchmark]'"
             ) from error
         self.model_name = model
         self._model = TextEmbedding(model)
@@ -96,7 +96,7 @@ class FastembedCrossEncoderProvider(CrossEncoderProvider):
             from fastembed.rerank.cross_encoder import TextCrossEncoder
         except ImportError as error:
             raise SystemExit(
-                "--cross-encoder requires fastembed: pip install fastembed"
+                "--cross-encoder requires fastembed: pip install '.[benchmark]'"
             ) from error
         self.model_name = model
         self._model = TextCrossEncoder(model)
@@ -154,7 +154,7 @@ def main() -> None:
     parser.add_argument("--cross-encoder", action="store_true", help="re-rank the candidate pool with a local cross-encoder (15.7 項目4)")
     parser.add_argument("--cross-encoder-model", default="Xenova/ms-marco-MiniLM-L-6-v2", help="fastembed cross-encoder model for --cross-encoder")
     parser.add_argument("--cross-encoder-weight", type=float, default=1.0, help="blend weight of the cross-encoder score in the relevance component")
-    parser.add_argument("--llm-model", default="gpt-4o-mini", help="OpenAI-compatible chat model for --query-transform / --llm-rerank")
+    parser.add_argument("--llm-model", default="gpt-5.6-terra", help="OpenAI-compatible chat model for --query-transform / --llm-rerank")
     parser.add_argument("--rerank-pool", type=int, default=50, help="candidates shown to the LLM re-ranker")
     parser.add_argument("--output", default=str(Path(__file__).parent / "results" / "latest.json"))
     args = parser.parse_args()

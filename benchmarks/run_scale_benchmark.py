@@ -30,7 +30,7 @@ Usage:
     python3 benchmarks/run_scale_benchmark.py \
         [--size 10000] [--route-k 3] [--retrievers lexical,hier-namespace-lexical,...]
 
-``hybrid-model`` bases need ``pip install fastembed``; one shared embedding
+``hybrid-model`` bases need ``pip install '.[benchmark]'``; one shared embedding
 provider memoizes texts across all retrievers in the run.
 """
 
