@@ -1,0 +1,107 @@
+{
+  "retriever": "lexical",
+  "selector": "greedy",
+  "corpus_size": 63,
+  "distractors": null,
+  "scenarios": 28,
+  "epochs": 3,
+  "seed": 7,
+  "threshold": 0.72,
+  "pool": 50,
+  "task_success_model": "selected: gold set ⊆ routed set, dependency-closed and policy-feasible; abstain/escalate: routed status equals the expected status",
+  "mode": "drift-probe",
+  "drifted_resources": [
+    "agent.deploy.specialist",
+    "agent.etl.specialist",
+    "agent.invoicing.specialist",
+    "agent.retention.specialist",
+    "memory.recruiting.context",
+    "memory.support.context",
+    "skill.contracts.procedure",
+    "skill.recruiting.procedure",
+    "skill.secaudit.procedure",
+    "tool.contracts.workbench",
+    "tool.incident.workbench",
+    "tool.l10n.workbench"
+  ],
+  "drift": "1.0.0 -> 2.0.0, side_effect -> irreversible",
+  "drift_fraction": 0.25,
+  "conditions": {
+    "version-checked": {
+      "requests": 28,
+      "task_success_rate": 0.571,
+      "cache_hit_rate": 0.25,
+      "set_f1": 0.615,
+      "set_exact_match": 0.5,
+      "status_accuracy": 0.75,
+      "abstain_escalate_accuracy": 1.0,
+      "latency_ms_mean": 0.223,
+      "latency_ms_p50": 0.11,
+      "latency_ms_p95": 0.423,
+      "latency_ms_hit": 0.045,
+      "latency_ms_hit_p50": 0.045,
+      "latency_ms_miss": 0.282,
+      "latency_ms_miss_p50": 0.133,
+      "hit_regret": 0,
+      "hit_rescue": 0,
+      "hit_regret_rate": 0.0,
+      "by_epoch": {
+        "0": {
+          "task_success_rate": 0.571,
+          "cache_hit_rate": 0.25
+        }
+      },
+      "by_style": {
+        "direct": {
+          "task_success_rate": 0.875,
+          "cache_hit_rate": 0.375
+        },
+        "paraphrase": {
+          "task_success_rate": 0.167,
+          "cache_hit_rate": 0.083
+        }
+      },
+      "stale_misses": 9,
+      "stale_identities_replayed": 0,
+      "unsafe_replays": 0
+    },
+    "id-only": {
+      "requests": 28,
+      "task_success_rate": 0.571,
+      "cache_hit_rate": 0.571,
+      "set_f1": 0.615,
+      "set_exact_match": 0.5,
+      "status_accuracy": 0.75,
+      "abstain_escalate_accuracy": 1.0,
+      "latency_ms_mean": 0.163,
+      "latency_ms_p50": 0.062,
+      "latency_ms_p95": 0.678,
+      "latency_ms_hit": 0.062,
+      "latency_ms_hit_p50": 0.056,
+      "latency_ms_miss": 0.298,
+      "latency_ms_miss_p50": 0.149,
+      "hit_regret": 0,
+      "hit_rescue": 0,
+      "hit_regret_rate": 0.0,
+      "by_epoch": {
+        "0": {
+          "task_success_rate": 0.571,
+          "cache_hit_rate": 0.571
+        }
+      },
+      "by_style": {
+        "direct": {
+          "task_success_rate": 0.875,
+          "cache_hit_rate": 0.875
+        },
+        "paraphrase": {
+          "task_success_rate": 0.167,
+          "cache_hit_rate": 0.167
+        }
+      },
+      "stale_misses": 0,
+      "stale_identities_replayed": 9,
+      "unsafe_replays": 9
+    }
+  }
+}

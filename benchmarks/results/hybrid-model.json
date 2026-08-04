@@ -1,0 +1,337 @@
+{
+  "retriever": "hybrid-model",
+  "retriever_config": {
+    "semantic_weight": 0.9,
+    "candidate_pool": 50,
+    "embed_model": "BAAI/bge-small-en-v1.5"
+  },
+  "corpus_size": 1000,
+  "scenarios": 120,
+  "top_k": 5,
+  "load_seconds": 0.575,
+  "index_build_seconds": 114.266,
+  "warm_latency_ms_mean": 62.91,
+  "warm_latency_ms_p95": 75.8,
+  "hit_at_1": 0.767,
+  "hit_at_5": 0.867,
+  "mrr": 0.808,
+  "recall_at_20": 0.942,
+  "recall_at_50": 0.992,
+  "by_style": {
+    "abstract": {
+      "scenarios": 33,
+      "hit_at_1": 0.697,
+      "hit_at_5": 0.818,
+      "mrr": 0.735,
+      "recall_at_20": 0.939,
+      "recall_at_50": 1.0
+    },
+    "direct": {
+      "scenarios": 52,
+      "hit_at_1": 0.942,
+      "hit_at_5": 0.962,
+      "mrr": 0.952,
+      "recall_at_20": 0.981,
+      "recall_at_50": 1.0
+    },
+    "paraphrase": {
+      "scenarios": 35,
+      "hit_at_1": 0.571,
+      "hit_at_5": 0.771,
+      "mrr": 0.663,
+      "recall_at_20": 0.886,
+      "recall_at_50": 0.971
+    }
+  },
+  "catalog_metadata_tokens": 221094,
+  "routed_top_k_tokens": 1299,
+  "context_token_savings": 0.9941,
+  "misses": [
+    {
+      "task": "run a security audit to find vulnerabilities in the codebase",
+      "expected": [
+        "security-audit",
+        "vulnerability-scanner",
+        "007"
+      ],
+      "style": "direct",
+      "rank": 6,
+      "top1": "skill.utkusen__sast-skills__sast-analysis"
+    },
+    {
+      "task": "write an email marketing campaign that converts",
+      "expected": [
+        "email-marketing-bible",
+        "email-sequence",
+        "email-copywriting"
+      ],
+      "style": "direct",
+      "rank": 2,
+      "top1": "skill.anthropics__knowledge-work-plugins__campaign-plan"
+    },
+    {
+      "task": "draft German AGB terms and conditions from scratch",
+      "expected": [
+        "agb-entwurf-kaltstart"
+      ],
+      "style": "direct",
+      "rank": 27,
+      "top1": "skill.klotzkette__claude-fuer-deutsches-recht__agb-bei-iso-vertraegen-international"
+    },
+    {
+      "task": "my key results feel vague, make sure they are actually measurable",
+      "expected": [
+        "okr-quality-checker"
+      ],
+      "style": "paraphrase",
+      "rank": 37,
+      "top1": "skill.anthropics__knowledge-work-plugins__performance-review"
+    },
+    {
+      "task": "the app slows down under load, find where the time is going",
+      "expected": [
+        "performance-profiling",
+        "performance-optimizer",
+        "team-perf-opt",
+        "maister__performance"
+      ],
+      "style": "paraphrase",
+      "rank": 38,
+      "top1": "skill.onlypfachi__chief__office-hours"
+    },
+    {
+      "task": "the build broke and I cannot tell why, help me narrow it down step by step",
+      "expected": [
+        "systematic-debugging",
+        "investigate",
+        "debugging-patterns",
+        "rca-methodology"
+      ],
+      "style": "paraphrase",
+      "rank": 2,
+      "top1": "skill.anthropics__knowledge-work-plugins__debug"
+    },
+    {
+      "task": "I want to write the checks before the code so I know when I am done",
+      "expected": [
+        "test-driven-development",
+        "tdd-workflow"
+      ],
+      "style": "paraphrase",
+      "rank": 7,
+      "top1": "skill.microsoft__fluidframework__using-skills"
+    },
+    {
+      "task": "decide which features to build first given reach and effort",
+      "expected": [
+        "rice-prioritizer"
+      ],
+      "style": "paraphrase",
+      "rank": 2,
+      "top1": "skill.belos-street__skill-kit__brainstorming"
+    },
+    {
+      "task": "log how many hours I spend on each project",
+      "expected": [
+        "clockify"
+      ],
+      "style": "paraphrase",
+      "rank": 5,
+      "top1": "skill.onlypfachi__chief__office-hours"
+    },
+    {
+      "task": "sketch the tables and relations for our new app's storage layer",
+      "expected": [
+        "database-design",
+        "database-architect",
+        "normalization-patterns"
+      ],
+      "style": "paraphrase",
+      "rank": 24,
+      "top1": "skill.fizznix__mini-context-graph__root"
+    },
+    {
+      "task": "someone should try to poke holes in this proposal before we commit to it",
+      "expected": [
+        "adversarial-review",
+        "plan-ceo-review",
+        "plan-eng-review"
+      ],
+      "style": "paraphrase",
+      "rank": 2,
+      "top1": "skill.belos-street__skill-kit__brainstorming"
+    },
+    {
+      "task": "turn our whitepaper into tweets, a newsletter issue, and a slide deck",
+      "expected": [
+        "content-repurposer",
+        "content-atomization"
+      ],
+      "style": "paraphrase",
+      "rank": 2,
+      "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__ink-distribute"
+    },
+    {
+      "task": "our customers keep leaving, figure out why and how to stop it",
+      "expected": [
+        "keep-churn",
+        "surge-retention"
+      ],
+      "style": "paraphrase",
+      "rank": 7,
+      "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__keep-segment"
+    },
+    {
+      "task": "check my X timeline and post an update to my account",
+      "expected": [
+        "openclaw-x"
+      ],
+      "style": "paraphrase",
+      "rank": null,
+      "top1": "skill.anthropics__knowledge-work-plugins__incident-response"
+    },
+    {
+      "task": "did we already sign anything with this supplier",
+      "expected": [
+        "vendor-check"
+      ],
+      "style": "paraphrase",
+      "rank": 2,
+      "top1": "skill.anthropics__knowledge-work-plugins__signature-request"
+    },
+    {
+      "task": "respond to a German cease-and-desist warning letter",
+      "expected": [
+        "abmahnung"
+      ],
+      "style": "paraphrase",
+      "rank": 16,
+      "top1": "skill.anthropics__knowledge-work-plugins__legal-response"
+    },
+    {
+      "task": "take my plain English idea all the way to a deployed working app",
+      "expected": [
+        "shipwright-pipeline",
+        "fullstack-webapp",
+        "remembr-dev__app-builder"
+      ],
+      "style": "paraphrase",
+      "rank": 13,
+      "top1": "skill.onlypfachi__chief__office-hours"
+    },
+    {
+      "task": "hunt for passwords and API keys accidentally committed to the repo",
+      "expected": [
+        "sast-hardcodedsecrets",
+        "vulnerability-scanner"
+      ],
+      "style": "paraphrase",
+      "rank": 2,
+      "top1": "skill.revfactory__harness-100__api-security-checklist"
+    },
+    {
+      "task": "people sign up, try it once, and never come back",
+      "expected": [
+        "surge-retention",
+        "surge-activation",
+        "keep-churn"
+      ],
+      "style": "abstract",
+      "rank": 21,
+      "top1": "skill.thatrebeccarae__claude-marketing__copywriting-frameworks"
+    },
+    {
+      "task": "this ancient codebase scares everyone, make it maintainable again without a rewrite",
+      "expected": [
+        "legacy-modernizer",
+        "strangler-fig",
+        "refactoring-catalog",
+        "apex-takeover"
+      ],
+      "style": "abstract",
+      "rank": 6,
+      "top1": "skill.gmickel__flow-next__flow-next-prime"
+    },
+    {
+      "task": "the nightly job that moves data between systems keeps failing silently",
+      "expected": [
+        "airflow-dag-patterns",
+        "dag-orchestration-patterns",
+        "data-quality-framework",
+        "data-pipeline"
+      ],
+      "style": "abstract",
+      "rank": 34,
+      "top1": "skill.gmickel__flow-next__flow-next-audit"
+    },
+    {
+      "task": "stretch one blog post into a month of social media content",
+      "expected": [
+        "content-repurposer",
+        "content-atomization",
+        "platform-adaptation",
+        "social-media-manager"
+      ],
+      "style": "abstract",
+      "rank": 3,
+      "top1": "skill.anthropics__knowledge-work-plugins__content-creation"
+    },
+    {
+      "task": "we need a name for the new product line",
+      "expected": [
+        "naming-methodology",
+        "brand-identity"
+      ],
+      "style": "abstract",
+      "rank": 19,
+      "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__pitch-launch"
+    },
+    {
+      "task": "are we even allowed to launch this feature in Europe",
+      "expected": [
+        "compliance-check",
+        "legal-risk-assessment"
+      ],
+      "style": "abstract",
+      "rank": 3,
+      "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__pitch-launch"
+    },
+    {
+      "task": "find out everything public about this company before I pitch them",
+      "expected": [
+        "account-research",
+        "market-research"
+      ],
+      "style": "abstract",
+      "rank": 14,
+      "top1": "skill.anthropics__knowledge-work-plugins__call-prep"
+    },
+    {
+      "task": "design preview images people cannot help clicking",
+      "expected": [
+        "thumbnail-psychology"
+      ],
+      "style": "abstract",
+      "rank": 15,
+      "top1": "skill.peixl__ifq-design-skills__root"
+    },
+    {
+      "task": "get more listeners to discover my show",
+      "expected": [
+        "podcast-growth"
+      ],
+      "style": "abstract",
+      "rank": 4,
+      "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__buzz-outreach"
+    },
+    {
+      "task": "our error messages confuse users, rewrite the little texts in the UI",
+      "expected": [
+        "ux-copy"
+      ],
+      "style": "abstract",
+      "rank": 3,
+      "top1": "skill.emdash-cms__emdash__adversarial-reviewer"
+    }
+  ]
+}

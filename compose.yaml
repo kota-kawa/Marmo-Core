@@ -1,0 +1,5 @@
+services:
+  marmo:
+    build:
+      context: .
+    image: marmo-core:local

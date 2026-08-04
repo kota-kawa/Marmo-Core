@@ -1,0 +1,253 @@
+{
+  "resources": [
+    {
+      "id": "memory.marmo.kernel-principles",
+      "kind": "memory",
+      "name": "Marmo-Core Kernel Principles",
+      "version": "1.0.0",
+      "description": "Core architecture notes for a zero-dependency AI Agent Kernel with resource registry, policy gateway, auditability, and least privilege.",
+      "capabilities": ["architecture context", "kernel design", "safety principles"],
+      "input_summary": "Task or design question about Marmo-Core architecture.",
+      "output_summary": "Relevant kernel principles and design constraints.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "core",
+      "ref": "memory://marmo/kernel-principles",
+      "tags": ["architecture", "kernel", "safety", "zero-dependency"],
+      "stats": {
+        "success_rate": 0.95,
+        "average_latency_ms": 4.0,
+        "average_cost": 0.0,
+        "usage_count": 12
+      },
+      "content_type": "design_note",
+      "source": "要件定義書.md",
+      "expires_at": null
+    },
+    {
+      "id": "memory.security.prompt-injection",
+      "kind": "memory",
+      "name": "Prompt Injection Threat Model",
+      "version": "1.0.0",
+      "description": "Threat model notes for separating untrusted content from trusted instructions and preventing exfiltration through side-effecting tools.",
+      "capabilities": ["threat modeling", "prompt injection analysis", "data exfiltration prevention"],
+      "input_summary": "Security review task involving external content, tool output, or agent output.",
+      "output_summary": "Threat model context and safe handling recommendations.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "memory://security/prompt-injection",
+      "tags": ["security", "prompt-injection", "exfiltration", "policy"],
+      "stats": {
+        "success_rate": 0.9,
+        "average_latency_ms": 3.5,
+        "average_cost": 0.0,
+        "usage_count": 8
+      },
+      "content_type": "threat_model",
+      "source": "docs/threat-model",
+      "embedding_ref": null
+    },
+    {
+      "id": "skill.python.zero-dependency-package",
+      "kind": "skill",
+      "name": "Zero-Dependency Python Package Design",
+      "version": "1.0.0",
+      "description": "Workflow for building Python libraries that use only the standard library at runtime while keeping packaging and CLI ergonomics practical.",
+      "capabilities": ["python packaging", "cli design", "standard library implementation"],
+      "input_summary": "Python package or CLI implementation request.",
+      "output_summary": "Step-by-step package structure and runtime dependency guidance.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "skill://python/zero-dependency-package",
+      "tags": ["python", "packaging", "cli", "zero-dependency"],
+      "stats": {
+        "success_rate": 0.88,
+        "average_latency_ms": 5.0,
+        "average_cost": 0.0,
+        "usage_count": 7
+      },
+      "instructions": [
+        "Prefer dataclasses, argparse, pathlib, json, and unittest.",
+        "Keep runtime dependencies empty.",
+        "Expose a CLI entry point and a Python API backed by the same implementation."
+      ]
+    },
+    {
+      "id": "skill.security.safe-tool-use",
+      "kind": "skill",
+      "name": "Safe Tool Use Review",
+      "version": "1.0.0",
+      "description": "Checklist for reviewing read, write, external, and irreversible side effects before a tool is made available to an agent.",
+      "capabilities": ["tool safety review", "least privilege", "side-effect classification"],
+      "input_summary": "Tool metadata, permissions, side effects, and trust level.",
+      "output_summary": "Safety review guidance and policy questions.",
+      "required_permissions": [],
+      "cost_estimate": 0.0,
+      "latency_class": "fast",
+      "side_effect": "none",
+      "trust_level": "core",
+      "ref": "skill://security/safe-tool-use",
+      "tags": ["security", "tool", "policy", "side-effect"],
+      "stats": {
+        "success_rate": 0.92,
+        "average_latency_ms": 4.5,
+        "average_cost": 0.0,
+        "usage_count": 9
+      },
+      "instructions": [
+        "Confirm required_permissions are minimal.",
+        "Treat write, external, and irreversible operations as high risk.",
+        "Check that secrets are represented as SecretRef rather than plain text."
+      ]
+    },
+    {
+      "id": "tool.files.read-text",
+      "kind": "tool",
+      "name": "Read Text File",
+      "version": "1.0.0",
+      "description": "Read a UTF-8 text file from an allowed local path and return its content for inspection or summarization.",
+      "capabilities": ["file read", "local document inspection", "text loading"],
+      "input_summary": "A local file path inside an allowed workspace.",
+      "output_summary": "UTF-8 text content and basic file metadata.",
+      "required_permissions": ["fs.read"],
+      "cost_estimate": 0.01,
+      "latency_class": "fast",
+      "side_effect": "read",
+      "trust_level": "core",
+      "ref": "tool://files/read-text",
+      "tags": ["file", "read", "text", "local"],
+      "stats": {
+        "success_rate": 0.98,
+        "average_latency_ms": 15.0,
+        "average_cost": 0.01,
+        "usage_count": 31
+      },
+      "input_schema": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": {"type": "string", "description": "Allowed local file path."},
+          "max_bytes": {"type": "integer", "minimum": 1, "default": 65536}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["path", "content"],
+        "properties": {
+          "path": {"type": "string"},
+          "content": {"type": "string"},
+          "truncated": {"type": "boolean"}
+        }
+      }
+    },
+    {
+      "id": "tool.shell.run-command",
+      "kind": "tool",
+      "name": "Run Shell Command",
+      "version": "1.0.0",
+      "description": "Run a bounded shell command in a configured working directory for diagnostics or build verification.",
+      "capabilities": ["shell command", "build verification", "diagnostics"],
+      "input_summary": "Command, working directory, timeout, and optional environment.",
+      "output_summary": "Exit code, stdout, stderr, and elapsed time.",
+      "required_permissions": ["shell.exec"],
+      "cost_estimate": 0.05,
+      "latency_class": "medium",
+      "side_effect": "external",
+      "trust_level": "verified",
+      "ref": "tool://shell/run-command",
+      "tags": ["shell", "diagnostics", "verification", "external"],
+      "stats": {
+        "success_rate": 0.84,
+        "average_latency_ms": 350.0,
+        "average_cost": 0.05,
+        "usage_count": 18
+      },
+      "input_schema": {
+        "type": "object",
+        "required": ["cmd"],
+        "properties": {
+          "cmd": {"type": "string"},
+          "cwd": {"type": "string"},
+          "timeout_seconds": {"type": "number", "minimum": 0.1, "default": 30}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["exit_code", "stdout", "stderr"],
+        "properties": {
+          "exit_code": {"type": "integer"},
+          "stdout": {"type": "string"},
+          "stderr": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "agent.security.reviewer",
+      "kind": "agent",
+      "name": "Security Reviewer Agent",
+      "version": "1.0.0",
+      "description": "Specialist agent for reviewing resource metadata, permission boundaries, prompt-injection risk, and external side effects.",
+      "capabilities": ["security review", "policy review", "threat modeling"],
+      "input_summary": "Resource definitions, policy context, or implementation diff.",
+      "output_summary": "Structured security findings with severity and recommended fixes.",
+      "required_permissions": [],
+      "cost_estimate": 0.2,
+      "latency_class": "slow",
+      "side_effect": "none",
+      "trust_level": "verified",
+      "ref": "agent://security/reviewer",
+      "tags": ["agent", "security", "review", "policy"],
+      "stats": {
+        "success_rate": 0.86,
+        "average_latency_ms": 2000.0,
+        "average_cost": 0.2,
+        "usage_count": 5
+      },
+      "capabilities_detail": [
+        "Review least-privilege alignment.",
+        "Identify prompt injection and exfiltration risks.",
+        "Check side-effect classification."
+      ],
+      "delegation_interface": "structured_task",
+      "supported_task_kinds": ["security_review", "resource_review", "threat_model_review"]
+    },
+    {
+      "id": "agent.docs.writer",
+      "kind": "agent",
+      "name": "Documentation Writer Agent",
+      "version": "1.0.0",
+      "description": "Specialist agent for producing developer-facing README, cookbook, and resource authoring documentation.",
+      "capabilities": ["documentation", "cookbook writing", "developer onboarding"],
+      "input_summary": "Feature list, API surface, examples, or resource schema.",
+      "output_summary": "Concise developer documentation and runnable examples.",
+      "required_permissions": [],
+      "cost_estimate": 0.12,
+      "latency_class": "medium",
+      "side_effect": "none",
+      "trust_level": "community",
+      "ref": "agent://docs/writer",
+      "tags": ["agent", "documentation", "readme", "cookbook"],
+      "stats": {
+        "success_rate": 0.8,
+        "average_latency_ms": 1200.0,
+        "average_cost": 0.12,
+        "usage_count": 4
+      },
+      "capabilities_detail": [
+        "Write API usage examples.",
+        "Create command snippets.",
+        "Summarize resource schema fields."
+      ],
+      "delegation_interface": "tool_wrap",
+      "supported_task_kinds": ["documentation", "onboarding", "cookbook"]
+    }
+  ]
+}

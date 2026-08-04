@@ -1,6 +1,0 @@
-[gd_resource type="CreateCollectionV2Args" format=3 uid="uid://bns4pxhoyl6xi"]
-
-[resource]
-name = "abc"
-uri = "abc"
-plugins = null

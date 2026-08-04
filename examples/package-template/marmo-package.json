@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "namespace": "example.starter",
+  "name": "four-resources",
+  "version": "1.0.0",
+  "description": "A locked local package containing Memory, Skill, Tool, and Agent examples.",
+  "kernel": ">=0.3.0,<1.0.0",
+  "resources": [
+    "resources.json"
+  ],
+  "dependencies": []
+}

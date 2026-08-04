@@ -1,4 +1,0 @@
-[gd_resource type="MintAssetArgs" format=3 uid="uid://vrkms1oxbyey"]
-
-[resource]
-plugins = Array[PluginAuthorityPair]([])
