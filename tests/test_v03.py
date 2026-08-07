@@ -128,7 +128,9 @@ class SemanticTests(unittest.TestCase):
                 ]
             }
 
-        provider = OpenAICompatibleEmbeddingProvider(api_key="sk-test", transport=transport)
+        provider = OpenAICompatibleEmbeddingProvider(
+            model="test-embedding-model", api_key="sk-test", transport=transport
+        )
         vectors = provider.embed(["hello", "world"])
         self.assertEqual(len(vectors), 2)
         self.assertTrue(seen["url"].endswith("/embeddings"))
@@ -208,17 +210,95 @@ class ProviderTests(unittest.TestCase):
     def test_openai_provider_loads_key_from_dotenv_without_overriding_environment(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             dotenv_path = Path(temp_dir) / ".env"
-            dotenv_path.write_text("OPENAI_API_KEY=from-dotenv\n", encoding="utf-8")
+            dotenv_path.write_text(
+                "OPENAI_API_KEY=from-dotenv\n"
+                "OPENAI_MODEL=from-dotenv-model\n"
+                "OPENAI_REASONING_EFFORT=low\n"
+                "OPENAI_EMBEDDING_MODEL=from-dotenv-embedding-model\n",
+                encoding="utf-8",
+            )
             previous_directory = Path.cwd()
             try:
                 os.chdir(temp_dir)
                 with patch.dict(os.environ, {}, clear=True):
-                    self.assertEqual(OpenAICompatibleLLMProvider().api_key, "from-dotenv")
+                    provider = OpenAICompatibleLLMProvider()
+                    self.assertEqual(provider.api_key, "from-dotenv")
+                    self.assertEqual(provider.model, "from-dotenv-model")
+                    self.assertEqual(provider.reasoning_effort, "low")
                 with patch.dict(os.environ, {}, clear=True):
-                    self.assertEqual(OpenAICompatibleEmbeddingProvider().api_key, "from-dotenv")
-                with patch.dict(os.environ, {"OPENAI_API_KEY": "from-environment"}, clear=True):
-                    self.assertEqual(OpenAICompatibleLLMProvider().api_key, "from-environment")
-                    self.assertEqual(OpenAICompatibleEmbeddingProvider().api_key, "from-environment")
+                    provider = OpenAICompatibleEmbeddingProvider()
+                    self.assertEqual(provider.api_key, "from-dotenv")
+                    self.assertEqual(provider.model, "from-dotenv-embedding-model")
+                with patch.dict(
+                    os.environ,
+                    {
+                        "OPENAI_API_KEY": "from-environment",
+                        "OPENAI_MODEL": "from-environment-model",
+                        "OPENAI_REASONING_EFFORT": "high",
+                        "OPENAI_EMBEDDING_MODEL": "from-environment-embedding-model",
+                    },
+                    clear=True,
+                ):
+                    llm_provider = OpenAICompatibleLLMProvider()
+                    embedding_provider = OpenAICompatibleEmbeddingProvider()
+                    self.assertEqual(llm_provider.api_key, "from-environment")
+                    self.assertEqual(llm_provider.model, "from-environment-model")
+                    self.assertEqual(llm_provider.reasoning_effort, "high")
+                    self.assertEqual(embedding_provider.api_key, "from-environment")
+                    self.assertEqual(embedding_provider.model, "from-environment-embedding-model")
+            finally:
+                os.chdir(previous_directory)
+
+    def test_anthropic_provider_loads_model_from_dotenv(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            dotenv_path = Path(temp_dir) / ".env"
+            dotenv_path.write_text(
+                "ANTHROPIC_API_KEY=from-dotenv\n"
+                "ANTHROPIC_MODEL=from-dotenv-model\n"
+                "ANTHROPIC_MAX_TOKENS=16384\n",
+                encoding="utf-8",
+            )
+            previous_directory = Path.cwd()
+            try:
+                os.chdir(temp_dir)
+                with patch.dict(os.environ, {}, clear=True):
+                    provider = AnthropicLLMProvider()
+                    self.assertEqual(provider.api_key, "from-dotenv")
+                    self.assertEqual(provider.model, "from-dotenv-model")
+                    self.assertEqual(provider.max_tokens, 16384)
+            finally:
+                os.chdir(previous_directory)
+
+    def test_anthropic_provider_requires_positive_max_tokens(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            dotenv_path = Path(temp_dir) / ".env"
+            previous_directory = Path.cwd()
+            try:
+                os.chdir(temp_dir)
+                for value in ("", "0", "not-an-integer"):
+                    with self.subTest(value=value):
+                        dotenv_path.write_text(
+                            f"ANTHROPIC_MODEL=test-model\nANTHROPIC_MAX_TOKENS={value}\n",
+                            encoding="utf-8",
+                        )
+                        with patch.dict(os.environ, {}, clear=True):
+                            with self.assertRaisesRegex(ValueError, "ANTHROPIC_MAX_TOKENS"):
+                                AnthropicLLMProvider()
+            finally:
+                os.chdir(previous_directory)
+
+    def test_provider_requires_model_configuration_when_model_is_omitted(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            previous_directory = Path.cwd()
+            try:
+                os.chdir(temp_dir)
+                with patch.dict(os.environ, {}, clear=True):
+                    with self.assertRaisesRegex(ValueError, "OPENAI_MODEL"):
+                        OpenAICompatibleLLMProvider()
+                    with self.assertRaisesRegex(ValueError, "ANTHROPIC_MODEL"):
+                        AnthropicLLMProvider()
+                    with self.assertRaisesRegex(ValueError, "OPENAI_EMBEDDING_MODEL"):
+                        OpenAICompatibleEmbeddingProvider()
             finally:
                 os.chdir(previous_directory)
 
@@ -236,7 +316,9 @@ class ProviderTests(unittest.TestCase):
                 "usage": {"input_tokens": 10, "output_tokens": 5},
             }
 
-        provider = AnthropicLLMProvider(api_key="key", transport=transport)
+        provider = AnthropicLLMProvider(
+            model="test-anthropic-model", api_key="key", max_tokens=2048, transport=transport
+        )
         messages = [
             ChatMessage(role="system", content="be terse"),
             ChatMessage(role="user", content="add 1 and 2"),
@@ -248,13 +330,19 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(seen["headers"]["x-api-key"], "key")
         self.assertEqual(seen["payload"]["system"], "be terse")
         self.assertEqual(seen["payload"]["messages"], [{"role": "user", "content": "add 1 and 2"}])
+        self.assertEqual(seen["payload"]["max_tokens"], 2048)
         self.assertEqual(seen["payload"]["tools"][0]["name"], "add")
         self.assertEqual(response.finish_reason, "tool_calls")
         self.assertEqual(response.tool_calls[0].arguments, {"a": 1, "b": 2})
         self.assertEqual(response.usage["input_tokens"], 10)
 
     def test_anthropic_tool_result_reconstructs_tool_use_id(self) -> None:
-        provider = AnthropicLLMProvider(api_key="key", transport=lambda *args: {"content": []})
+        provider = AnthropicLLMProvider(
+            model="test-anthropic-model",
+            api_key="key",
+            max_tokens=2048,
+            transport=lambda *args: {"content": []},
+        )
         messages = [
             ChatMessage(role="user", content="add"),
             ChatMessage(
@@ -293,7 +381,9 @@ class ProviderTests(unittest.TestCase):
                 "usage": {"prompt_tokens": 7, "completion_tokens": 3},
             }
 
-        provider = OpenAICompatibleLLMProvider(api_key="sk", transport=transport)
+        provider = OpenAICompatibleLLMProvider(
+            model="gpt-5.6-terra", api_key="sk", reasoning_effort="none", transport=transport
+        )
         response = provider.complete(
             [ChatMessage(role="user", content="add 1 and 2")],
             [LLMToolSpec(name="add", description="", input_schema={"type": "object"})],

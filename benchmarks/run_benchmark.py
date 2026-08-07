@@ -62,6 +62,7 @@ from marmo_core import (  # noqa: E402
 )
 
 from _provenance import stamp  # noqa: E402
+from marmo_core.environment import load_local_dotenv, required_environment  # noqa: E402
 
 CACHE_DIR = Path(__file__).parent / "cache"
 
@@ -69,15 +70,15 @@ CACHE_DIR = Path(__file__).parent / "cache"
 class FastembedEmbeddingProvider(EmbeddingProvider):
     """Real embedding model via fastembed (ONNX, CPU). Benchmark-only dependency."""
 
-    def __init__(self, model: str = "BAAI/bge-small-en-v1.5") -> None:
+    def __init__(self, model: str | None = None) -> None:
         try:
             from fastembed import TextEmbedding
         except ImportError as error:
             raise SystemExit(
                 "hybrid-model requires fastembed: pip install '.[benchmark]'"
             ) from error
-        self.model_name = model
-        self._model = TextEmbedding(model)
+        self.model_name = model if model is not None else required_environment("BENCHMARK_EMBEDDING_MODEL")
+        self._model = TextEmbedding(self.model_name)
         self._memo: dict[str, list[float]] = {}
 
     def embed(self, texts):
@@ -91,21 +92,21 @@ class FastembedEmbeddingProvider(EmbeddingProvider):
 class FastembedCrossEncoderProvider(CrossEncoderProvider):
     """Local cross-encoder via fastembed (ONNX, CPU). Benchmark-only dependency."""
 
-    def __init__(self, model: str = "Xenova/ms-marco-MiniLM-L-6-v2") -> None:
+    def __init__(self, model: str | None = None) -> None:
         try:
             from fastembed.rerank.cross_encoder import TextCrossEncoder
         except ImportError as error:
             raise SystemExit(
                 "--cross-encoder requires fastembed: pip install '.[benchmark]'"
             ) from error
-        self.model_name = model
-        self._model = TextCrossEncoder(model)
+        self.model_name = model if model is not None else required_environment("BENCHMARK_CROSS_ENCODER_MODEL")
+        self._model = TextCrossEncoder(self.model_name)
 
     def score(self, query, documents):
         return [float(value) for value in self._model.rerank(query, list(documents))]
 
 
-def build_retriever(name: str, *, semantic_weight: float, candidate_pool: int, embed_model: str):
+def build_retriever(name: str, *, semantic_weight: float, candidate_pool: int, embed_model: str | None):
     if name == "lexical":
         return LexicalRetriever()
     if name == "hybrid-hash":
@@ -141,6 +142,7 @@ class _JsonFileCache(dict):
 
 
 def main() -> None:
+    load_local_dotenv()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--resources", default=str(REPO_ROOT / "resources" / "skills"))
     parser.add_argument("--scenarios", default=str(Path(__file__).parent / "scenarios.json"))
@@ -148,13 +150,13 @@ def main() -> None:
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--semantic-weight", type=float, default=0.3, help="blend weight for the semantic score in hybrid retrievers")
     parser.add_argument("--candidate-pool", type=int, default=50, help="BM25 candidate pool size re-ranked by hybrid retrievers")
-    parser.add_argument("--embed-model", default="BAAI/bge-small-en-v1.5", help="fastembed model for --retriever hybrid-model")
+    parser.add_argument("--embed-model", default=None, help="fastembed model for --retriever hybrid-model (default: BENCHMARK_EMBEDDING_MODEL)")
     parser.add_argument("--query-transform", default="none", choices=["none", "hyde"], help="rewrite each task with one LLM call before retrieval (15.2 案A 派生)")
     parser.add_argument("--llm-rerank", action="store_true", help="re-rank the candidate pool with one LLM call per task (15.2 案C 最小)")
     parser.add_argument("--cross-encoder", action="store_true", help="re-rank the candidate pool with a local cross-encoder (15.7 項目4)")
-    parser.add_argument("--cross-encoder-model", default="Xenova/ms-marco-MiniLM-L-6-v2", help="fastembed cross-encoder model for --cross-encoder")
+    parser.add_argument("--cross-encoder-model", default=None, help="fastembed cross-encoder model for --cross-encoder (default: BENCHMARK_CROSS_ENCODER_MODEL)")
     parser.add_argument("--cross-encoder-weight", type=float, default=1.0, help="blend weight of the cross-encoder score in the relevance component")
-    parser.add_argument("--llm-model", default="gpt-5.6-terra", help="OpenAI-compatible chat model for --query-transform / --llm-rerank")
+    parser.add_argument("--llm-model", default=None, help="OpenAI-compatible chat model for --query-transform / --llm-rerank (default: OPENAI_MODEL)")
     parser.add_argument("--rerank-pool", type=int, default=50, help="candidates shown to the LLM re-ranker")
     parser.add_argument("--output", default=str(Path(__file__).parent / "results" / "latest.json"))
     args = parser.parse_args()
@@ -178,6 +180,7 @@ def main() -> None:
     llm_wrappers: list = []
     if args.query_transform == "hyde" or args.llm_rerank:
         llm = OpenAICompatibleLLMProvider(model=args.llm_model, max_tokens=512)
+        args.llm_model = llm.model
         if not llm.api_key:
             raise SystemExit("--query-transform/--llm-rerank need OPENAI_API_KEY")
     if args.query_transform == "hyde":

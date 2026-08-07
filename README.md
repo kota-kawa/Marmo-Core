@@ -26,10 +26,12 @@ marmo validate examples/resources
 marmo search examples/resources --task "read a local text file safely"
 ```
 
-## OpenAI API key
+## API and model configuration
 
-Create a `.env` file and set the key when using an OpenAI-compatible LLM or
-embedding provider. In a source checkout, `.env.example` can be copied as a
+Create a `.env` file and set the relevant key when using an OpenAI-compatible
+LLM, Anthropic LLM, or embedding provider. Model names and model-specific
+runtime settings are also read from `.env` rather than being hard-coded by
+the providers. In a source checkout, `.env.example` can be copied as a
 starting point:
 
 ```bash
@@ -38,10 +40,21 @@ cp .env.example .env
 
 ```dotenv
 OPENAI_API_KEY=your_key_here
+ANTHROPIC_API_KEY=your_key_here
+OPENAI_MODEL=gpt-5.6-terra
+OPENAI_REASONING_EFFORT=none
+ANTHROPIC_MODEL=claude-sonnet-5
+ANTHROPIC_MAX_TOKENS=16384
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 ```
 
-The package loads `.env` without overriding an existing `OPENAI_API_KEY` in
-the operating-system environment. `.env` is excluded from Git.
+`OPENAI_MODEL`, `ANTHROPIC_MODEL`, and `OPENAI_EMBEDDING_MODEL` are required
+when the corresponding provider is constructed without an explicit `model`
+argument. `ANTHROPIC_MAX_TOKENS` is required unless `max_tokens` is passed
+explicitly. `OPENAI_REASONING_EFFORT` is optional and applies when the OpenAI
+model is resolved from the environment. The package loads `.env` without
+overriding values already present in the operating-system environment. `.env`
+is excluded from Git.
 
 The benchmark-only embedding and cross-encoder integration is optional:
 

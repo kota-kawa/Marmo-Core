@@ -18,13 +18,16 @@ from typing import Any, Callable, Mapping, Sequence
 import json
 import os
 
-from .environment import load_local_dotenv
+from .environment import (
+    load_local_dotenv,
+    optional_environment,
+    required_environment,
+    required_positive_int_environment,
+)
 from .llm import ChatMessage, LLMProvider, LLMResponse, LLMToolSpec, ToolCall
 from .semantic import _post_json
 
 ANTHROPIC_VERSION = "2023-06-01"
-DEFAULT_ANTHROPIC_MODEL = "claude-opus-5"
-DEFAULT_OPENAI_MODEL = "gpt-5.6-terra"
 
 Transport = Callable[[str, dict, dict, float], dict]
 
@@ -34,20 +37,24 @@ class AnthropicLLMProvider(LLMProvider):
 
     def __init__(
         self,
-        model: str = DEFAULT_ANTHROPIC_MODEL,
+        model: str | None = None,
         *,
         api_key: str | None = None,
         base_url: str = "https://api.anthropic.com",
-        max_tokens: int = 4096,
+        max_tokens: int | None = None,
         timeout: float = 120.0,
         transport: Transport | None = None,
     ) -> None:
-        self.model = model
+        self.model = model if model is not None else required_environment("ANTHROPIC_MODEL")
         if api_key is None:
             load_local_dotenv()
         self.api_key = api_key if api_key is not None else os.environ.get("ANTHROPIC_API_KEY", "")
         self.base_url = base_url.rstrip("/")
-        self.max_tokens = max_tokens
+        self.max_tokens = (
+            max_tokens
+            if max_tokens is not None
+            else required_positive_int_environment("ANTHROPIC_MAX_TOKENS")
+        )
         self.timeout = timeout
         self.transport = transport or _post_json
 
@@ -122,7 +129,7 @@ class OpenAICompatibleLLMProvider(LLMProvider):
 
     def __init__(
         self,
-        model: str = DEFAULT_OPENAI_MODEL,
+        model: str | None = None,
         *,
         api_key: str | None = None,
         base_url: str = "https://api.openai.com/v1",
@@ -132,7 +139,8 @@ class OpenAICompatibleLLMProvider(LLMProvider):
         reasoning_effort: str | None = None,
         transport: Transport | None = None,
     ) -> None:
-        self.model = model
+        model_from_environment = model is None
+        self.model = model if model is not None else required_environment("OPENAI_MODEL")
         if api_key is None:
             load_local_dotenv()
         self.api_key = api_key if api_key is not None else os.environ.get("OPENAI_API_KEY", "")
@@ -140,7 +148,11 @@ class OpenAICompatibleLLMProvider(LLMProvider):
         self.max_tokens = max_tokens
         self.timeout = timeout
         self.temperature = temperature
-        self.reasoning_effort = reasoning_effort
+        self.reasoning_effort = (
+            optional_environment("OPENAI_REASONING_EFFORT")
+            if reasoning_effort is None and model_from_environment
+            else reasoning_effort
+        )
         self.transport = transport or _post_json
 
     def complete(self, messages: Sequence[ChatMessage], tools: Sequence[LLMToolSpec] = ()) -> LLMResponse:
@@ -159,13 +171,8 @@ class OpenAICompatibleLLMProvider(LLMProvider):
         }
         if self.temperature is not None:
             payload["temperature"] = self.temperature
-        # GPT-5.6 defaults to medium reasoning.  The previous mini default had
-        # no reasoning budget, and Chat Completions function tools require
-        # `none`, so preserve the original latency/cost/tool behavior.
         if self.reasoning_effort is not None:
             payload["reasoning_effort"] = self.reasoning_effort
-        elif self.model.startswith("gpt-5.6"):
-            payload["reasoning_effort"] = "none"
         if tools:
             payload["tools"] = [
                 {

@@ -97,6 +97,7 @@ from marmo_core import (  # noqa: E402
 )
 
 from _provenance import stamp  # noqa: E402
+from marmo_core.environment import load_local_dotenv  # noqa: E402
 
 CACHE_DIR = Path(__file__).parent / "cache"
 
@@ -115,7 +116,7 @@ POLICY_CONDITIONS = {
 }
 
 
-def build_retriever(name: str, *, ce_weight: float = 1.0, ce_model: str = "Xenova/ms-marco-MiniLM-L-6-v2"):
+def build_retriever(name: str, *, ce_weight: float = 1.0, ce_model: str | None = None):
     if name.startswith("graph-"):
         return CapabilityGraphRetriever(
             build_retriever(name.removeprefix("graph-"), ce_weight=ce_weight, ce_model=ce_model)
@@ -337,6 +338,7 @@ def run_policy_ablation(args, registry, resources_by_id, scenarios, retriever, s
 
 
 def main() -> None:
+    load_local_dotenv()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--corpus", default=str(Path(__file__).parent / "corpus" / "set_corpus.json"))
     parser.add_argument("--scenarios", default=str(Path(__file__).parent / "set_scenarios.json"))
@@ -363,9 +365,9 @@ def main() -> None:
     parser.add_argument("--beam-width", type=int, default=5, help="beam width for beam search selector")
     parser.add_argument("--max-nodes", type=int, default=100_000, help="node budget for the branch-and-bound selector")
     parser.add_argument("--llm-selector", action="store_true", help="also run the LLM Set Selector (15.3 案C 第2層適用)")
-    parser.add_argument("--llm-model", default="gpt-5.6-terra", help="OpenAI-compatible chat model for --llm-selector")
+    parser.add_argument("--llm-model", default=None, help="OpenAI-compatible chat model for --llm-selector (default: OPENAI_MODEL)")
     parser.add_argument("--ce-weight", type=float, default=1.0, help="blend weight of the cross-encoder score in relevance, for ce-* retrievers (15.7 項目4)")
-    parser.add_argument("--ce-model", default="Xenova/ms-marco-MiniLM-L-6-v2", help="fastembed cross-encoder model for ce-* retrievers")
+    parser.add_argument("--ce-model", default=None, help="fastembed cross-encoder model for ce-* retrievers (default: BENCHMARK_CROSS_ENCODER_MODEL)")
     parser.add_argument("--policy-ablation", action="store_true", help="run the §15.6 policy ablation (none/gate-only/selector/pushdown/full)")
     parser.add_argument("--output", default=str(Path(__file__).parent / "results" / "set-selection.json"))
     args = parser.parse_args()
@@ -389,6 +391,7 @@ def main() -> None:
         from run_benchmark import _JsonFileCache
 
         llm = OpenAICompatibleLLMProvider(model=args.llm_model, max_tokens=512, temperature=0.0)
+        args.llm_model = llm.model
         if not llm.api_key:
             raise SystemExit("--llm-selector needs OPENAI_API_KEY")
         llm_cache = _JsonFileCache(CACHE_DIR / f"set-selector-{args.llm_model}.json")
