@@ -21,7 +21,7 @@ import math
 import os
 import urllib.request
 
-from .environment import load_local_dotenv
+from .environment import load_local_dotenv, required_environment
 from .models import SearchQuery, SearchResult
 from .registry import ResourceRegistry
 from .retriever import (
@@ -82,7 +82,7 @@ class OpenAICompatibleEmbeddingProvider(EmbeddingProvider):
 
     def __init__(
         self,
-        model: str = "text-embedding-3-small",
+        model: str | None = None,
         *,
         api_key: str | None = None,
         base_url: str = "https://api.openai.com/v1",
@@ -90,7 +90,7 @@ class OpenAICompatibleEmbeddingProvider(EmbeddingProvider):
         batch_size: int = _DEFAULT_BATCH_SIZE,
         transport: Callable[[str, dict, dict, float], dict] | None = None,
     ) -> None:
-        self.model = model
+        self.model = model if model is not None else required_environment("OPENAI_EMBEDDING_MODEL")
         if api_key is None:
             load_local_dotenv()
         self.api_key = api_key if api_key is not None else os.environ.get("OPENAI_API_KEY", "")
