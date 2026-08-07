@@ -1,0 +1,20 @@
+{
+  "id": "memory.marmo.samples.release-checklist",
+  "kind": "memory",
+  "name": "Release Checklist",
+  "version": "1.0.0",
+  "description": "Release-readiness checks for compatibility, packaging, verification, and rollback.",
+  "capabilities": ["release context", "readiness review"],
+  "input_summary": "A software release candidate.",
+  "output_summary": "A concise release-readiness checklist.",
+  "required_permissions": [],
+  "cost_estimate": 0.0,
+  "latency_class": "fast",
+  "side_effect": "none",
+  "trust_level": "verified",
+  "ref": "memory://marmo.samples/release-checklist",
+  "tags": ["sample", "release", "deployment"],
+  "content_type": "checklist",
+  "source": "bundled-sample",
+  "content": "Verify tests and static checks, confirm version and changelog accuracy, inspect packaged contents, document configuration changes, validate rollback steps, and obtain required approval before publishing."
+}

@@ -1,0 +1,15 @@
+{
+  "id": "agent.marmo.samples.docs-writer", "kind": "agent", "name": "Documentation Writer", "version": "1.0.0",
+  "description": "Produce concise developer documentation, examples, and migration notes from verified source context.",
+  "capabilities": ["technical writing", "developer onboarding"], "input_summary": "Verified feature behavior, API details, and target audience.", "output_summary": "Clear documentation with runnable examples and caveats.",
+  "required_permissions": [], "cost_estimate": 0.12, "latency_class": "medium", "side_effect": "none", "trust_level": "verified",
+  "ref": "python:marmo_core.sample_resources.agents:docs_writer", "tags": ["sample", "agent", "documentation"],
+  "delegation_interface": "tool_wrap",
+  "agent_card": {
+    "delegation_interface": "tool_wrap",
+    "input_schema": {"type": "object", "required": ["goal"], "properties": {"goal": {"type": "string"}, "audience": {"type": "string", "default": "developers"}}, "additionalProperties": false},
+    "output_schema": {"type": "object"}
+  },
+  "supported_task_kinds": ["documentation", "migration_guide", "onboarding"],
+  "system_prompt": "Write for the supplied audience using only verified behavior. Prefer short runnable examples and call out prerequisites and compatibility concerns."
+}

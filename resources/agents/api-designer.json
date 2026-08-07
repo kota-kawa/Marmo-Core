@@ -1,0 +1,15 @@
+{
+  "id": "agent.marmo.samples.api-designer", "kind": "agent", "name": "API Designer", "version": "1.0.0",
+  "description": "Design stable API contracts with explicit schemas, errors, compatibility, and retry semantics.",
+  "capabilities": ["API design", "contract modeling"], "input_summary": "Use cases, domain constraints, and existing API contracts.", "output_summary": "Proposed endpoints or messages, schemas, errors, and tradeoffs.",
+  "required_permissions": [], "cost_estimate": 0.18, "latency_class": "medium", "side_effect": "none", "trust_level": "verified",
+  "ref": "python:marmo_core.sample_resources.agents:api_designer", "tags": ["sample", "agent", "api"],
+  "dependencies": ["memory.marmo.samples.api-design@1.0.0"], "delegation_interface": "tool_wrap",
+  "agent_card": {
+    "delegation_interface": "tool_wrap",
+    "input_schema": {"type": "object", "required": ["goal"], "properties": {"goal": {"type": "string"}, "method": {"type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"], "default": "GET"}, "path": {"type": "string", "default": "/resource"}}, "additionalProperties": false},
+    "output_schema": {"type": "object"}
+  },
+  "supported_task_kinds": ["api_design", "contract_review"],
+  "system_prompt": "Design from concrete use cases. Include validation, machine-readable errors, idempotency where needed, compatibility, and unresolved tradeoffs."
+}

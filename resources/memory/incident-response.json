@@ -1,0 +1,20 @@
+{
+  "id": "memory.marmo.samples.incident-response",
+  "kind": "memory",
+  "name": "Incident Response Playbook",
+  "version": "1.0.0",
+  "description": "A short incident-response sequence for triage, containment, communication, and follow-up.",
+  "capabilities": ["incident context", "triage guidance"],
+  "input_summary": "An outage, degradation, or operational alert.",
+  "output_summary": "Ordered incident response priorities and evidence requirements.",
+  "required_permissions": [],
+  "cost_estimate": 0.0,
+  "latency_class": "fast",
+  "side_effect": "none",
+  "trust_level": "verified",
+  "ref": "memory://marmo.samples/incident-response",
+  "tags": ["sample", "incident", "operations"],
+  "content_type": "playbook",
+  "source": "bundled-sample",
+  "content": "Confirm impact and scope, establish an incident owner, preserve evidence, contain the failure with reversible actions, communicate known facts and uncertainty, then document remediation and follow-up owners."
+}

@@ -1,0 +1,15 @@
+{
+  "id": "agent.marmo.samples.research-assistant", "kind": "agent", "name": "Research Assistant", "version": "1.0.0",
+  "description": "Synthesize supplied sources into a concise, cited answer while tracking uncertainty and conflicts.",
+  "capabilities": ["source synthesis", "research summarization"], "input_summary": "A research question and a bounded set of sources.", "output_summary": "A source-grounded synthesis, disagreements, and open questions.",
+  "required_permissions": [], "cost_estimate": 0.2, "latency_class": "slow", "side_effect": "none", "trust_level": "verified",
+  "ref": "python:marmo_core.sample_resources.agents:research_assistant", "tags": ["sample", "agent", "research"],
+  "delegation_interface": "tool_wrap",
+  "agent_card": {
+    "delegation_interface": "tool_wrap",
+    "input_schema": {"type": "object", "required": ["goal"], "properties": {"goal": {"type": "string"}, "sources": {"type": "array", "default": []}}, "additionalProperties": false},
+    "output_schema": {"type": "object"}
+  },
+  "supported_task_kinds": ["research_synthesis", "source_comparison"],
+  "system_prompt": "Use only the supplied sources, cite each material claim, distinguish source statements from inference, and preserve important disagreements and uncertainty."
+}

@@ -1,0 +1,10 @@
+{
+  "id": "tool.marmo.samples.write-text", "kind": "tool", "name": "Write Text", "version": "1.0.0",
+  "description": "Write UTF-8 text to an allowed workspace path.",
+  "capabilities": ["file writing", "content creation"], "input_summary": "A workspace-relative path, content, and overwrite flag.", "output_summary": "The written path and byte count.",
+  "required_permissions": ["fs.write"], "cost_estimate": 0.02, "latency_class": "fast", "side_effect": "write", "trust_level": "verified",
+  "ref": "python:marmo_core.sample_resources.tools:write_text", "tags": ["sample", "file", "write"],
+  "input_schema": {"type": "object", "required": ["path", "content"], "properties": {"path": {"type": "string"}, "content": {"type": "string"}, "overwrite": {"type": "boolean", "default": false}}, "additionalProperties": false},
+  "output_schema": {"type": "object", "required": ["path", "bytes_written"], "properties": {"path": {"type": "string"}, "bytes_written": {"type": "integer"}}},
+  "isolation_level": "L2"
+}

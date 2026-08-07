@@ -1,0 +1,10 @@
+{
+  "id": "tool.marmo.samples.format-code", "kind": "tool", "name": "Format Code", "version": "1.0.0",
+  "description": "Format selected source files with a configured project formatter.",
+  "capabilities": ["code formatting", "source maintenance"], "input_summary": "A non-empty list of workspace-relative source paths.", "output_summary": "Changed paths and formatter diagnostics.",
+  "required_permissions": ["fs.read", "fs.write", "process.exec"], "cost_estimate": 0.04, "latency_class": "medium", "side_effect": "write", "trust_level": "verified",
+  "ref": "python:marmo_core.sample_resources.tools:format_code", "tags": ["sample", "formatting", "code"],
+  "input_schema": {"type": "object", "required": ["paths"], "properties": {"paths": {"type": "array", "minItems": 1, "items": {"type": "string"}}}, "additionalProperties": false},
+  "output_schema": {"type": "object", "required": ["changed"], "properties": {"changed": {"type": "array", "items": {"type": "string"}}, "diagnostics": {"type": "string"}}},
+  "isolation_level": "L2"
+}

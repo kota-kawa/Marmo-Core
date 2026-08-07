@@ -2,8 +2,11 @@ skills_collect.log
 skills/.state.json
 skills/.repos.json
 
-# Downloaded resources
-/resources/
+# Downloaded resources (the bundled samples remain tracked)
+/resources/*
+!/resources/memory/
+!/resources/agents/
+!/resources/tools/
 
 # Generated benchmark corpora
 benchmarks/corpus/scale_corpus_*.json

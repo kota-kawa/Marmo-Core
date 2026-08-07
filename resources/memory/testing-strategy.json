@@ -1,0 +1,20 @@
+{
+  "id": "memory.marmo.samples.testing-strategy",
+  "kind": "memory",
+  "name": "Testing Strategy",
+  "version": "1.0.0",
+  "description": "Testing guidance centered on observable behavior, regressions, and proportionate coverage.",
+  "capabilities": ["test planning", "regression context"],
+  "input_summary": "A feature, bug fix, or refactoring task.",
+  "output_summary": "A concise strategy for behavior-focused verification.",
+  "required_permissions": [],
+  "cost_estimate": 0.0,
+  "latency_class": "fast",
+  "side_effect": "none",
+  "trust_level": "verified",
+  "ref": "memory://marmo.samples/testing-strategy",
+  "tags": ["sample", "testing", "quality"],
+  "content_type": "guideline",
+  "source": "bundled-sample",
+  "content": "Test public behavior and failure modes at the narrowest useful boundary. Add a regression test for fixed defects, avoid coupling assertions to implementation details, and run the smallest relevant suite before the full suite."
+}

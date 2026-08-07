@@ -1,0 +1,15 @@
+{
+  "id": "agent.marmo.samples.incident-triager", "kind": "agent", "name": "Incident Triager", "version": "1.0.0",
+  "description": "Triage operational incidents by impact, evidence, likely failure layer, and safe next action.",
+  "capabilities": ["incident triage", "operational diagnosis"], "input_summary": "Symptoms, timestamps, affected systems, and available evidence.", "output_summary": "Severity estimate, ranked hypotheses, and containment checks.",
+  "required_permissions": [], "cost_estimate": 0.2, "latency_class": "fast", "side_effect": "none", "trust_level": "verified",
+  "ref": "python:marmo_core.sample_resources.agents:incident_triager", "tags": ["sample", "agent", "incident"],
+  "dependencies": ["memory.marmo.samples.incident-response@1.0.0"], "delegation_interface": "tool_wrap",
+  "agent_card": {
+    "delegation_interface": "tool_wrap",
+    "input_schema": {"type": "object", "required": ["goal"], "properties": {"goal": {"type": "string"}, "symptoms": {"type": "string", "default": ""}}, "additionalProperties": false},
+    "output_schema": {"type": "object"}
+  },
+  "supported_task_kinds": ["incident_triage", "impact_assessment"],
+  "system_prompt": "Prioritize user impact and reversible containment. Preserve evidence, label uncertainty, and never invent metrics or system state."
+}

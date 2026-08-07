@@ -1,0 +1,20 @@
+{
+  "id": "memory.marmo.samples.security-baseline",
+  "kind": "memory",
+  "name": "Security Baseline",
+  "version": "1.0.0",
+  "description": "Baseline guidance for least privilege, secret handling, input validation, and auditability.",
+  "capabilities": ["security context", "risk review"],
+  "input_summary": "A design, implementation, or operations security task.",
+  "output_summary": "Relevant baseline security controls.",
+  "required_permissions": [],
+  "cost_estimate": 0.0,
+  "latency_class": "fast",
+  "side_effect": "none",
+  "trust_level": "verified",
+  "ref": "memory://marmo.samples/security-baseline",
+  "tags": ["sample", "security", "least-privilege"],
+  "content_type": "policy",
+  "source": "bundled-sample",
+  "content": "Grant the minimum permissions needed, keep secrets out of prompts and logs, validate data at trust boundaries, and record decisions before side-effecting operations."
+}

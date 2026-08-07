@@ -1,0 +1,10 @@
+{
+  "id": "tool.marmo.samples.run-tests", "kind": "tool", "name": "Run Tests", "version": "1.0.0",
+  "description": "Run an allowlisted test command in an isolated workspace.",
+  "capabilities": ["test execution", "build verification"], "input_summary": "An allowlisted suite name and timeout.", "output_summary": "Exit code and bounded test output.",
+  "required_permissions": ["process.exec", "fs.read"], "cost_estimate": 0.1, "latency_class": "slow", "side_effect": "external", "trust_level": "verified",
+  "ref": "python:marmo_core.sample_resources.tools:run_tests", "tags": ["sample", "testing", "execution"],
+  "input_schema": {"type": "object", "required": ["suite"], "properties": {"suite": {"type": "string"}, "timeout_seconds": {"type": "number", "minimum": 1, "default": 120}}, "additionalProperties": false},
+  "output_schema": {"type": "object", "required": ["exit_code", "output"], "properties": {"exit_code": {"type": "integer"}, "output": {"type": "string"}}},
+  "isolation_level": "L2"
+}

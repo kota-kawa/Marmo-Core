@@ -1,0 +1,10 @@
+{
+  "id": "tool.marmo.samples.search-text", "kind": "tool", "name": "Search Text", "version": "1.0.0",
+  "description": "Search text files in an allowed workspace and return matching lines.",
+  "capabilities": ["text search", "code search"], "input_summary": "A query, search root, and result limit.", "output_summary": "Paths, line numbers, and matching text.",
+  "required_permissions": ["fs.read"], "cost_estimate": 0.02, "latency_class": "fast", "side_effect": "read", "trust_level": "verified",
+  "ref": "python:marmo_core.sample_resources.tools:search_text", "tags": ["sample", "search", "text"],
+  "input_schema": {"type": "object", "required": ["query"], "properties": {"query": {"type": "string"}, "root": {"type": "string", "default": "."}, "limit": {"type": "integer", "minimum": 1, "default": 100}}, "additionalProperties": false},
+  "output_schema": {"type": "object", "required": ["matches"], "properties": {"matches": {"type": "array", "items": {"type": "object"}}}},
+  "isolation_level": "L1"
+}

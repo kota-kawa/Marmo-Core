@@ -1,0 +1,10 @@
+{
+  "id": "tool.marmo.samples.list-files", "kind": "tool", "name": "List Files", "version": "1.0.0",
+  "description": "List files under an allowed workspace directory with an optional pattern.",
+  "capabilities": ["directory listing", "file discovery"], "input_summary": "A directory and optional glob pattern.", "output_summary": "Matching relative file paths.",
+  "required_permissions": ["fs.read"], "cost_estimate": 0.01, "latency_class": "fast", "side_effect": "read", "trust_level": "verified",
+  "ref": "python:marmo_core.sample_resources.tools:list_files", "tags": ["sample", "file", "discovery"],
+  "input_schema": {"type": "object", "properties": {"directory": {"type": "string", "default": "."}, "pattern": {"type": "string", "default": "*"}}, "additionalProperties": false},
+  "output_schema": {"type": "object", "required": ["files"], "properties": {"files": {"type": "array", "items": {"type": "string"}}}},
+  "isolation_level": "L1"
+}

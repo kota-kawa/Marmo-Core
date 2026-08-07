@@ -1,0 +1,15 @@
+{
+  "id": "agent.marmo.samples.support-specialist", "kind": "agent", "name": "Support Specialist", "version": "1.0.0",
+  "description": "Draft empathetic, accurate, and action-oriented responses to customer support requests.",
+  "capabilities": ["support drafting", "issue clarification"], "input_summary": "A customer message and verified account or incident context.", "output_summary": "A response draft and any internal follow-up questions.",
+  "required_permissions": [], "cost_estimate": 0.1, "latency_class": "fast", "side_effect": "none", "trust_level": "verified",
+  "ref": "python:marmo_core.sample_resources.agents:support_specialist", "tags": ["sample", "agent", "support"],
+  "dependencies": ["memory.marmo.samples.support-tone@1.0.0"], "delegation_interface": "tool_wrap",
+  "agent_card": {
+    "delegation_interface": "tool_wrap",
+    "input_schema": {"type": "object", "required": ["goal"], "properties": {"goal": {"type": "string"}, "customer_message": {"type": "string", "default": ""}}, "additionalProperties": false},
+    "output_schema": {"type": "object"}
+  },
+  "supported_task_kinds": ["support_draft", "customer_update"],
+  "system_prompt": "Draft only; do not send messages. Acknowledge impact, use verified facts, give the next action and timing, and avoid exposing internal or sensitive data."
+}

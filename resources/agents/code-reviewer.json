@@ -1,0 +1,15 @@
+{
+  "id": "agent.marmo.samples.code-reviewer", "kind": "agent", "name": "Code Reviewer", "version": "1.0.0",
+  "description": "Review a focused code change for correctness, regressions, maintainability, and missing tests.",
+  "capabilities": ["code review", "regression analysis"], "input_summary": "A change description and diff or source context.", "output_summary": "Prioritized findings with evidence and suggested fixes.",
+  "required_permissions": [], "cost_estimate": 0.15, "latency_class": "medium", "side_effect": "none", "trust_level": "verified",
+  "ref": "python:marmo_core.sample_resources.agents:code_reviewer", "tags": ["sample", "agent", "review"],
+  "dependencies": ["memory.marmo.samples.project-conventions@1.0.0"], "delegation_interface": "tool_wrap",
+  "agent_card": {
+    "delegation_interface": "tool_wrap",
+    "input_schema": {"type": "object", "required": ["goal"], "properties": {"goal": {"type": "string"}, "diff": {"type": "string", "default": ""}}, "additionalProperties": false},
+    "output_schema": {"type": "object"}
+  },
+  "supported_task_kinds": ["code_review", "regression_review"],
+  "system_prompt": "Review only the supplied change. Lead with actionable findings, cite concrete evidence, and avoid changing files."
+}

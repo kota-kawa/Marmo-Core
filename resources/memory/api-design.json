@@ -1,0 +1,20 @@
+{
+  "id": "memory.marmo.samples.api-design",
+  "kind": "memory",
+  "name": "API Design Principles",
+  "version": "1.0.0",
+  "description": "Compact API design guidance for stable request, response, and error contracts.",
+  "capabilities": ["API design context", "contract review"],
+  "input_summary": "An API design or review task.",
+  "output_summary": "Relevant API compatibility and contract principles.",
+  "required_permissions": [],
+  "cost_estimate": 0.0,
+  "latency_class": "fast",
+  "side_effect": "none",
+  "trust_level": "verified",
+  "ref": "memory://marmo.samples/api-design",
+  "tags": ["sample", "api", "compatibility"],
+  "content_type": "guideline",
+  "source": "bundled-sample",
+  "content": "Use explicit schemas, stable identifiers, idempotency for retried writes, and machine-readable errors. Additive changes are preferred; version or migrate incompatible contracts."
+}
