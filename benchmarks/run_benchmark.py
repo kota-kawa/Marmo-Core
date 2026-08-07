@@ -21,7 +21,7 @@ Usage:
                                         [--query-transform hyde] [--llm-rerank]
 
 `hybrid-model` re-ranks with a real embedding model via fastembed (ONNX, CPU).
-It needs `pip install '.[benchmark]'`; the core library stays zero-dependency.
+It needs `pip install '.[benchmark]'`; model-backed retrieval remains optional.
 
 `--cross-encoder` (§15.7 項目4) re-ranks the candidate pool with a local
 cross-encoder via fastembed — the zero-LLM comparison target for

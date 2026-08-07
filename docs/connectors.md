@@ -1,6 +1,6 @@
 # Built-in Connectors
 
-Marmo-Core includes zero-dependency HTTP, filesystem, shell, and SQLite
+Marmo-Core includes standard-library-backed HTTP, filesystem, shell, and SQLite
 Connectors. Each operation is installed as a normal Tool resource, so it
 cannot bypass resource selection, activation and execution Policy gates,
 ToolRuntime schema/SecretRef handling, State Store, Recovery, or Audit Log.

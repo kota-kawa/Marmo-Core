@@ -2,7 +2,7 @@
 
 Shows the Kernel pausing on an escalation, the State Store keeping the task
 durable on disk, and a second Kernel -- standing in for a later process --
-picking it up with a human's answer. Runs offline with zero dependencies.
+picking it up with a human's answer. Runs offline after installing the package.
 
     python examples/human_in_the_loop.py
 """

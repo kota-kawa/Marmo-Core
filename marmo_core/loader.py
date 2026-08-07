@@ -67,13 +67,13 @@ def load_resource_definitions(
     """
 
     input_paths = list(paths)
-    package_roots, loose_files = _discover_sources(input_paths)
+    package_roots, loose_sources = _discover_sources(input_paths)
     packages = [verify_local_package(root, kernel_version=kernel_version) for root in package_roots]
     validate_package_dependencies(packages)
     definitions: list[ResourceDefinition] = []
     issues: list[ValidationIssue] = []
-    for file_path in loose_files:
-        loaded, file_issues = _load_definition_file(file_path, validate=validate)
+    for file_path, source_root in loose_sources:
+        loaded, file_issues = _load_definition_file(file_path, validate=validate, root=source_root)
         definitions.extend(loaded)
         issues.extend(file_issues)
     for package in packages:
@@ -124,7 +124,7 @@ def validate_resource_paths(
     definitions: list[ResourceDefinition] = []
     issues: list[ValidationIssue] = []
     try:
-        package_roots, files = _discover_sources(list(paths))
+        package_roots, sources = _discover_sources(list(paths))
     except ResourceLoadError as exc:
         return [ValidationIssue(str(exc), "paths")]
     packages: list[LocalResourcePackage] = []
@@ -137,10 +137,10 @@ def validate_resource_paths(
         validate_package_dependencies(packages)
     except PackageError as exc:
         issues.append(ValidationIssue(str(exc), "packages"))
-    for file_path in files:
+    for file_path, source_root in sources:
         if is_skill_markdown(file_path):
             try:
-                definition = load_markdown_skill(file_path, root=Path.cwd())
+                definition = load_markdown_skill(file_path, root=source_root)
             except OSError as exc:
                 issues.append(ValidationIssue(f"cannot read {file_path}: {exc}", str(file_path)))
                 continue
@@ -176,15 +176,29 @@ def validate_resource_paths(
     return issues
 
 
-def _discover_sources(paths: list[str | Path]) -> tuple[list[Path], list[Path]]:
+def _discover_sources(paths: list[str | Path]) -> tuple[list[Path], list[tuple[Path, Path]]]:
     package_roots = discover_package_roots(paths)
     files = discover_resource_files(paths)
-    loose_files = [
-        file_path
+    loose_sources = [
+        (file_path, _source_root(file_path, paths))
         for file_path in files
         if not any(_is_within(file_path.resolve(), root) for root in package_roots)
     ]
-    return package_roots, loose_files
+    return package_roots, loose_sources
+
+
+def _source_root(file_path: Path, input_paths: list[str | Path]) -> Path:
+    """Return the most specific discovery root that contains a loose file."""
+    resolved_file = file_path.resolve()
+    candidates: list[Path] = []
+    for raw_path in input_paths:
+        path = Path(raw_path).resolve()
+        root = path.parent if path.is_file() else path
+        if _is_within(resolved_file, root):
+            candidates.append(root)
+    if not candidates:
+        return resolved_file.parent
+    return max(candidates, key=lambda item: len(item.parts))
 
 
 def _is_within(path: Path, root: Path) -> bool:
@@ -205,7 +219,7 @@ def _load_definition_file(
     issues: list[ValidationIssue] = []
     if is_skill_markdown(file_path):
         try:
-            definition = load_markdown_skill(file_path, root=root or Path.cwd())
+            definition = load_markdown_skill(file_path, root=root or file_path.parent)
         except OSError as exc:
             return [], [ValidationIssue(f"cannot read {file_path}: {exc}", str(file_path))]
         definitions.append(definition)

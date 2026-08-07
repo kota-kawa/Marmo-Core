@@ -1,4 +1,4 @@
-"""Zero-dependency Connector API and built-in connectors (F-CONN-01..06).
+"""Standard-library-backed Connector API and built-in connectors (F-CONN-01..06).
 
 Connectors expose external operations as ordinary Tool resources.  This keeps
 one mandatory security path: the Kernel activates their definitions through
@@ -11,6 +11,7 @@ level recovery.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
@@ -754,7 +755,7 @@ class SQLiteConnector(Connector):
         row_limit = self.max_rows if limit is None else min(limit, self.max_rows)
         database = self._checked_database()
         uri = f"{database.as_uri()}?mode=ro"
-        with sqlite3.connect(uri, uri=True, timeout=self.config.timeout_seconds) as connection:
+        with closing(sqlite3.connect(uri, uri=True, timeout=self.config.timeout_seconds)) as connection:
             cursor = connection.execute(sql, dict(parameters or {}))
             if cursor.description is None:
                 raise ConnectorError("SQLite query must produce rows; use the execute operation for writes")
@@ -778,7 +779,7 @@ class SQLiteConnector(Connector):
                 "SQLite execute accepts one INSERT/UPDATE/DELETE/CREATE/ALTER/DROP/REPLACE statement"
             )
         database = self._checked_database()
-        with sqlite3.connect(database, timeout=self.config.timeout_seconds) as connection:
+        with closing(sqlite3.connect(database, timeout=self.config.timeout_seconds)) as connection:
             cursor = connection.execute(sql, dict(parameters or {}))
             connection.commit()
             return {"rowcount": cursor.rowcount, "lastrowid": cursor.lastrowid}

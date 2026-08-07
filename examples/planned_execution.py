@@ -2,7 +2,7 @@
 
 Three independent collectors and one step that depends on all of them. The
 Planner derives the waves from the dependencies the resources declare, so the
-collectors overlap and the render step waits. Runs offline, zero dependencies.
+collectors overlap and the render step waits. Runs offline after installation.
 
     python examples/planned_execution.py
 """

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from contextlib import closing
 from dataclasses import replace as dataclass_replace
 from pathlib import Path
 from threading import Thread
@@ -8,6 +9,7 @@ import shutil
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from marmo_core import (
     BoundTool,
@@ -391,9 +393,10 @@ class SQLiteConnectorTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.database = Path(self.temp.name) / "test.sqlite3"
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection:
             connection.execute("CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT)")
             connection.execute("INSERT INTO notes (body) VALUES (?)", ("first",))
+            connection.commit()
         self.connector = SQLiteConnector(self.database)
 
     def tearDown(self) -> None:
@@ -424,9 +427,28 @@ class SQLiteConnectorTests(unittest.TestCase):
             ),
         )
         self.assertEqual(result.status, "success")
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection:
             count = connection.execute("SELECT COUNT(*) FROM notes").fetchone()[0]
         self.assertEqual(count, 2)
+
+    def test_query_and_execute_close_their_connections(self) -> None:
+        original_connect = sqlite3.connect
+        connections: list[sqlite3.Connection] = []
+
+        def tracked_connect(*args, **kwargs):
+            connection = original_connect(*args, **kwargs)
+            connections.append(connection)
+            return connection
+
+        tools = {item.operation: item.handler for item in self.connector.tools()}
+        with patch("marmo_core.connectors.sqlite3.connect", side_effect=tracked_connect):
+            tools["query"](sql="SELECT id FROM notes")
+            tools["execute"](sql="INSERT INTO notes (body) VALUES ('second')")
+
+        self.assertEqual(len(connections), 2)
+        for connection in connections:
+            with self.assertRaises(sqlite3.ProgrammingError):
+                connection.execute("SELECT 1")
 
     def test_query_connection_is_read_only(self) -> None:
         query = {item.operation: item.handler for item in self.connector.tools()}["query"]

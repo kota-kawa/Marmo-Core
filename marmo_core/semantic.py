@@ -1,12 +1,12 @@
 """Semantic retrieval layer: embedding interface and hybrid ranking.
 
-The core stays dependency-free. ``EmbeddingProvider`` is the swap point
-(F-RETR-02): ``HashingEmbeddingProvider`` is a deterministic offline stand-in
-for tests and air-gapped runs, and ``OpenAICompatibleEmbeddingProvider``
-talks to any OpenAI-compatible ``/embeddings`` endpoint (OpenAI, vLLM,
-llama.cpp server, Ollama) using only ``urllib``. Real semantic quality
-requires a real embedding model; the hashing provider only mirrors lexical
-overlap in vector form.
+``EmbeddingProvider`` is the swap point (F-RETR-02):
+``HashingEmbeddingProvider`` is a deterministic offline stand-in for tests
+and air-gapped runs, and ``OpenAICompatibleEmbeddingProvider`` talks to any
+OpenAI-compatible ``/embeddings`` endpoint (OpenAI, vLLM, llama.cpp server,
+Ollama) using only ``urllib``. Real semantic quality requires a real
+embedding model; the hashing provider only mirrors lexical overlap in vector
+form.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ import math
 import os
 import urllib.request
 
+from .environment import load_local_dotenv
 from .models import SearchQuery, SearchResult
 from .registry import ResourceRegistry
 from .retriever import (
@@ -74,9 +75,9 @@ class HashingEmbeddingProvider(EmbeddingProvider):
 class OpenAICompatibleEmbeddingProvider(EmbeddingProvider):
     """Embeddings from any OpenAI-compatible ``/embeddings`` endpoint.
 
-    Zero-dependency: requests go through ``urllib``. The ``transport``
-    argument accepts a ``(url, payload, headers, timeout) -> dict`` callable
-    so tests can run offline.
+    Requests go through ``urllib``. The ``transport`` argument accepts a
+    ``(url, payload, headers, timeout) -> dict`` callable so tests can run
+    offline.
     """
 
     def __init__(
@@ -90,6 +91,8 @@ class OpenAICompatibleEmbeddingProvider(EmbeddingProvider):
         transport: Callable[[str, dict, dict, float], dict] | None = None,
     ) -> None:
         self.model = model
+        if api_key is None:
+            load_local_dotenv()
         self.api_key = api_key if api_key is not None else os.environ.get("OPENAI_API_KEY", "")
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout

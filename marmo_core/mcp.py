@@ -3,7 +3,7 @@
 Marmo-Core does not build a parallel tool ecosystem: it treats MCP servers
 as resource suppliers and layers unified retrieval, the Policy Gateway, and
 the audit log on top of them (F-DIST-06). This module is a minimal,
-zero-dependency MCP client for the stdio transport (newline-delimited
+standard-library-based MCP client for the stdio transport (newline-delimited
 JSON-RPC 2.0 over a child process's stdin/stdout).
 
 Security defaults are conservative (F-SEC-01): imported tools default to

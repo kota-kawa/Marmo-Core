@@ -1,6 +1,6 @@
 """Marmo-Core hello world: search -> policy gate -> activate -> execute -> audit.
 
-Runs offline with zero external dependencies using the deterministic mock LLM.
+Runs offline without external services by using the deterministic mock LLM.
 
     python examples/hello_world.py
 """
