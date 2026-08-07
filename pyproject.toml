@@ -53,6 +53,9 @@ marmo_core = ["py.typed"]
 target-version = "py310"
 line-length = 120
 
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
 [tool.mypy]
 python_version = "3.10"
 files = ["marmo_core"]
