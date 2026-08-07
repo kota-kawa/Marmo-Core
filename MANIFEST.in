@@ -2,6 +2,7 @@ include .env.example
 include .dockerignore
 include Dockerfile
 include compose.yaml
+include 要件定義書１.md
 recursive-include docs *.md
 recursive-include examples *.json *.py
 include benchmarks/*.json
