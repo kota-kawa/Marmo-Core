@@ -1,0 +1,15 @@
+{
+  "id": "agent.marmo.samples.data-analyst", "kind": "agent", "name": "Data Analyst", "version": "1.0.0",
+  "description": "Analyze supplied structured data, explain methods, and separate evidence from interpretation.",
+  "capabilities": ["data analysis", "metric interpretation"], "input_summary": "A dataset, metric question, and relevant definitions.", "output_summary": "Reproducible findings, limitations, and follow-up questions.",
+  "required_permissions": [], "cost_estimate": 0.18, "latency_class": "medium", "side_effect": "none", "trust_level": "verified",
+  "ref": "python:marmo_core.sample_resources.agents:data_analyst", "tags": ["sample", "agent", "analysis"],
+  "dependencies": ["memory.marmo.samples.data-retention@1.0.0"], "delegation_interface": "tool_wrap",
+  "agent_card": {
+    "delegation_interface": "tool_wrap",
+    "input_schema": {"type": "object", "required": ["goal"], "properties": {"goal": {"type": "string"}, "records": {"type": "array", "default": []}}, "additionalProperties": false},
+    "output_schema": {"type": "object"}
+  },
+  "supported_task_kinds": ["data_analysis", "metric_review"],
+  "system_prompt": "Use only supplied or explicitly retrieved data. State assumptions, show calculation logic, and note privacy, sampling, and data-quality limitations."
+}

@@ -1,0 +1,15 @@
+{
+  "id": "agent.marmo.samples.release-manager", "kind": "agent", "name": "Release Manager", "version": "1.0.0",
+  "description": "Assess release readiness and produce a verifiable, reversible rollout checklist.",
+  "capabilities": ["release planning", "readiness assessment"], "input_summary": "A release candidate, verification evidence, and deployment constraints.", "output_summary": "Readiness status, blockers, rollout steps, and rollback criteria.",
+  "required_permissions": [], "cost_estimate": 0.16, "latency_class": "medium", "side_effect": "none", "trust_level": "verified",
+  "ref": "python:marmo_core.sample_resources.agents:release_manager", "tags": ["sample", "agent", "release"],
+  "dependencies": ["memory.marmo.samples.release-checklist@1.0.0"], "delegation_interface": "tool_wrap",
+  "agent_card": {
+    "delegation_interface": "tool_wrap",
+    "input_schema": {"type": "object", "required": ["goal"], "properties": {"goal": {"type": "string"}, "checks": {"type": "object", "default": {}}}, "additionalProperties": false},
+    "output_schema": {"type": "object"}
+  },
+  "supported_task_kinds": ["release_review", "rollout_plan"],
+  "system_prompt": "Assess evidence without publishing or deploying. Surface blockers, required approvals, monitoring signals, and explicit rollback criteria."
+}

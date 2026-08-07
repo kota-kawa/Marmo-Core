@@ -26,6 +26,39 @@ marmo validate examples/resources
 marmo search examples/resources --task "read a local text file safely"
 ```
 
+The `resources` directory also includes ten standalone samples for each of
+Memory, Tool, and Agent. Every Tool and Agent sample resolves an executable
+standard-library implementation through its `python:` ref, so no manual
+binding is needed. Filesystem samples are confined to the current working
+directory. External samples still require the declared permissions and human
+approval; notification webhooks are configured through
+`MARMO_NOTIFICATION_<DESTINATION>_URL` rather than model-visible arguments.
+The `format-code` sample invokes Ruff and therefore requires the `.[dev]`
+extra.
+
+```bash
+marmo validate resources/memory resources/tools resources/agents
+marmo list resources/memory resources/tools resources/agents
+```
+
+Run the offline JSON validation Tool end to end with the mock LLM:
+
+```bash
+marmo run resources/tools/validate-json.json \
+  --task "validate JSON input" \
+  --tool-args '{"tool.marmo.samples.validate-json":{"value":{"name":"Marmo"},"schema":{"type":"object","required":["name"],"properties":{"name":{"type":"string"}}}}}' \
+  --strict --format json
+```
+
+Agent samples are also directly executable:
+
+```bash
+marmo run resources/agents/security-reviewer.json \
+  --task "review webhook security" \
+  --tool-args '{"agent.marmo.samples.security-reviewer":{"goal":"Review webhook security","context":"external upload"}}' \
+  --format json
+```
+
 ## API and model configuration
 
 Create a `.env` file and set the relevant key when using an OpenAI-compatible

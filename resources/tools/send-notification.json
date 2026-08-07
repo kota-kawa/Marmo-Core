@@ -1,0 +1,10 @@
+{
+  "id": "tool.marmo.samples.send-notification", "kind": "tool", "name": "Send Notification", "version": "1.0.0",
+  "description": "Send a plain-text notification to an allowlisted external destination.",
+  "capabilities": ["notification delivery", "status communication"], "input_summary": "A destination alias, subject, and plain-text message.", "output_summary": "Provider message identifier and delivery status.",
+  "required_permissions": ["net.external", "message.send"], "cost_estimate": 0.08, "latency_class": "medium", "side_effect": "external", "trust_level": "verified",
+  "ref": "python:marmo_core.sample_resources.tools:send_notification", "tags": ["sample", "notification", "external"],
+  "input_schema": {"type": "object", "required": ["destination", "message"], "properties": {"destination": {"type": "string"}, "subject": {"type": "string"}, "message": {"type": "string"}}, "additionalProperties": false},
+  "output_schema": {"type": "object", "required": ["message_id", "status"], "properties": {"message_id": {"type": "string"}, "status": {"type": "string"}}},
+  "isolation_level": "L3"
+}

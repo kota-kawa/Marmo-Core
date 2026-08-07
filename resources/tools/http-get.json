@@ -1,0 +1,10 @@
+{
+  "id": "tool.marmo.samples.http-get", "kind": "tool", "name": "HTTP GET", "version": "1.0.0",
+  "description": "Fetch a document from an allowlisted HTTPS host without sending credentials.",
+  "capabilities": ["HTTP retrieval", "external document reading"], "input_summary": "An HTTPS URL and timeout.", "output_summary": "Response status, headers, and bounded body text.",
+  "required_permissions": ["net.external"], "cost_estimate": 0.05, "latency_class": "medium", "side_effect": "external", "trust_level": "verified",
+  "ref": "python:marmo_core.sample_resources.tools:http_get", "tags": ["sample", "http", "network"],
+  "input_schema": {"type": "object", "required": ["url"], "properties": {"url": {"type": "string", "pattern": "^https://"}, "timeout_seconds": {"type": "number", "minimum": 0.1, "default": 10}}, "additionalProperties": false},
+  "output_schema": {"type": "object", "required": ["status", "body"], "properties": {"status": {"type": "integer"}, "body": {"type": "string"}}},
+  "isolation_level": "L2"
+}

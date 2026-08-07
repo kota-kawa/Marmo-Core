@@ -1,0 +1,20 @@
+{
+  "id": "memory.marmo.samples.support-tone",
+  "kind": "memory",
+  "name": "Customer Support Tone",
+  "version": "1.0.0",
+  "description": "Communication guidance for clear, empathetic, and action-oriented customer support.",
+  "capabilities": ["support context", "tone guidance"],
+  "input_summary": "A customer question, complaint, or status update.",
+  "output_summary": "Tone and structure guidance for a support response.",
+  "required_permissions": [],
+  "cost_estimate": 0.0,
+  "latency_class": "fast",
+  "side_effect": "none",
+  "trust_level": "verified",
+  "ref": "memory://marmo.samples/support-tone",
+  "tags": ["sample", "support", "communication"],
+  "content_type": "style-guide",
+  "source": "bundled-sample",
+  "content": "Acknowledge the customer's impact, state what is known without speculation, give the next concrete action and timing, avoid blame, and close with a clear path for follow-up."
+}

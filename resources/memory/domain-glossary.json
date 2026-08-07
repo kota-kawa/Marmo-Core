@@ -1,0 +1,20 @@
+{
+  "id": "memory.marmo.samples.domain-glossary",
+  "kind": "memory",
+  "name": "Marmo Resource Glossary",
+  "version": "1.0.0",
+  "description": "A compact glossary of the four Marmo resource kinds and their roles.",
+  "capabilities": ["terminology context", "resource modeling"],
+  "input_summary": "A Marmo resource authoring or onboarding question.",
+  "output_summary": "Definitions of Memory, Skill, Tool, and Agent.",
+  "required_permissions": [],
+  "cost_estimate": 0.0,
+  "latency_class": "fast",
+  "side_effect": "none",
+  "trust_level": "core",
+  "ref": "memory://marmo.samples/domain-glossary",
+  "tags": ["sample", "marmo", "glossary"],
+  "content_type": "glossary",
+  "source": "bundled-sample",
+  "content": "Memory supplies searchable context. Skill supplies reusable instructions. Tool exposes a single executable operation. Agent exposes a specialist delegation target. Retrieval finds candidates; policy separately determines whether activation or execution is allowed."
+}

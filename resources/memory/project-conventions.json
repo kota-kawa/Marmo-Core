@@ -1,0 +1,20 @@
+{
+  "id": "memory.marmo.samples.project-conventions",
+  "kind": "memory",
+  "name": "Project Conventions",
+  "version": "1.0.0",
+  "description": "Reusable conventions for making small, reviewable, and deterministic project changes.",
+  "capabilities": ["project context", "implementation guidance"],
+  "input_summary": "A software change request.",
+  "output_summary": "Project conventions relevant to the requested change.",
+  "required_permissions": [],
+  "cost_estimate": 0.0,
+  "latency_class": "fast",
+  "side_effect": "none",
+  "trust_level": "verified",
+  "ref": "memory://marmo.samples/project-conventions",
+  "tags": ["sample", "project", "conventions"],
+  "content_type": "guideline",
+  "source": "bundled-sample",
+  "content": "Prefer focused changes, deterministic behavior, explicit error handling, and tests that verify user-visible outcomes. Preserve backward compatibility unless the task explicitly changes it."
+}

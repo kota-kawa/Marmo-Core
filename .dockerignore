@@ -1,7 +1,13 @@
 .git
 .agents
 .codex
-/resources/
+/resources/*
+!/resources/memory/
+!/resources/memory/**
+!/resources/agents/
+!/resources/agents/**
+!/resources/tools/
+!/resources/tools/**
 __pycache__/
 *.py[cod]
 *.egg-info/

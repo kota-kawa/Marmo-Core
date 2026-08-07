@@ -1,0 +1,20 @@
+{
+  "id": "memory.marmo.samples.data-retention",
+  "kind": "memory",
+  "name": "Data Retention Principles",
+  "version": "1.0.0",
+  "description": "General principles for collecting, retaining, and deleting data responsibly.",
+  "capabilities": ["data governance context", "retention review"],
+  "input_summary": "A data lifecycle or storage design task.",
+  "output_summary": "Relevant minimization, retention, and deletion principles.",
+  "required_permissions": [],
+  "cost_estimate": 0.0,
+  "latency_class": "fast",
+  "side_effect": "none",
+  "trust_level": "verified",
+  "ref": "memory://marmo.samples/data-retention",
+  "tags": ["sample", "data", "governance"],
+  "content_type": "policy",
+  "source": "bundled-sample",
+  "content": "Collect only necessary data, assign an owner and retention period, document legal or operational holds, make deletion verifiable, and avoid retaining sensitive values in logs or derived caches."
+}

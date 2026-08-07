@@ -1,0 +1,10 @@
+{
+  "id": "tool.marmo.samples.read-text", "kind": "tool", "name": "Read Text", "version": "1.0.0",
+  "description": "Read UTF-8 text from an allowed workspace path.",
+  "capabilities": ["file reading", "text inspection"], "input_summary": "A workspace-relative text file path.", "output_summary": "The file content and truncation status.",
+  "required_permissions": ["fs.read"], "cost_estimate": 0.01, "latency_class": "fast", "side_effect": "read", "trust_level": "verified",
+  "ref": "python:marmo_core.sample_resources.tools:read_text", "tags": ["sample", "file", "read"],
+  "input_schema": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}, "max_bytes": {"type": "integer", "minimum": 1, "default": 65536}}, "additionalProperties": false},
+  "output_schema": {"type": "object", "required": ["content", "truncated"], "properties": {"content": {"type": "string"}, "truncated": {"type": "boolean"}}},
+  "isolation_level": "L1"
+}

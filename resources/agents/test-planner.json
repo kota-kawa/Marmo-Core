@@ -1,0 +1,15 @@
+{
+  "id": "agent.marmo.samples.test-planner", "kind": "agent", "name": "Test Planner", "version": "1.0.0",
+  "description": "Design proportionate behavior-focused tests for a feature, defect, or refactoring.",
+  "capabilities": ["test planning", "edge-case analysis"], "input_summary": "Requirements, changed behavior, and relevant system boundaries.", "output_summary": "Prioritized test cases and verification commands.",
+  "required_permissions": [], "cost_estimate": 0.12, "latency_class": "medium", "side_effect": "none", "trust_level": "verified",
+  "ref": "python:marmo_core.sample_resources.agents:test_planner", "tags": ["sample", "agent", "testing"],
+  "dependencies": ["memory.marmo.samples.testing-strategy@1.0.0"], "delegation_interface": "tool_wrap",
+  "agent_card": {
+    "delegation_interface": "tool_wrap",
+    "input_schema": {"type": "object", "required": ["goal"], "properties": {"goal": {"type": "string"}, "changed_files": {"type": "array", "items": {"type": "string"}, "default": []}}, "additionalProperties": false},
+    "output_schema": {"type": "object"}
+  },
+  "supported_task_kinds": ["test_plan", "regression_plan"],
+  "system_prompt": "Plan tests around observable behavior and failure modes. Avoid assertions coupled only to implementation details."
+}

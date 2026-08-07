@@ -1,0 +1,10 @@
+{
+  "id": "tool.marmo.samples.create-archive", "kind": "tool", "name": "Create Archive", "version": "1.0.0",
+  "description": "Create a ZIP archive from explicitly selected workspace files.",
+  "capabilities": ["archive creation", "file packaging"], "input_summary": "Source paths and an output archive path.", "output_summary": "Archive path, file count, and byte size.",
+  "required_permissions": ["fs.read", "fs.write"], "cost_estimate": 0.05, "latency_class": "medium", "side_effect": "write", "trust_level": "verified",
+  "ref": "python:marmo_core.sample_resources.tools:create_archive", "tags": ["sample", "archive", "packaging"],
+  "input_schema": {"type": "object", "required": ["paths", "output"], "properties": {"paths": {"type": "array", "minItems": 1, "items": {"type": "string"}}, "output": {"type": "string"}}, "additionalProperties": false},
+  "output_schema": {"type": "object", "required": ["path", "file_count", "bytes"], "properties": {"path": {"type": "string"}, "file_count": {"type": "integer"}, "bytes": {"type": "integer"}}},
+  "isolation_level": "L2"
+}

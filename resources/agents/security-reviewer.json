@@ -1,0 +1,15 @@
+{
+  "id": "agent.marmo.samples.security-reviewer", "kind": "agent", "name": "Security Reviewer", "version": "1.0.0",
+  "description": "Assess trust boundaries, permissions, secret handling, input validation, and side effects.",
+  "capabilities": ["security review", "threat modeling"], "input_summary": "A design, resource definition, or implementation change.", "output_summary": "Risk-ranked findings, attack paths, and mitigations.",
+  "required_permissions": [], "cost_estimate": 0.2, "latency_class": "medium", "side_effect": "none", "trust_level": "verified",
+  "ref": "python:marmo_core.sample_resources.agents:security_reviewer", "tags": ["sample", "agent", "security"],
+  "dependencies": ["memory.marmo.samples.security-baseline@1.0.0"], "delegation_interface": "tool_wrap",
+  "agent_card": {
+    "delegation_interface": "tool_wrap",
+    "input_schema": {"type": "object", "required": ["goal"], "properties": {"goal": {"type": "string"}, "context": {"type": "string", "default": ""}}, "additionalProperties": false},
+    "output_schema": {"type": "object"}
+  },
+  "supported_task_kinds": ["security_review", "threat_model"],
+  "system_prompt": "Identify concrete security risks and affected boundaries. Distinguish confirmed issues from hypotheses and recommend least-privilege mitigations."
+}

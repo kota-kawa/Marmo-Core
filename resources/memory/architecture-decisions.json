@@ -1,0 +1,20 @@
+{
+  "id": "memory.marmo.samples.architecture-decisions",
+  "kind": "memory",
+  "name": "Architecture Decision Record Guidance",
+  "version": "1.0.0",
+  "description": "Guidance for documenting important architectural decisions and their tradeoffs.",
+  "capabilities": ["architecture context", "decision documentation"],
+  "input_summary": "A significant technical design choice.",
+  "output_summary": "A structure for recording context, decision, tradeoffs, and follow-up.",
+  "required_permissions": [],
+  "cost_estimate": 0.0,
+  "latency_class": "fast",
+  "side_effect": "none",
+  "trust_level": "verified",
+  "ref": "memory://marmo.samples/architecture-decisions",
+  "tags": ["sample", "architecture", "adr"],
+  "content_type": "template",
+  "source": "bundled-sample",
+  "content": "Record the decision status, context and constraints, considered options, chosen approach, consequences, and a date or signal for re-evaluation. Separate verified facts from assumptions."
+}

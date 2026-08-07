@@ -1,0 +1,10 @@
+{
+  "id": "tool.marmo.samples.validate-json", "kind": "tool", "name": "Validate JSON", "version": "1.0.0",
+  "description": "Validate a JSON value against a supplied object schema without side effects.",
+  "capabilities": ["JSON validation", "schema checking"], "input_summary": "A JSON value and schema.", "output_summary": "Validity and validation errors.",
+  "required_permissions": [], "cost_estimate": 0.0, "latency_class": "fast", "side_effect": "none", "trust_level": "verified",
+  "ref": "python:marmo_core.sample_resources.tools:validate_json", "tags": ["sample", "json", "validation"],
+  "input_schema": {"type": "object", "required": ["value", "schema"], "properties": {"value": {}, "schema": {"type": "object"}}, "additionalProperties": false},
+  "output_schema": {"type": "object", "required": ["valid", "errors"], "properties": {"valid": {"type": "boolean"}, "errors": {"type": "array", "items": {"type": "string"}}}},
+  "isolation_level": "L0"
+}
