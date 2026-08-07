@@ -16,7 +16,14 @@ python -m pip install marmo-core
 For local development, install the checkout with:
 
 ```bash
-python -m pip install .
+python -m pip install -e '.[dev]'
+```
+
+Validate and inspect the bundled resource examples with:
+
+```bash
+marmo validate examples/resources
+marmo search examples/resources --task "read a local text file safely"
 ```
 
 ## OpenAI API key
@@ -45,5 +52,25 @@ python -m pip install '.[benchmark]'
 Run the test suite with:
 
 ```bash
-python -m unittest discover -s tests
+python -W error::ResourceWarning -m unittest discover -s tests
 ```
+
+## Strict CLI runs
+
+The kernel normally allows a task to recover after a resource is denied or
+cannot be activated. For automation and release checks, pass `--strict` so a
+skipped resource or a tool named in `--tool-args` that was not evaluated makes
+the command exit non-zero.
+
+CLI commands auto-discover `resources`, `skills`, or `examples/resources` from
+the current directory when no resource path is provided. Connector-only runs
+should pass `--no-default-resources` to make their behavior independent of the
+working directory.
+
+`--allow-side-effect` is an exact, repeatable allowlist. For example, allowing
+both side-effect-free resources and read operations requires
+`--allow-side-effect none --allow-side-effect read`.
+
+See [Built-in Connectors](docs/connectors.md) and
+[Local Resource Packages](docs/local-resource-packages.md) for complete usage
+examples.
