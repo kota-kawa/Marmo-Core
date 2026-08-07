@@ -33,6 +33,8 @@ binding is needed. Filesystem samples are confined to the current working
 directory. External samples still require the declared permissions and human
 approval; notification webhooks are configured through
 `MARMO_NOTIFICATION_<DESTINATION>_URL` rather than model-visible arguments.
+The `format-code` sample invokes Ruff and therefore requires the `.[dev]`
+extra.
 
 ```bash
 marmo validate resources/memory resources/tools resources/agents

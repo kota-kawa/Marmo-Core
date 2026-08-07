@@ -8,6 +8,7 @@ COPY marmo_core ./marmo_core
 RUN python3 -m pip install --no-cache-dir .
 
 COPY examples ./examples
+COPY resources ./resources
 COPY scripts ./scripts
 COPY tests ./tests
 

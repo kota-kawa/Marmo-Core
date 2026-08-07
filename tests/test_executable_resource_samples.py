@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from email.message import Message
+from importlib.util import find_spec
 from pathlib import Path
 from unittest.mock import patch
 import os
@@ -141,6 +142,7 @@ class ExecutableToolSampleTests(unittest.TestCase):
         self.assertEqual(tests.status, "success")
         self.assertEqual(tests.output["exit_code"], 0, tests.output["output"])
 
+    @unittest.skipUnless(find_spec("ruff") is not None, "format-code requires Ruff (install with .[dev])")
     def test_formatter_executes_on_an_explicit_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir, _working_directory(Path(temp_dir)):
             source = Path("sample.py")
