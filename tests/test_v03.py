@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import sys
+import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 from marmo_core import (
     AnthropicLLMProvider,
@@ -202,6 +205,23 @@ class MCPTests(unittest.TestCase):
 
 
 class ProviderTests(unittest.TestCase):
+    def test_openai_provider_loads_key_from_dotenv_without_overriding_environment(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            dotenv_path = Path(temp_dir) / ".env"
+            dotenv_path.write_text("OPENAI_API_KEY=from-dotenv\n", encoding="utf-8")
+            previous_directory = Path.cwd()
+            try:
+                os.chdir(temp_dir)
+                with patch.dict(os.environ, {}, clear=True):
+                    self.assertEqual(OpenAICompatibleLLMProvider().api_key, "from-dotenv")
+                with patch.dict(os.environ, {}, clear=True):
+                    self.assertEqual(OpenAICompatibleEmbeddingProvider().api_key, "from-dotenv")
+                with patch.dict(os.environ, {"OPENAI_API_KEY": "from-environment"}, clear=True):
+                    self.assertEqual(OpenAICompatibleLLMProvider().api_key, "from-environment")
+                    self.assertEqual(OpenAICompatibleEmbeddingProvider().api_key, "from-environment")
+            finally:
+                os.chdir(previous_directory)
+
     def test_anthropic_request_and_response_mapping(self) -> None:
         seen: dict = {}
 

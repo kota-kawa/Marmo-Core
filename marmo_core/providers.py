@@ -1,8 +1,8 @@
 """Real LLM providers implementing the ``LLMProvider`` interface (F-LLM-02).
 
-Marmo-Core's core stays dependency-free, so these reference adapters speak
-raw HTTP through ``urllib`` instead of vendor SDKs. They cover the kernel's
-needs (chat completion + tool calls + usage); applications that want
+These reference adapters speak raw HTTP through ``urllib`` instead of vendor
+SDKs. They cover the kernel's needs (chat completion + tool calls + usage);
+applications that want
 streaming, retries, or the full feature surface should wrap the official
 vendor SDK behind the same ``LLMProvider`` interface as an optional extra.
 
@@ -18,6 +18,7 @@ from typing import Any, Callable, Mapping, Sequence
 import json
 import os
 
+from .environment import load_local_dotenv
 from .llm import ChatMessage, LLMProvider, LLMResponse, LLMToolSpec, ToolCall
 from .semantic import _post_json
 
@@ -29,7 +30,7 @@ Transport = Callable[[str, dict, dict, float], dict]
 
 
 class AnthropicLLMProvider(LLMProvider):
-    """Claude via the Anthropic Messages API (raw HTTP, zero-dependency)."""
+    """Claude via the Anthropic Messages API using raw HTTP."""
 
     def __init__(
         self,
@@ -42,6 +43,8 @@ class AnthropicLLMProvider(LLMProvider):
         transport: Transport | None = None,
     ) -> None:
         self.model = model
+        if api_key is None:
+            load_local_dotenv()
         self.api_key = api_key if api_key is not None else os.environ.get("ANTHROPIC_API_KEY", "")
         self.base_url = base_url.rstrip("/")
         self.max_tokens = max_tokens
@@ -130,6 +133,8 @@ class OpenAICompatibleLLMProvider(LLMProvider):
         transport: Transport | None = None,
     ) -> None:
         self.model = model
+        if api_key is None:
+            load_local_dotenv()
         self.api_key = api_key if api_key is not None else os.environ.get("OPENAI_API_KEY", "")
         self.base_url = base_url.rstrip("/")
         self.max_tokens = max_tokens

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -84,7 +85,7 @@ Use kubectl rollout history and deployment manifests to diagnose drift.
         self.assertIn("content", results[0].resource.extras)
 
     def test_markdown_skill_ids_strip_resources_skills_prefix(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir, tempfile.TemporaryDirectory() as working_dir:
             skill_dir = Path(temp_dir) / "resources" / "skills" / "demo-skill"
             skill_dir.mkdir(parents=True)
             skill_path = skill_dir / "SKILL.md"
@@ -99,8 +100,13 @@ description: Demo skill for the canonical resources layout.
                 encoding="utf-8",
             )
 
-            registry = load_registry([Path(temp_dir) / "resources"])
-            resource = registry.get("skill.demo-skill")
+            previous_directory = Path.cwd()
+            try:
+                os.chdir(working_dir)
+                registry = load_registry([Path(temp_dir) / "resources"])
+                resource = registry.get("skill.demo-skill")
+            finally:
+                os.chdir(previous_directory)
 
         self.assertEqual(resource.metadata.id, "skill.demo-skill")
 

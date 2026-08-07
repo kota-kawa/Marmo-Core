@@ -2,8 +2,8 @@
 
 The primary fails permanently. Recovery re-searches the registry, verifies
 that the standby has compatible capabilities and inputs, activates it through
-the normal policy gate, and records the decision. Runs offline, zero
-dependencies.
+the normal policy gate, and records the decision. Runs offline without
+external services.
 
     python examples/recovery_fallback.py
 """

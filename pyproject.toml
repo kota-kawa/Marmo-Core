@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "marmo-core"
 version = "0.4.0"
-description = "Zero-dependency AI Agent Kernel core primitives: unified resource registry, search CLI, and a guarded execution loop."
+description = "Lightweight AI Agent Kernel primitives: resource registry, search CLI, and guarded execution."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
@@ -25,7 +25,7 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
   "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-dependencies = []
+dependencies = ["python-dotenv>=1.0,<2"]
 
 [project.optional-dependencies]
 benchmark = ["fastembed>=0.8.0"]

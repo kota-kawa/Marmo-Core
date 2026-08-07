@@ -2,7 +2,7 @@
 
 The specialist is exposed as a tool-wrapped Agent. Its permissions can only
 shrink from the caller's grants, and its result is persisted and audited.
-Runs offline with zero external dependencies.
+Runs offline without external services.
 
     python examples/agent_delegation.py
 """
