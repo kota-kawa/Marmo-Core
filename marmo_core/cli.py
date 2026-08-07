@@ -57,7 +57,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(required=True)
 
     validate_parser = subparsers.add_parser("validate", help="validate local resource definition files")
-    validate_parser.add_argument("paths", nargs="*", help="resource files or directories")
+    _add_path_arg(validate_parser)
     validate_parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     validate_parser.set_defaults(func=_cmd_validate)
 
@@ -135,6 +135,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="validate and record tool calls without invoking any tool handler",
     )
+    run_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="return non-zero when a resource is skipped or a tool named in --tool-args is not evaluated",
+    )
     _add_safety_args(run_parser)
     _add_isolation_args(run_parser)
     _add_connector_args(run_parser)
@@ -209,6 +214,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="validate and record tool calls without invoking any tool handler",
+    )
+    resume_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="return non-zero when a resource is skipped or a tool named in --tool-args is not evaluated",
     )
     _add_safety_args(resume_parser)
     _add_isolation_args(resume_parser)
@@ -374,6 +384,11 @@ def _add_hitl_args(parser: argparse.ArgumentParser) -> None:
 
 def _add_path_arg(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("paths", nargs="*", help="resource files or directories")
+    parser.add_argument(
+        "--no-default-resources",
+        action="store_true",
+        help="do not auto-discover resources, skills, examples/resources, or the current directory",
+    )
 
 
 def _add_common_filters(parser: argparse.ArgumentParser) -> None:
@@ -384,7 +399,7 @@ def _add_common_filters(parser: argparse.ArgumentParser) -> None:
 
 
 def _cmd_validate(args: argparse.Namespace) -> int:
-    paths = _default_paths(args.paths)
+    paths = _default_paths(args.paths, no_defaults=args.no_default_resources)
     issues = validate_resource_paths(paths)
     payload = {
         "paths": [str(path) for path in paths],
@@ -454,7 +469,7 @@ def _cmd_package_inspect(args: argparse.Namespace) -> int:
 
 
 def _cmd_list(args: argparse.Namespace) -> int:
-    registry = load_registry(_default_paths(args.paths))
+    registry = load_registry(_default_paths(args.paths, no_defaults=args.no_default_resources))
     resources = registry.list(kinds=args.kind, trust_levels=args.trust_level, side_effects=args.side_effect, tags=args.tag)
     if args.format == "json":
         print_json([resource.to_dict(include_extras=False) for resource in resources])
@@ -464,7 +479,7 @@ def _cmd_list(args: argparse.Namespace) -> int:
 
 
 def _cmd_search(args: argparse.Namespace) -> int:
-    registry = load_registry(_default_paths(args.paths))
+    registry = load_registry(_default_paths(args.paths, no_defaults=args.no_default_resources))
     per_kind_limits = _parse_limits(args.per_kind_limit)
     set_limits = _parse_limits(args.set_limit)
     query = SearchQuery(
@@ -496,7 +511,7 @@ def _cmd_search(args: argparse.Namespace) -> int:
 
 
 def _cmd_inspect(args: argparse.Namespace) -> int:
-    registry = load_registry(_default_paths(args.paths))
+    registry = load_registry(_default_paths(args.paths, no_defaults=args.no_default_resources))
     resource = registry.get(args.resource, version=args.version)
     if args.format == "json":
         print_json(resource.to_dict(include_extras=True))
@@ -506,7 +521,7 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
 
 
 def _cmd_policy_check(args: argparse.Namespace) -> int:
-    registry = load_registry(_default_paths(args.paths))
+    registry = load_registry(_default_paths(args.paths, no_defaults=args.no_default_resources))
     resource = registry.get(args.resource, version=args.version)
     context = PolicyContext(
         granted_permissions=tuple(args.granted_permission),
@@ -552,7 +567,7 @@ def _cmd_policy_check(args: argparse.Namespace) -> int:
 def _build_kernel(args: argparse.Namespace, *, continue_audit: bool) -> Kernel:
     """Assemble the kernel that ``run`` and ``resume`` share."""
 
-    registry = load_registry(_default_paths(args.paths))
+    registry = load_registry(_default_paths(args.paths, no_defaults=args.no_default_resources))
     context = PolicyContext(
         granted_permissions=tuple(args.granted_permission),
         max_cost=args.max_cost,
@@ -572,12 +587,7 @@ def _build_kernel(args: argparse.Namespace, *, continue_audit: bool) -> Kernel:
         ),
         dry_run=args.dry_run,
     )
-    tool_arguments: dict[str, Any] = {}
-    if args.tool_args:
-        parsed = json.loads(args.tool_args)
-        if not isinstance(parsed, dict):
-            raise ValueError("--tool-args must be a JSON object mapping tool ids to argument objects")
-        tool_arguments = parsed
+    tool_arguments = _parse_tool_arguments(args.tool_args)
     hitl_policy = HitlPolicy(
         approvers=tuple(args.approver),
         always_confirm_resources=tuple(args.always_confirm),
@@ -623,13 +633,16 @@ def _build_kernel(args: argparse.Namespace, *, continue_audit: bool) -> Kernel:
 
 
 def _report_task(args: argparse.Namespace, kernel: Kernel, result) -> int:
+    strict_violations = _strict_violations(args, result)
     if args.audit_log:
         kernel.audit_log.write_jsonl(args.audit_log)
     if args.format == "json":
         payload = result.to_dict()
         payload["audit_records"] = [record.to_dict() for record in kernel.audit_log.records]
+        if args.strict:
+            payload["strict_violations"] = list(strict_violations)
         print_json(payload)
-        return 0 if result.completed else 1
+        return 0 if result.completed and not strict_violations else 1
     print(f"task: {result.task_id}")
     print(f"status: {result.status}")
     if result.output:
@@ -648,6 +661,8 @@ def _report_task(args: argparse.Namespace, kernel: Kernel, result) -> int:
         )
     for skipped in result.skipped_resources:
         print(f"  skipped: {skipped['resource']} ({skipped['reason']})")
+    for violation in strict_violations:
+        print(f"  strict: {violation}")
     if result.paused:
         request = kernel.pending_request(result.task_id)
         if request is not None:
@@ -662,7 +677,7 @@ def _report_task(args: argparse.Namespace, kernel: Kernel, result) -> int:
                 print("  pass --state-dir to keep the pause resumable across processes")
     chain = kernel.audit_log.records
     print(f"audit: {len(chain)} records, last_hash={chain[-1].hash[:16]}…" if chain else "audit: empty")
-    return 0 if result.completed else 1
+    return 0 if result.completed and not strict_violations else 1
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
@@ -704,6 +719,25 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
 
 def _parse_tool_impls(values: list[str]) -> dict[str, Callable[..., Any]]:
     return _parse_implementations(values, "tool")
+
+
+def _parse_tool_arguments(raw: str) -> dict[str, Any]:
+    if not raw:
+        return {}
+    parsed = json.loads(raw)
+    if not isinstance(parsed, dict):
+        raise ValueError("--tool-args must be a JSON object mapping tool ids to argument objects")
+    return parsed
+
+
+def _strict_violations(args: argparse.Namespace, result: Any) -> tuple[str, ...]:
+    if not args.strict:
+        return ()
+    violations = [f"resource was skipped: {item['resource']}" for item in result.skipped_resources]
+    requested = set(_parse_tool_arguments(args.tool_args))
+    evaluated = {item.tool_id for item in result.tool_results}
+    violations.extend(f"requested tool was not evaluated: {tool_id}" for tool_id in sorted(requested - evaluated))
+    return tuple(dict.fromkeys(violations))
 
 
 def _parse_implementations(
@@ -826,9 +860,11 @@ def _parse_limits(values: list[str]) -> dict[str, int]:
     return parsed
 
 
-def _default_paths(paths: list[str]) -> list[Path]:
+def _default_paths(paths: list[str], *, no_defaults: bool = False) -> list[Path]:
     if paths:
         return [Path(path) for path in paths]
+    if no_defaults:
+        return []
     for candidate in (Path("resources"), Path("skills"), Path("examples/resources")):
         if candidate.exists():
             return [candidate]

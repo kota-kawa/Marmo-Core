@@ -54,6 +54,8 @@ Read a file beneath a fixed root:
 ```bash
 python3 -m marmo_core.cli run \
   --task "read the note text file" \
+  --no-default-resources \
+  --strict \
   --connector-file-root ./workspace \
   --granted-permission connector.file.read \
   --minimum-isolation-level L2 \
@@ -65,6 +67,8 @@ Validate an HTTP request without sending it:
 ```bash
 python3 -m marmo_core.cli run \
   --task "request the example API" \
+  --no-default-resources \
+  --strict \
   --connector-http \
   --granted-permission connector.http.request \
   --allow-external-host api.example.com \
@@ -78,6 +82,8 @@ Run one allowlisted executable with shell expansion disabled:
 ```bash
 python3 -m marmo_core.cli run \
   --task "run the echo command" \
+  --no-default-resources \
+  --strict \
   --connector-shell-root ./workspace \
   --connector-shell-command echo \
   --granted-permission shell.exec \
@@ -91,14 +97,20 @@ Query one fixed SQLite database:
 ```bash
 python3 -m marmo_core.cli run \
   --task "query notes from sqlite" \
+  --no-default-resources \
+  --strict \
   --connector-sqlite ./workspace/app.sqlite3 \
   --granted-permission connector.sqlite.read \
   --minimum-isolation-level L2 \
   --tool-args '{"connector.sqlite.query":{"sql":"SELECT id, body FROM notes LIMIT 10"}}'
 ```
 
-When resuming a task in another process, repeat the same Connector flags. The
-State Store persists the task and reviewed operation, while paths, executable
+`--no-default-resources` prevents unrelated definitions in the current
+directory from changing Connector selection. The `--strict` flag makes the
+CLI return a non-zero status if a resource is skipped or an explicitly
+configured tool is not evaluated. When resuming a task in another process,
+repeat these flags as well. The State Store persists the task and reviewed
+operation, while paths, executable
 allowlists, network access, and credentials remain runtime configuration.
 
 ## Security boundaries

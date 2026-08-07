@@ -5,6 +5,9 @@ skills/.repos.json
 # Downloaded resources
 /resources/
 
+# Generated benchmark corpora
+benchmarks/corpus/scale_corpus_*.json
+
 # Local environment files
 .env
 .env.*

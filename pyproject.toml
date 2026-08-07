@@ -29,6 +29,15 @@ dependencies = ["python-dotenv>=1.0,<2"]
 
 [project.optional-dependencies]
 benchmark = ["fastembed>=0.8.0"]
+dev = [
+  "build>=1.2",
+  "check-manifest>=0.51",
+  "check-wheel-contents>=0.6",
+  "coverage>=7.6",
+  "mypy>=1.11",
+  "ruff>=0.8",
+  "twine>=6.0",
+]
 
 [project.scripts]
 marmo = "marmo_core.cli:main"
