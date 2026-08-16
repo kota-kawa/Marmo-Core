@@ -3,7 +3,7 @@ FROM python:3.14-slim
 
 WORKDIR /app
 
-COPY README.md LICENSE pyproject.toml ./
+COPY README.md CHANGELOG.md LICENSE pyproject.toml ./
 COPY marmo_core ./marmo_core
 RUN python3 -m pip install --no-cache-dir .
 
