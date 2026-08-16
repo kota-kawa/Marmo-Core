@@ -1,0 +1,14 @@
+version: 2
+
+updates:
+  # Runtime dependencies are a single loose range (python-dotenv), and the dev
+  # extras are unpinned, so only the pinned GitHub Actions need automated bumps.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ["*"]

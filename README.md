@@ -1,5 +1,10 @@
 # Marmo-Core
 
+[![PyPI](https://img.shields.io/pypi/v/marmo-core.svg)](https://pypi.org/project/marmo-core/)
+[![Python versions](https://img.shields.io/pypi/pyversions/marmo-core.svg)](https://pypi.org/project/marmo-core/)
+[![CI](https://github.com/kota-kawa/Marmo-Core/actions/workflows/ci.yml/badge.svg)](https://github.com/kota-kawa/Marmo-Core/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 Marmo-Core is a lightweight Python kernel for registering, retrieving,
 selecting, and safely executing AI-agent resources.
 
