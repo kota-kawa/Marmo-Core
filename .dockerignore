@@ -18,3 +18,5 @@ __pycache__/
 htmlcov/
 *.md
 !README.md
+# Required by scripts/release_check.py, which the test suite runs.
+!CHANGELOG.md

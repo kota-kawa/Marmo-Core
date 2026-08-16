@@ -27,6 +27,11 @@ classifiers = [
 ]
 dependencies = ["python-dotenv>=1.0,<2"]
 
+[project.urls]
+Homepage = "https://project-kk.com/en/marmo"
+Repository = "https://github.com/kota-kawa/Marmo-Core"
+Issues = "https://github.com/kota-kawa/Marmo-Core/issues"
+
 [project.optional-dependencies]
 benchmark = ["fastembed>=0.8.0"]
 dev = [
@@ -48,6 +53,10 @@ include = ["marmo_core*"]
 
 [tool.setuptools.package-data]
 marmo_core = ["py.typed"]
+
+[tool.check-manifest]
+# Japanese requirements draft: tracked for contributors, excluded from the sdist.
+ignore = ["要件定義書１.md"]
 
 [tool.ruff]
 target-version = "py310"

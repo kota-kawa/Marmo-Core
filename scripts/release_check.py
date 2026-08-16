@@ -21,6 +21,13 @@ def main() -> int:
         raise SystemExit("pyproject.toml and marmo_core.__version__ must match")
     if not (ROOT / "README.md").is_file():
         raise SystemExit("README.md is required for packaging")
+    changelog_path = ROOT / "CHANGELOG.md"
+    if not changelog_path.is_file():
+        raise SystemExit("CHANGELOG.md is required for packaging")
+    changelog = changelog_path.read_text(encoding="utf-8")
+    heading = rf"^## \[{re.escape(__version__)}\] - \d{{4}}-\d{{2}}-\d{{2}}$"
+    if re.search(heading, changelog, flags=re.MULTILINE) is None:
+        raise SystemExit(f"CHANGELOG.md must document version {__version__}")
     print(f"release check passed: {__version__}")
     return 0
 
