@@ -19,9 +19,12 @@ import hashlib
 import json
 import math
 import os
+import urllib.error
 import urllib.request
 
+from ._version import __version__
 from .environment import load_local_dotenv, required_environment
+from .errors import ProviderError, ProviderHTTPError
 from .models import SearchQuery, SearchResult
 from .registry import ResourceRegistry
 from .retriever import (
@@ -34,6 +37,8 @@ from .retriever import (
 
 _EMBED_TEXT_LIMIT = 4000
 _DEFAULT_BATCH_SIZE = 64
+
+USER_AGENT = f"marmo-core/{__version__}"
 
 
 class EmbeddingProvider(ABC):
@@ -225,11 +230,41 @@ def _cosine_01(left: Sequence[float], right: Sequence[float]) -> float:
 
 
 def _post_json(url: str, payload: dict, headers: dict, timeout: float) -> dict:
+    # Some API gateways (Groq's Cloudflare front, for one) reject urllib's
+    # default ``Python-urllib/x.y`` agent with a 403, so identify the client.
+    request_headers = {"User-Agent": USER_AGENT, **headers}
     request = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
-        headers=headers,
+        headers=request_headers,
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return json.loads(response.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        exc.close()
+        raise ProviderHTTPError(
+            message=f"HTTP {exc.code} from {url}: {provider_error_message(body) or exc.reason}",
+            status=int(exc.code),
+            body=body,
+            url=url,
+        ) from None
+    except urllib.error.URLError as exc:
+        raise ProviderError(message=f"cannot reach {url}: {exc.reason}") from None
+
+
+def provider_error_message(body: str) -> str:
+    """Extract the human-readable message from a provider error body when present."""
+
+    try:
+        parsed = json.loads(body)
+    except (TypeError, ValueError):
+        return body.strip()[:500]
+    error = parsed.get("error") if isinstance(parsed, dict) else None
+    if isinstance(error, dict):
+        return str(error.get("message") or "").strip() or json.dumps(error)[:500]
+    if isinstance(error, str):
+        return error
+    return body.strip()[:500]

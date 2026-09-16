@@ -49,3 +49,21 @@ class ToolInputError(MarmoError):
 
 class SecretResolutionError(ToolInputError):
     """Raised when a SecretRef cannot be materialized safely."""
+
+
+class ProviderError(MarmoError):
+    """Raised when a remote LLM or embedding provider cannot be reached or rejects a request."""
+
+
+@dataclass(frozen=True)
+class ProviderHTTPError(ProviderError):
+    """An HTTP error from a provider, carrying the status and the response body.
+
+    The body is preserved so a rejected request explains itself (for example
+    an unsupported parameter or an invalid tool name) instead of surfacing as
+    a bare ``HTTP Error 400``.
+    """
+
+    status: int = 0
+    body: str = ""
+    url: str = ""

@@ -28,10 +28,13 @@ from typing import Mapping
 from .models import KINDS, SearchResult, SelectionResult
 
 
+# One Memory, Skill, and Agent keep the compiled context small, but real goals
+# routinely need more than one Tool (list files, then read one), so the model
+# gets a few tools to choose from; each one still passes the Policy Gateway.
 DEFAULT_SET_LIMITS = {
     "memory": 1,
     "skill": 1,
-    "tool": 1,
+    "tool": 3,
     "agent": 1,
 }
 

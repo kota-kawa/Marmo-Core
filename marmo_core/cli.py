@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 import argparse
 import importlib
 import json
@@ -28,18 +28,25 @@ from .connectors import (
 )
 from .errors import MarmoError
 from .hitl import ConsoleHitlBroker, HitlPolicy, HitlResponse, PendingHitlBroker
-from .kernel import Kernel
-from .llm import MockLLMProvider
+from ._version import __version__
+from .kernel import NO_RESOURCE_MATCHED_DETAIL, Kernel
+from .llm import LLMProvider, MockLLMProvider
+from .llm_routing import HydeRetriever
 from .loader import load_registry, validate_resource_paths
 from .models import KINDS, SIDE_EFFECTS, TRUST_LEVELS, SearchQuery
 from .package import verify_local_package, write_package_lock
 from .planner import LLMPlanner, Planner, RuleBasedPlanner
 from .policy import PolicyContext, PolicyGateway
+from .providers import AnthropicLLMProvider, OpenAICompatibleLLMProvider
 from .recovery import CircuitBreaker, RecoveryManager, RetryPolicy
-from .retriever import LexicalRetriever
+from .registry import ResourceRegistry
+from .retriever import LexicalRetriever, Retriever
 from .selector import DEFAULT_SET_LIMITS, RuleBasedSetSelector
 from .security import ISOLATION_LEVELS
 from .state import InMemoryStateStore, JsonFileStateStore
+
+LLM_CHOICES = ("mock", "openai", "anthropic")
+RETRIEVER_CHOICES = ("lexical", "hyde")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -54,6 +61,7 @@ def main(argv: list[str] | None = None) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="marmo", description="Marmo-Core v1 unified resource CLI")
+    parser.add_argument("--version", action="version", version=f"marmo-core {__version__}")
     subparsers = parser.add_subparsers(required=True)
 
     validate_parser = subparsers.add_parser("validate", help="validate local resource definition files")
@@ -120,9 +128,29 @@ def build_parser() -> argparse.ArgumentParser:
 
     run_parser = subparsers.add_parser(
         "run",
-        help="run a goal through the guarded kernel loop (mock LLM, v2 preview)",
+        help="run a goal through the guarded kernel loop with the mock LLM or a real provider (--llm)",
     )
     run_parser.add_argument("--task", required=True, help="natural-language goal to execute")
+    run_parser.add_argument(
+        "--llm",
+        choices=LLM_CHOICES,
+        default="mock",
+        help=(
+            "model that drives the run: 'mock' replays --tool-args offline (default); "
+            "'openai' and 'anthropic' read OPENAI_MODEL/OPENAI_API_KEY or "
+            "ANTHROPIC_MODEL/ANTHROPIC_API_KEY/ANTHROPIC_MAX_TOKENS from the environment or .env"
+        ),
+    )
+    run_parser.add_argument(
+        "--retriever",
+        choices=RETRIEVER_CHOICES,
+        default="lexical",
+        help=(
+            "how resources are matched to the goal: 'lexical' is offline word matching (default); "
+            "'hyde' first asks the --llm to restate the goal in the registry's English vocabulary, "
+            "which lets goals written in other languages find English-documented resources"
+        ),
+    )
     _add_path_arg(run_parser)
     run_parser.add_argument("--granted-permission", action="append", default=[], help="permission granted to the task context; repeatable")
     run_parser.add_argument("--max-cost", type=float, help="deny resources whose cost_estimate exceeds this value")
@@ -161,7 +189,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--tool-args",
         default="",
         metavar="JSON",
-        help='mock-LLM arguments per tool id, e.g. \'{"tool.files.read-text": {"path": "README.md"}}\'',
+        help=(
+            'arguments the mock LLM passes per tool id, e.g. \'{"tool.files.read-text": {"path": "README.md"}}\'; '
+            "ignored when --llm is a real provider"
+        ),
     )
     run_parser.add_argument("--top-k", type=int, default=8, help="search candidates considered before set selection")
     run_parser.add_argument("--set-limit", action="append", default=[], metavar="KIND=N", help="limit selected set per kind; repeatable")
@@ -190,6 +221,18 @@ def build_parser() -> argparse.ArgumentParser:
     resume_parser = subparsers.add_parser(
         "resume",
         help="answer a paused task's confirmation and continue it",
+    )
+    resume_parser.add_argument(
+        "--llm",
+        choices=LLM_CHOICES,
+        default="mock",
+        help="model that continues the task; use the same choice as the original run",
+    )
+    resume_parser.add_argument(
+        "--retriever",
+        choices=RETRIEVER_CHOICES,
+        default="lexical",
+        help="retriever used when the resumed task re-selects resources; match the original run",
     )
     resume_parser.add_argument("--task-id", required=True, help="id of the paused task")
     _add_path_arg(resume_parser)
@@ -469,7 +512,9 @@ def _cmd_package_inspect(args: argparse.Namespace) -> int:
 
 
 def _cmd_list(args: argparse.Namespace) -> int:
-    registry = load_registry(_default_paths(args.paths, no_defaults=args.no_default_resources))
+    paths = _default_paths(args.paths, no_defaults=args.no_default_resources)
+    registry = load_registry(paths)
+    _warn_if_empty(registry, paths)
     resources = registry.list(kinds=args.kind, trust_levels=args.trust_level, side_effects=args.side_effect, tags=args.tag)
     if args.format == "json":
         print_json([resource.to_dict(include_extras=False) for resource in resources])
@@ -479,7 +524,9 @@ def _cmd_list(args: argparse.Namespace) -> int:
 
 
 def _cmd_search(args: argparse.Namespace) -> int:
-    registry = load_registry(_default_paths(args.paths, no_defaults=args.no_default_resources))
+    paths = _default_paths(args.paths, no_defaults=args.no_default_resources)
+    registry = load_registry(paths)
+    _warn_if_empty(registry, paths)
     per_kind_limits = _parse_limits(args.per_kind_limit)
     set_limits = _parse_limits(args.set_limit)
     query = SearchQuery(
@@ -601,7 +648,8 @@ def _build_kernel(args: argparse.Namespace, *, continue_audit: bool) -> Kernel:
         circuit_breaker=CircuitBreaker(failure_threshold=args.circuit_threshold),
     )
     audit_log = AuditLog.from_jsonl(args.audit_log) if continue_audit and args.audit_log else AuditLog()
-    llm = MockLLMProvider(tool_arguments=tool_arguments)
+    llm = _build_llm(getattr(args, "llm", "mock"), tool_arguments)
+    retriever = _build_retriever(getattr(args, "retriever", "lexical"), llm)
     planner: Planner | None = None
     if args.planner == "rule":
         planner = RuleBasedPlanner(step_arguments=tool_arguments)
@@ -619,6 +667,7 @@ def _build_kernel(args: argparse.Namespace, *, continue_audit: bool) -> Kernel:
         hitl=broker,
         recovery=recovery,
         planner=planner,
+        retriever=retriever,
         max_parallel_steps=args.max_parallel_steps,
         max_replans=args.max_replans,
         compensate_on_failure=not args.no_compensate,
@@ -734,6 +783,8 @@ def _strict_violations(args: argparse.Namespace, result: Any) -> tuple[str, ...]
     if not args.strict:
         return ()
     violations = [f"resource was skipped: {item['resource']}" for item in result.skipped_resources]
+    if result.detail == NO_RESOURCE_MATCHED_DETAIL:
+        violations.append("no resource matched the goal; the model answered without tools")
     requested = set(_parse_tool_arguments(args.tool_args))
     evaluated = {item.tool_id for item in result.tool_results}
     violations.extend(f"requested tool was not evaluated: {tool_id}" for tool_id in sorted(requested - evaluated))
@@ -858,6 +909,36 @@ def _parse_limits(values: list[str]) -> dict[str, int]:
             raise ValueError(f"limit for {kind} must be non-negative")
         parsed[kind] = limit
     return parsed
+
+
+def _build_llm(choice: str, tool_arguments: Mapping[str, Mapping[str, Any]]) -> LLMProvider:
+    """Construct the model behind ``run``/``resume``; real providers configure themselves from .env."""
+
+    if choice == "openai":
+        return OpenAICompatibleLLMProvider()
+    if choice == "anthropic":
+        return AnthropicLLMProvider()
+    return MockLLMProvider(tool_arguments=tool_arguments)
+
+
+def _build_retriever(choice: str, llm: LLMProvider) -> Retriever:
+    lexical = LexicalRetriever()
+    if choice == "hyde":
+        return HydeRetriever(llm, lexical)
+    return lexical
+
+
+def _warn_if_empty(registry: ResourceRegistry, paths: list[Path]) -> None:
+    """Tell a first-time user why a listing or search is empty instead of printing nothing."""
+
+    if registry.list():
+        return
+    shown = ", ".join(str(path) for path in paths) or "(no paths)"
+    print(
+        f"note: no resource definitions were found under {shown}. Pass a file or directory of "
+        "resource JSON, or run from a checkout that has a resources/ or examples/resources/ directory.",
+        file=sys.stderr,
+    )
 
 
 def _default_paths(paths: list[str], *, no_defaults: bool = False) -> list[Path]:

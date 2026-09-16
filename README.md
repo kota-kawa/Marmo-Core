@@ -24,6 +24,49 @@ For local development, install the checkout with:
 python -m pip install -e '.[dev]'
 ```
 
+## Quickstart (Python)
+
+Register a tool, let the kernel pick it for a goal, gate it through the
+policy layer, and execute it. This runs offline with the deterministic mock
+model; swap in `OpenAICompatibleLLMProvider()` or `AnthropicLLMProvider()`
+to use a real one.
+
+```python
+from marmo_core import (
+    Kernel, MockLLMProvider, PolicyContext, ResourceDefinition, ResourceRegistry,
+)
+
+def add_numbers(a: float, b: float) -> dict:
+    return {"sum": a + b}
+
+registry = ResourceRegistry()
+registry.add(ResourceDefinition.from_mapping({
+    "id": "tool.math.add", "kind": "tool", "name": "Add Numbers", "version": "1.0.0",
+    "description": "Add two numbers and return their sum.",
+    "capabilities": ["arithmetic"], "input_summary": "Two numbers a and b.",
+    "output_summary": "Object with the sum.", "required_permissions": ["math.add"],
+    "cost_estimate": 0.0, "latency_class": "fast", "side_effect": "none",
+    "trust_level": "core", "ref": "tool://math/add", "tags": ["math"],
+    "input_schema": {"type": "object", "required": ["a", "b"],
+                     "properties": {"a": {"type": "number"}, "b": {"type": "number"}}},
+}))
+
+kernel = Kernel(
+    registry,
+    MockLLMProvider(tool_arguments={"tool.math.add": {"a": 2, "b": 3}}),
+    policy_context=PolicyContext(granted_permissions=("math.add",)),
+    tool_implementations={"tool.math.add": add_numbers},
+)
+result = kernel.run_goal("Add 2 and 3 with the calculator tool")
+print(result.status, result.output)   # completed Task complete. Tool tool.math.add returned: {"sum": 5}
+```
+
+`examples/hello_world.py` is the same program with the audit trail printed;
+the other files in `examples/` cover delegation, human approval, planning, and
+recovery.
+
+## Quickstart (CLI)
+
 Validate and inspect the bundled resource examples with:
 
 ```bash
@@ -64,6 +107,49 @@ marmo run resources/agents/security-reviewer.json \
   --format json
 ```
 
+## Run with a real model
+
+`marmo run` uses the mock model by default, which replays the arguments given
+in `--tool-args`. Pass `--llm openai` or `--llm anthropic` to let a real model
+choose and call the tools; the provider reads its key, model, and endpoint
+from the environment or `.env` (see the next section) and `--tool-args` is
+ignored.
+
+```bash
+marmo run resources/tools \
+  --llm openai \
+  --task "List the text files in the current directory, then read each one and tell me what they say" \
+  --granted-permission fs.read \
+  --allow-side-effect none --allow-side-effect read
+```
+
+Resources are matched to the goal by lexical retrieval over their English
+metadata. For goals written in another language, add `--retriever hyde`: the
+model first restates the goal in the registry's vocabulary, then retrieval
+runs on that restatement.
+
+```bash
+marmo run resources/tools \
+  --llm openai --retriever hyde \
+  --task "カレントディレクトリのテキストファイルを一覧して、それぞれの内容を教えてください" \
+  --granted-permission fs.read \
+  --allow-side-effect none --allow-side-effect read
+```
+
+If retrieval matches nothing, the model answers without tools and the result's
+`detail` says so; with `--strict` that is a failure rather than a silent
+success. Provider errors are reported with the HTTP status and the API's own
+message (for example an unsupported parameter or an invalid model name).
+
+In Python, the same setup is:
+
+```python
+from marmo_core import HydeRetriever, Kernel, LexicalRetriever, OpenAICompatibleLLMProvider, load_registry
+
+llm = OpenAICompatibleLLMProvider()          # OPENAI_MODEL / OPENAI_API_KEY / OPENAI_BASE_URL from .env
+kernel = Kernel(load_registry(["resources/tools"]), llm, retriever=HydeRetriever(llm, LexicalRetriever()))
+```
+
 ## API and model configuration
 
 Create a `.env` file and set the relevant key when using an OpenAI-compatible
@@ -81,6 +167,7 @@ OPENAI_API_KEY=your_key_here
 ANTHROPIC_API_KEY=your_key_here
 OPENAI_MODEL=gpt-5.6-terra
 OPENAI_REASONING_EFFORT=none
+OPENAI_BASE_URL=
 ANTHROPIC_MODEL=claude-sonnet-5
 ANTHROPIC_MAX_TOKENS=16384
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
@@ -88,7 +175,16 @@ OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 
 `OPENAI_MODEL`, `ANTHROPIC_MODEL`, and `OPENAI_EMBEDDING_MODEL` are required
 when the corresponding provider is constructed without an explicit `model`
-argument. `ANTHROPIC_MAX_TOKENS` is required unless `max_tokens` is passed
+argument. `OPENAI_BASE_URL` points `OpenAICompatibleLLMProvider` at any
+OpenAI-compatible endpoint; for Groq, set it to
+`https://api.groq.com/openai/v1` with `OPENAI_MODEL=openai/gpt-oss-120b` and
+the Groq key in `OPENAI_API_KEY`. Leave it empty for `api.openai.com`, where
+the provider sends `max_completion_tokens` (current OpenAI models reject
+`max_tokens`); other servers get `max_tokens`, and the provider switches once
+if the server reports the chosen parameter as unsupported. Tool names are
+encoded on the wire because resource ids such as `tool.files.read-text`
+contain dots that the OpenAI and Anthropic tool grammars reject; the kernel
+and audit log keep seeing the real resource ids. `ANTHROPIC_MAX_TOKENS` is required unless `max_tokens` is passed
 explicitly. `OPENAI_REASONING_EFFORT` is optional and applies when the OpenAI
 model is resolved from the environment. The package loads `.env` without
 overriding values already present in the operating-system environment. `.env`
