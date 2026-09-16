@@ -44,7 +44,9 @@ _HYDE_SYSTEM = (
     "write the description of the ideal resource that would accomplish it: "
     "what it does, its domain vocabulary, and typical inputs and outputs. "
     "Use concrete terms likely to appear in such a resource's documentation. "
-    "Reply with 2-3 sentences and no preamble."
+    "Reply with 2-3 sentences and no preamble. Always write in English, even "
+    "when the task is stated in another language, because the registry is "
+    "documented in English."
 )
 
 _RERANK_SYSTEM = (

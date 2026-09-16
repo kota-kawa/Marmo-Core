@@ -128,6 +128,16 @@ class _CallOutcome:
     agent: BoundAgent | None = None
 
 
+# Detail attached to a completed task when retrieval matched nothing and the
+# model answered from its own knowledge. Callers that need a tool to have run
+# (and ``marmo run --strict``) treat it as a failure signal; a genuinely
+# tool-free goal such as a translation is still a normal completion.
+NO_RESOURCE_MATCHED_DETAIL = (
+    "no resource matched the goal, so the model answered without tools; "
+    "rephrase the goal in the registry's vocabulary or use HydeRetriever for other languages"
+)
+
+
 class Kernel:
     """Synchronous kernel API: submit / run / resume / cancel (§6)."""
 
@@ -394,6 +404,29 @@ class Kernel:
 
     # -- execution loop --------------------------------------------------------
 
+    def _policy_feasible_candidates(
+        self, results: list[SearchResult], context: PolicyContext
+    ) -> list[SearchResult]:
+        """Drop lower-ranked candidates the Policy Gateway would deny outright.
+
+        The set selector may take several Tools per goal. A denied resource
+        that is the *best* match of its kind stays in the pool so the run can
+        report it as skipped (that tells the caller which permission is
+        missing); a denied resource that would only fill a spare slot is
+        left out, so widening the set never turns a clean read-only run into
+        a strict failure because an unrelated write tool was pulled in.
+        """
+
+        kept: list[SearchResult] = []
+        seen_kinds: set[str] = set()
+        for result in results:
+            kind = result.resource.metadata.kind
+            first_of_kind = kind not in seen_kinds
+            seen_kinds.add(kind)
+            if first_of_kind or not self.gateway.evaluate(result.resource, context, gate="activation").denied:
+                kept.append(result)
+        return kept
+
     def _execute(self, state: TaskState) -> TaskResult:
         task_id = state.task_id
         goal = state.goal
@@ -410,7 +443,7 @@ class Kernel:
             granted_permissions=tuple(context.granted_permissions),
             top_k=self.top_k,
         )
-        results = self.retriever.search(self.registry, query)
+        results = self._policy_feasible_candidates(self.retriever.search(self.registry, query), context)
         selection_context = SelectionContext(
             task=goal,
             granted_permissions=tuple(context.granted_permissions),
@@ -646,6 +679,8 @@ class Kernel:
                     if skipped:
                         names = ", ".join(item["resource"] for item in skipped)
                         detail = f"completed without {len(skipped)} skipped resource(s): {names}"
+                    elif not selected.results and not tool_results and self.registry.list():
+                        detail = NO_RESOURCE_MATCHED_DETAIL
                     return self._finish(
                         state,
                         trace_id,

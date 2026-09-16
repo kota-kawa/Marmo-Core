@@ -50,6 +50,8 @@ from .errors import (
     PackageCompatibilityError,
     PackageError,
     PackageIntegrityError,
+    ProviderError,
+    ProviderHTTPError,
     ResourceLoadError,
     ResourceNotFoundError,
     ResourceValidationError,
@@ -134,7 +136,7 @@ from .planner import (
     validate_plan,
 )
 from .policy import PolicyContext, PolicyDecision, PolicyGateway, PolicyRejectedError
-from .providers import AnthropicLLMProvider, OpenAICompatibleLLMProvider
+from .providers import AnthropicLLMProvider, OpenAICompatibleLLMProvider, ToolNameCodec
 from .recovery import (
     CircuitBreaker,
     Failure,
@@ -286,7 +288,9 @@ __all__ = [
     "PolicyRejectedError",
     "PromptInjectionFinding",
     "PromptInjectionInspector",
+    "ProviderError",
     "ProviderGrouping",
+    "ProviderHTTPError",
     "RecoveryDecision",
     "RecoveryManager",
     "ResourceActivator",
@@ -329,6 +333,7 @@ __all__ = [
     "TaskState",
     "ToolCall",
     "ToolInputError",
+    "ToolNameCodec",
     "ToolResult",
     "ToolRuntime",
     "ValidationIssue",
