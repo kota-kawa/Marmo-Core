@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Iterator, Mapping
 import argparse
 import importlib
 import json
+import shlex
 import sys
 
 from .formatting import (
@@ -29,7 +31,7 @@ from .connectors import (
 from .errors import MarmoError
 from .hitl import ConsoleHitlBroker, HitlPolicy, HitlResponse, PendingHitlBroker
 from ._version import __version__
-from .kernel import NO_RESOURCE_MATCHED_DETAIL, Kernel
+from .kernel import NO_CALLABLE_SELECTED_DETAIL, NO_RESOURCE_MATCHED_DETAIL, Kernel
 from .llm import LLMProvider, MockLLMProvider
 from .llm_routing import HydeRetriever
 from .loader import load_registry, validate_resource_paths
@@ -39,6 +41,7 @@ from .planner import LLMPlanner, Planner, RuleBasedPlanner
 from .policy import PolicyContext, PolicyGateway
 from .providers import AnthropicLLMProvider, OpenAICompatibleLLMProvider
 from .recovery import CircuitBreaker, RecoveryManager, RetryPolicy
+from .safety import redact_sensitive_arguments
 from .registry import ResourceRegistry
 from .retriever import LexicalRetriever, Retriever
 from .selector import DEFAULT_SET_LIMITS, RuleBasedSetSelector
@@ -197,6 +200,18 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--top-k", type=int, default=8, help="search candidates considered before set selection")
     run_parser.add_argument("--set-limit", action="append", default=[], metavar="KIND=N", help="limit selected set per kind; repeatable")
     run_parser.add_argument("--max-tool-calls", type=int, default=5, help="tool call budget before the task fails")
+    run_parser.add_argument(
+        "--max-input-repairs",
+        type=int,
+        default=2,
+        help="times the model may be handed a tool-argument error and asked to call again",
+    )
+    run_parser.add_argument(
+        "--max-tool-output-tokens",
+        type=int,
+        default=8000,
+        help="estimated tokens kept from one tool result before it is truncated (0 to keep all)",
+    )
     run_parser.add_argument("--max-agent-depth", type=int, default=1, help="maximum synchronous delegation depth")
     run_parser.add_argument("--max-agent-cost", type=float, help="maximum cumulative estimated Agent cost")
     run_parser.add_argument(
@@ -272,6 +287,18 @@ def build_parser() -> argparse.ArgumentParser:
     resume_parser.add_argument("--top-k", type=int, default=8, help="search candidates considered before set selection")
     resume_parser.add_argument("--set-limit", action="append", default=[], metavar="KIND=N", help="limit selected set per kind; repeatable")
     resume_parser.add_argument("--max-tool-calls", type=int, default=5, help="tool call budget before the task fails")
+    resume_parser.add_argument(
+        "--max-input-repairs",
+        type=int,
+        default=2,
+        help="times the model may be handed a tool-argument error and asked to call again",
+    )
+    resume_parser.add_argument(
+        "--max-tool-output-tokens",
+        type=int,
+        default=8000,
+        help="estimated tokens kept from one tool result before it is truncated (0 to keep all)",
+    )
     resume_parser.add_argument("--max-agent-depth", type=int, default=1, help="maximum synchronous delegation depth")
     resume_parser.add_argument("--max-agent-cost", type=float, help="maximum cumulative estimated Agent cost")
     resume_parser.add_argument(
@@ -452,17 +479,29 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     if args.json:
         print_json(payload)
     else:
+        # Warnings are printed whether or not the tree is valid: the common one
+        # is a .json file that could not be parsed and was therefore skipped,
+        # and staying quiet about that is how a typo in someone's own resource
+        # file used to read as "valid: 0 resources".
+        for issue in issues:
+            if issue.severity != "error":
+                print(f"{issue.severity}: {issue.path}: {issue.message}", file=sys.stderr)
         if payload["valid"]:
             registry = load_registry(paths)
             summary = registry.summary()
-            print(
+            skipped = sum(1 for issue in issues if issue.severity != "error")
+            line = (
                 "valid: "
                 f"{summary['total']} resources "
                 f"(memory={summary['memory']}, skill={summary['skill']}, tool={summary['tool']}, agent={summary['agent']})"
             )
+            if skipped:
+                line += f"; {skipped} file(s) skipped, see the warnings above"
+            print(line)
         else:
             for issue in issues:
-                print(f"{issue.severity}: {issue.path}: {issue.message}", file=sys.stderr)
+                if issue.severity == "error":
+                    print(f"{issue.severity}: {issue.path}: {issue.message}", file=sys.stderr)
     return 0 if payload["valid"] else 1
 
 
@@ -648,8 +687,17 @@ def _build_kernel(args: argparse.Namespace, *, continue_audit: bool) -> Kernel:
         circuit_breaker=CircuitBreaker(failure_threshold=args.circuit_threshold),
     )
     audit_log = AuditLog.from_jsonl(args.audit_log) if continue_audit and args.audit_log else AuditLog()
-    llm = _build_llm(getattr(args, "llm", "mock"), tool_arguments)
-    retriever = _build_retriever(getattr(args, "retriever", "lexical"), llm)
+    llm_choice = getattr(args, "llm", "mock")
+    llm = _build_llm(llm_choice, tool_arguments)
+    retriever_choice = getattr(args, "retriever", "lexical")
+    if retriever_choice == "hyde" and llm_choice == "mock":
+        print(
+            "note: --retriever hyde rewrites the goal with --llm, and the mock model replies with a "
+            "canned script; the rewrite will steer retrieval at random. Pass --llm openai or "
+            "--llm anthropic, or use the default --retriever lexical.",
+            file=sys.stderr,
+        )
+    retriever = _build_retriever(retriever_choice, llm)
     planner: Planner | None = None
     if args.planner == "rule":
         planner = RuleBasedPlanner(step_arguments=tool_arguments)
@@ -674,6 +722,8 @@ def _build_kernel(args: argparse.Namespace, *, continue_audit: bool) -> Kernel:
         top_k=args.top_k,
         set_limits=_parse_limits(args.set_limit) or None,
         max_tool_calls=args.max_tool_calls,
+        max_input_repairs=args.max_input_repairs,
+        max_tool_output_tokens=args.max_tool_output_tokens or None,
         max_agent_depth=args.max_agent_depth,
         max_agent_cost=args.max_agent_cost,
         context_token_budget=args.context_token_budget,
@@ -681,10 +731,39 @@ def _build_kernel(args: argparse.Namespace, *, continue_audit: bool) -> Kernel:
     )
 
 
+@contextmanager
+def _audit_log_preserved(args: argparse.Namespace, kernel: Kernel) -> Iterator[None]:
+    """Write ``--audit-log`` even when the run raises before it can report.
+
+    The file was only written after a successful return, so a provider error
+    or an interrupt discarded the whole trail -- including the records for
+    tools that had already run and left side effects behind. An audit log
+    that survives only the happy path is not an audit log.
+    """
+
+    try:
+        yield
+    except BaseException:
+        # A failed write must not replace the failure being reported: an
+        # unwritable --audit-log path would otherwise surface as a bare
+        # PermissionError and hide the provider error or the interrupt.
+        try:
+            _write_audit_log(args, kernel)
+        except Exception as exc:  # noqa: BLE001 - reported, never raised over the original
+            print(f"warning: could not write {args.audit_log}: {exc}", file=sys.stderr)
+        raise
+
+
+def _write_audit_log(args: argparse.Namespace, kernel: Kernel) -> None:
+    # write_jsonl replaces the file, so a run that produced nothing would
+    # otherwise truncate a log that already holds a verified chain.
+    if getattr(args, "audit_log", None) and kernel.audit_log.records:
+        kernel.audit_log.write_jsonl(args.audit_log)
+
+
 def _report_task(args: argparse.Namespace, kernel: Kernel, result) -> int:
     strict_violations = _strict_violations(args, result)
-    if args.audit_log:
-        kernel.audit_log.write_jsonl(args.audit_log)
+    _write_audit_log(args, kernel)
     if args.format == "json":
         payload = result.to_dict()
         payload["audit_records"] = [record.to_dict() for record in kernel.audit_log.records]
@@ -718,10 +797,7 @@ def _report_task(args: argparse.Namespace, kernel: Kernel, result) -> int:
             print("awaiting confirmation:")
             print(request.describe())
             if args.state_dir:
-                print(
-                    f"  answer with: marmo resume --task-id {result.task_id} "
-                    f"--state-dir {args.state_dir} --approve"
-                )
+                print(f"  answer with: {resume_command(args, result.task_id)}")
             else:
                 print("  pass --state-dir to keep the pause resumable across processes")
     chain = kernel.audit_log.records
@@ -731,7 +807,9 @@ def _report_task(args: argparse.Namespace, kernel: Kernel, result) -> int:
 
 def _cmd_run(args: argparse.Namespace) -> int:
     kernel = _build_kernel(args, continue_audit=False)
-    return _report_task(args, kernel, kernel.run_goal(args.task))
+    with _audit_log_preserved(args, kernel):
+        result = kernel.run_goal(args.task)
+    return _report_task(args, kernel, result)
 
 
 def _cmd_resume(args: argparse.Namespace) -> int:
@@ -746,7 +824,9 @@ def _cmd_resume(args: argparse.Namespace) -> int:
     else:
         kind = "approve" if args.approve else "reject" if args.reject else "defer"
         response = HitlResponse(kind=kind, responder=args.responder, note=args.note)
-    return _report_task(args, kernel, kernel.resume(args.task_id, response))
+    with _audit_log_preserved(args, kernel):
+        result = kernel.resume(args.task_id, response)
+    return _report_task(args, kernel, result)
 
 
 def _cmd_tasks(args: argparse.Namespace) -> int:
@@ -779,12 +859,116 @@ def _parse_tool_arguments(raw: str) -> dict[str, Any]:
     return parsed
 
 
+# Options that ``marmo resume`` accepts and that a paused run must be resumed
+# with. A resume that drops them runs under a different authorization than the
+# run a person just reviewed: without the original ``--granted-permission`` the
+# approved tool fails its activation gate, is reported as "skipped", and the
+# task still ends "completed". The printed hint therefore repeats whatever the
+# run was invoked with. ``tests/test_cli_release.py`` round-trips the rendered
+# command back through the parser so an option cannot silently fall out.
+_RESUME_FORWARDED_OPTIONS: tuple[tuple[str, str], ...] = (
+    ("no_default_resources", "--no-default-resources"),
+    ("llm", "--llm"),
+    ("retriever", "--retriever"),
+    ("granted_permission", "--granted-permission"),
+    ("max_cost", "--max-cost"),
+    ("allow_trust_level", "--allow-trust-level"),
+    ("allow_side_effect", "--allow-side-effect"),
+    ("escalate_side_effect", "--escalate-side-effect"),
+    ("human_approved", "--human-approved"),
+    ("dry_run", "--dry-run"),
+    ("strict", "--strict"),
+    ("allow_external_host", "--allow-external-host"),
+    ("block_external_host", "--block-external-host"),
+    ("minimum_isolation_level", "--minimum-isolation-level"),
+    ("available_isolation_level", "--available-isolation-level"),
+    ("connector_http", "--connector-http"),
+    ("connector_http_allow_private", "--connector-http-allow-private"),
+    ("connector_file_root", "--connector-file-root"),
+    ("connector_shell_root", "--connector-shell-root"),
+    ("connector_shell_command", "--connector-shell-command"),
+    ("connector_sqlite", "--connector-sqlite"),
+    ("connector_max_attempts", "--connector-max-attempts"),
+    ("connector_rate_limit", "--connector-rate-limit"),
+    ("connector_circuit_threshold", "--connector-circuit-threshold"),
+    ("tool_impl", "--tool-impl"),
+    ("agent_impl", "--agent-impl"),
+    ("tool_args", "--tool-args"),
+    ("top_k", "--top-k"),
+    ("set_limit", "--set-limit"),
+    ("max_tool_calls", "--max-tool-calls"),
+    ("max_input_repairs", "--max-input-repairs"),
+    ("max_tool_output_tokens", "--max-tool-output-tokens"),
+    ("max_agent_depth", "--max-agent-depth"),
+    ("max_agent_cost", "--max-agent-cost"),
+    ("context_token_budget", "--context-token-budget"),
+    ("timeout", "--timeout"),
+    ("audit_log", "--audit-log"),
+    ("always_confirm", "--always-confirm"),
+    ("approver", "--approver"),
+    ("max_attempts", "--max-attempts"),
+    ("retry_backoff", "--retry-backoff"),
+    ("circuit_threshold", "--circuit-threshold"),
+    ("no_compensate", "--no-compensate"),
+    ("planner", "--planner"),
+    ("max_parallel_steps", "--max-parallel-steps"),
+    ("max_replans", "--max-replans"),
+    ("format", "--format"),
+)
+
+
+def _redacted_tool_args(raw: str) -> str:
+    """Mask credential-shaped values in ``--tool-args`` before echoing them.
+
+    Every other forwarded option is a configuration knob; this one carries
+    free-form payload data, and the hint is printed on a pause -- the moment
+    the output is most likely to end up in a ticket or a CI log. Arguments
+    shown to a human for approval are masked the same way (``_confirmation``),
+    so the hint follows suit.
+    """
+
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        return raw
+    return json.dumps(redact_sensitive_arguments(parsed), ensure_ascii=False, sort_keys=True)
+
+
+def resume_command(args: argparse.Namespace, task_id: str) -> str:
+    """Render the ``marmo resume`` command that continues this exact run.
+
+    Only options that differ from their defaults are repeated, so the hint
+    stays readable on a simple run and complete on a configured one.
+    """
+
+    defaults = vars(build_parser().parse_args(["resume", "--task-id", "_", "--state-dir", "_", "--approve"]))
+    parts = ["marmo", "resume", "--task-id", task_id, "--state-dir", str(args.state_dir), "--approve"]
+    for dest, option in _RESUME_FORWARDED_OPTIONS:
+        value = getattr(args, dest, None)
+        if value is None or value == defaults.get(dest):
+            continue
+        if isinstance(value, bool):
+            if value:
+                parts.append(option)
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                parts.extend((option, str(item)))
+        elif dest == "tool_args":
+            parts.extend((option, _redacted_tool_args(str(value))))
+        else:
+            parts.extend((option, str(value)))
+    parts.extend(str(path) for path in args.paths)
+    return " ".join(shlex.quote(part) for part in parts)
+
+
 def _strict_violations(args: argparse.Namespace, result: Any) -> tuple[str, ...]:
     if not args.strict:
         return ()
     violations = [f"resource was skipped: {item['resource']}" for item in result.skipped_resources]
     if result.detail == NO_RESOURCE_MATCHED_DETAIL:
         violations.append("no resource matched the goal; the model answered without tools")
+    if result.detail == NO_CALLABLE_SELECTED_DETAIL:
+        violations.append("no Tool or Agent reached the model; the answer used no guarded call")
     requested = set(_parse_tool_arguments(args.tool_args))
     evaluated = {item.tool_id for item in result.tool_results}
     violations.extend(f"requested tool was not evaluated: {tool_id}" for tool_id in sorted(requested - evaluated))

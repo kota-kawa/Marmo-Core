@@ -12,6 +12,8 @@ import threading
 import uuid
 
 
+from .secrets import redact_credentials
+
 REDACTED = "[REDACTED]"
 
 _SENSITIVE_KEY_PARTS = (
@@ -208,9 +210,14 @@ def mask_sensitive(value: Any) -> Any:
         return masked
     if isinstance(value, (list, tuple)):
         return [mask_sensitive(item) for item in value]
-    if value is None or isinstance(value, (str, int, float, bool)):
+    if isinstance(value, str):
+        # Key names alone do not catch a credential that arrives inside free
+        # text -- a provider error body reaching the log through a custom
+        # transport, say -- so every string leaf is scrubbed by shape too.
+        return redact_credentials(value)
+    if value is None or isinstance(value, (int, float, bool)):
         return value
-    return str(value)
+    return redact_credentials(str(value))
 
 
 def _is_sensitive_key(key: str) -> bool:

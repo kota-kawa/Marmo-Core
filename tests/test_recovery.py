@@ -594,6 +594,9 @@ class CompensationTests(unittest.TestCase):
             },
             recovery=RecoveryManager(escalate_when_exhausted=False, sleep=lambda _: None),
             set_limits={"tool": 3},
+            # The point here is what compensation does after a validation
+            # failure, so fail on the first bad argument set.
+            max_input_repairs=0,
         )
 
         result = kernel.run_goal("publish the q3 report and notify subscribers")

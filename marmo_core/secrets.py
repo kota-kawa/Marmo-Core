@@ -29,12 +29,42 @@ SENSITIVE_KEY_PARTS = (
     "secret",
     "token",
 )
+# Credential shapes, in one place: argument inspection rejects them as
+# plaintext secrets, and the audit log and provider errors redact them.
 SENSITIVE_VALUE_PATTERNS = (
     re.compile(r"-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----"),
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     re.compile(r"\b(?:gh[opusr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,})\b"),
+    re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"),
+    re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"),
+    re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}"),
     re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b"),
+    # Vendor keys (Groq ``gsk_``, xAI ``xai-``) and the partially masked echo an
+    # upstream 401 returns: a visible head and tail still name the credential.
+    re.compile(r"\b(?:g?sk|xai)[_-][A-Za-z0-9*_-]{8,}"),
 )
+
+# Redaction-only additions. These match how a credential is *carried* rather
+# than what it looks like, so they would be too eager for argument inspection.
+CREDENTIAL_VALUE_PATTERNS = (
+    *SENSITIVE_VALUE_PATTERNS,
+    # The word after the scheme has to look like a token -- it carries a digit
+    # or a capital, or it is long enough that no English word reaches it. A
+    # plain ``\S+`` swallowed the prose gateways return ("Missing Bearer
+    # authentication credentials"), which is the message a user needs to read.
+    re.compile(r"\b[Bb]earer\s+(?=[A-Za-z0-9._*-]*(?:\d|[A-Z])|[a-z0-9._*-]{32,})[A-Za-z0-9._*-]{16,}"),
+    re.compile(r"\b[Bb]asic\s+[A-Za-z0-9+/=]{16,}"),
+)
+
+REDACTED = "[REDACTED]"
+
+
+def redact_credentials(text: str) -> str:
+    """Replace credential-shaped substrings so they cannot reach a log or a reply."""
+
+    for pattern in CREDENTIAL_VALUE_PATTERNS:
+        text = pattern.sub(REDACTED, text)
+    return text
 NON_SECRET_TOKEN_KEYS = {
     "approval_token",
     "estimated_tokens",

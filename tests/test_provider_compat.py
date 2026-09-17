@@ -19,6 +19,7 @@ from marmo_core import (
     Kernel,
     LLMToolSpec,
     MockLLMProvider,
+    OpenAICompatibleEmbeddingProvider,
     OpenAICompatibleLLMProvider,
     ProviderError,
     ProviderHTTPError,
@@ -30,6 +31,8 @@ from marmo_core import (
 from marmo_core.cli import main
 from marmo_core.compiler import NO_TOOLS_SYSTEM_PROMPT
 from marmo_core.kernel import NO_RESOURCE_MATCHED_DETAIL
+from marmo_core import providers, semantic
+from marmo_core.providers import DEFAULT_OPENAI_BASE_URL
 from marmo_core.semantic import USER_AGENT, _post_json
 
 
@@ -356,6 +359,158 @@ class CliRealProviderTests(unittest.TestCase):
                     status = main(["run", "--task", "x", "--no-default-resources", "--llm", "openai"])
         self.assertEqual(status, 2)
         self.assertIn("OPENAI_MODEL", stderr.getvalue())
+
+
+class EmbeddingEndpointTests(unittest.TestCase):
+    """The embedding provider must follow OPENAI_BASE_URL like the LLM provider."""
+
+    def test_base_url_comes_from_environment(self) -> None:
+        with mock.patch.dict(os.environ, {"OPENAI_BASE_URL": "https://api.groq.com/openai/v1/"}):
+            provider = OpenAICompatibleEmbeddingProvider(
+                model="m", api_key="k", transport=lambda *a: {"data": []}
+            )
+        self.assertEqual(provider.base_url, "https://api.groq.com/openai/v1")
+
+    def test_configured_endpoint_receives_the_request_not_openai(self) -> None:
+        seen: list[str] = []
+
+        def transport(url, payload, headers, timeout):
+            seen.append(url)
+            return {"data": [{"index": 0, "embedding": [0.0]}]}
+
+        with mock.patch.dict(os.environ, {"OPENAI_BASE_URL": "https://api.groq.com/openai/v1"}):
+            provider = OpenAICompatibleEmbeddingProvider(model="m", api_key="k", transport=transport)
+            provider.embed(["hello"])
+
+        self.assertEqual(seen, ["https://api.groq.com/openai/v1/embeddings"])
+        self.assertNotIn("api.openai.com", seen[0])
+
+    def test_explicit_base_url_wins_over_environment(self) -> None:
+        with mock.patch.dict(os.environ, {"OPENAI_BASE_URL": "https://api.groq.com/openai/v1"}):
+            provider = OpenAICompatibleEmbeddingProvider(
+                model="m", api_key="k", base_url="http://localhost:11434/v1/", transport=lambda *a: {"data": []}
+            )
+        self.assertEqual(provider.base_url, "http://localhost:11434/v1")
+
+    def test_openai_is_the_last_resort_default(self) -> None:
+        # semantic.py holds its own reference to load_local_dotenv, so patching
+        # only marmo_core.environment lets a developer's .env decide the result.
+        with mock.patch.dict(os.environ, {"OPENAI_BASE_URL": ""}):
+            os.environ.pop("OPENAI_BASE_URL")
+            with (
+                mock.patch("marmo_core.environment.load_local_dotenv", lambda: None),
+                mock.patch("marmo_core.semantic.load_local_dotenv", lambda: None),
+            ):
+                provider = OpenAICompatibleEmbeddingProvider(
+                    model="m", api_key="k", transport=lambda *a: {"data": []}
+                )
+        self.assertEqual(provider.base_url, DEFAULT_OPENAI_BASE_URL)
+
+    def test_the_endpoint_default_has_a_single_source(self) -> None:
+        self.assertIs(providers.DEFAULT_OPENAI_BASE_URL, semantic.DEFAULT_OPENAI_BASE_URL)
+
+
+class MissingApiKeyHintTests(unittest.TestCase):
+    """A 401/403 with no key configured must say so instead of only echoing the server."""
+
+    @staticmethod
+    def _rejecting_transport(status: int):
+        def transport(url, payload, headers, timeout):
+            raise ProviderHTTPError(
+                message=f"HTTP {status} from {url}: Invalid API Key",
+                status=status,
+                body='{"error":{"message":"Invalid API Key"}}',
+                url=url,
+            )
+
+        return transport
+
+    def test_unauthorized_without_a_key_explains_the_cause(self) -> None:
+        for status in (401, 403):
+            with self.subTest(status=status):
+                provider = OpenAICompatibleLLMProvider(
+                    model="m", api_key="", base_url="https://example.test/v1",
+                    transport=self._rejecting_transport(status),
+                )
+                with self.assertRaises(ProviderHTTPError) as caught:
+                    provider.complete([ChatMessage(role="user", content="hi")], ())
+                message = str(caught.exception)
+                self.assertIn("no API key was sent", message)
+                self.assertIn("OPENAI_API_KEY", message)
+                self.assertIn("Invalid API Key", message)  # the server's own words survive
+                self.assertEqual(caught.exception.status, status)
+
+    def test_unauthorized_with_a_key_is_left_alone(self) -> None:
+        provider = OpenAICompatibleLLMProvider(
+            model="m", api_key="k", base_url="https://example.test/v1",
+            transport=self._rejecting_transport(401),
+        )
+        with self.assertRaises(ProviderHTTPError) as caught:
+            provider.complete([ChatMessage(role="user", content="hi")], ())
+        self.assertNotIn("no API key was sent", str(caught.exception))
+
+    def test_other_statuses_are_left_alone(self) -> None:
+        provider = OpenAICompatibleLLMProvider(
+            model="m", api_key="", base_url="https://example.test/v1",
+            transport=self._rejecting_transport(429),
+        )
+        with self.assertRaises(ProviderHTTPError) as caught:
+            provider.complete([ChatMessage(role="user", content="hi")], ())
+        self.assertNotIn("no API key was sent", str(caught.exception))
+
+    def test_the_embedding_provider_gets_the_same_hint(self) -> None:
+        provider = OpenAICompatibleEmbeddingProvider(
+            model="m", api_key="", base_url="https://example.test/v1",
+            transport=self._rejecting_transport(401),
+        )
+        with self.assertRaises(ProviderHTTPError) as caught:
+            provider.embed(["hello"])
+        self.assertIn("OPENAI_API_KEY", str(caught.exception))
+
+
+class ErrorBodyRedactionTests(unittest.TestCase):
+    """Provider error bodies echo credentials; they must not reach logs or stderr."""
+
+    def _error_from_body(self, body: str) -> ProviderHTTPError:
+        error = urllib.error.HTTPError(
+            "https://api.openai.com/v1/chat/completions", 401, "Unauthorized", {}, BytesIO(body.encode())
+        )
+        with mock.patch("urllib.request.urlopen", side_effect=error):
+            with self.assertRaises(ProviderHTTPError) as caught:
+                _post_json("https://api.openai.com/v1/chat/completions", {}, {}, 1.0)
+        error.close()
+        return caught.exception
+
+    def test_masked_groq_key_echoed_by_openai_is_redacted(self) -> None:
+        key = "gsk_AbCd" + "*" * 44 + "Wxyz"
+        body = json.dumps({"error": {"message": f"Incorrect API key provided: {key}. You can find..."}})
+        caught = self._error_from_body(body)
+        self.assertNotIn(key, str(caught))
+        self.assertNotIn(key, caught.body)
+        self.assertIn("Incorrect API key provided", str(caught))
+
+    def test_gateway_prose_about_bearer_auth_survives(self) -> None:
+        for message in (
+            "Missing Bearer authentication credentials in the request",
+            "Bearer token_is_missing_entirely",
+        ):
+            with self.subTest(message=message):
+                caught = self._error_from_body(json.dumps({"error": {"message": message}}))
+
+                self.assertIn(message, str(caught))
+
+    def test_whole_credentials_are_redacted(self) -> None:
+        for key in ("gsk_" + "a" * 52, "sk-" + "b" * 48, "Bearer " + "c" * 40):
+            with self.subTest(key=key):
+                caught = self._error_from_body(json.dumps({"error": {"message": f"rejected {key}"}}))
+                self.assertNotIn(key.split()[-1], str(caught))
+                self.assertIn("rejected", str(caught))
+
+    def test_ordinary_error_text_survives(self) -> None:
+        body = json.dumps({"error": {"message": "Invalid 'tools[0].function.name': bad pattern", "param": "tools"}})
+        caught = self._error_from_body(body)
+        self.assertIn("Invalid 'tools[0].function.name'", str(caught))
+        self.assertEqual(json.loads(caught.body)["error"]["param"], "tools")
 
 
 if __name__ == "__main__":

@@ -7,6 +7,11 @@ include Dockerfile
 include compose.yaml
 recursive-include docs *.md
 recursive-include examples *.json *.py
+# Only the small sample resource sets ship. resources/skills (the ~260MB
+# third-party skill corpus used by benchmarks/run_benchmark.py) is untracked
+# and deliberately excluded: it is not ours to redistribute, and it would grow
+# the sdist from ~340KB to hundreds of MB for every `pip install`. The
+# benchmark explains how to supply it -- see benchmarks/README.md.
 recursive-include resources/memory *.json
 recursive-include resources/agents *.json
 recursive-include resources/tools *.json

@@ -185,10 +185,19 @@ def _usage(messages: Sequence[ChatMessage], output: str) -> dict[str, int]:
     }
 
 
+_CHARACTERS_PER_TOKEN = 4
+
+
 def estimate_tokens(text: str) -> int:
     """Cheap token estimate used until a tokenizer extra is installed (F-CTX-07)."""
 
-    return max(len(text) // 4, 1) if text else 0
+    return max(len(text) // _CHARACTERS_PER_TOKEN, 1) if text else 0
+
+
+def characters_for_tokens(tokens: int) -> int:
+    """Invert :func:`estimate_tokens`, so callers never hard-code its ratio."""
+
+    return max(tokens, 0) * _CHARACTERS_PER_TOKEN
 
 
 def tokenize(text: str) -> tuple[str, ...]:

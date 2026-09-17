@@ -24,6 +24,8 @@ from marmo_core import (
     SecretRef,
     ToolRuntime,
 )
+from marmo_core.audit import mask_sensitive
+from marmo_core.secrets import redact_credentials
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -342,3 +344,39 @@ class SafetyCliTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AuditValueRedactionTests(unittest.TestCase):
+    """Key-name masking alone misses a credential that arrives inside free text."""
+
+    def test_a_credential_inside_an_error_string_is_redacted(self) -> None:
+        payload = {
+            "round": 0,
+            "error": "ProviderHTTPError: Incorrect API key provided: sk-" + "a" * 40,
+        }
+
+        masked = mask_sensitive(payload)
+
+        self.assertNotIn("sk-" + "a" * 40, json.dumps(masked))
+        self.assertIn("Incorrect API key provided", masked["error"])
+
+    def test_vendor_and_header_credential_shapes_are_covered(self) -> None:
+        for value in (
+            "gsk_" + "b" * 52,
+            "gsk_AbCd" + "*" * 44 + "Wxyz",
+            "github_pat_11ABCDEFG0aBcDeFgHiJkLmNoP",
+            "AIza" + "C" * 35,
+            "xoxb-1234567890-abcdefghij",
+            "Basic YWxhZGRpbjpvcGVuc2VzYW1l",
+        ):
+            with self.subTest(value=value):
+                self.assertNotIn(value, redact_credentials(f"rejected {value} upstream"))
+
+    def test_ordinary_text_is_left_alone(self) -> None:
+        for value in (
+            "Missing Bearer authentication credentials in the request",
+            "tool.marmo.samples.read-text returned 3 files",
+            "model openai/gpt-oss-120b is not available",
+        ):
+            with self.subTest(value=value):
+                self.assertEqual(redact_credentials(value), value)

@@ -11,6 +11,10 @@ import unittest
 
 from marmo_core import (
     BoundTool,
+    HitlPolicy,
+    JsonFileStateStore,
+    MappingSecretResolver,
+    PendingHitlBroker,
     Kernel,
     LLMResponse,
     MockLLMProvider,
@@ -24,6 +28,8 @@ from marmo_core import (
     ToolRuntime,
     validate_arguments,
 )
+from marmo_core.errors import ProviderHTTPError
+from marmo_core.kernel import NO_CALLABLE_SELECTED_DETAIL
 from marmo_core.llm import default_arguments
 
 
@@ -200,8 +206,11 @@ class KernelEndToEndTests(unittest.TestCase):
 
     def test_unknown_requested_tool_fails_with_educational_detail(self) -> None:
         registry = _build_registry(_tool_definition())
+        # The model is told which callables exist and gets to call again; only
+        # once max_input_repairs is spent does the task fail.
         script = [
-            LLMResponse(content="", tool_calls=(ToolCall(id="c1", name="tool.does.not.exist", arguments={}),)),
+            LLMResponse(content="", tool_calls=(ToolCall(id=f"c{index}", name="tool.does.not.exist", arguments={}),))
+            for index in range(3)
         ]
         kernel = _kernel(registry, llm=MockLLMProvider(script=script))
 
@@ -209,6 +218,26 @@ class KernelEndToEndTests(unittest.TestCase):
 
         self.assertEqual(result.status, "failed")
         self.assertIn("not available in the compiled context", result.detail)
+
+    def test_unknown_requested_tool_is_reported_back_so_the_model_can_recover(self) -> None:
+        registry = _build_registry(_tool_definition())
+        script = [
+            LLMResponse(content="", tool_calls=(ToolCall(id="c1", name="tool.does.not.exist", arguments={}),)),
+            LLMResponse(content="", tool_calls=(ToolCall(id="c2", name="tool.test.add", arguments={"a": 2, "b": 3}),)),
+            LLMResponse(content="The sum is 5.", tool_calls=()),
+        ]
+        kernel = _kernel(registry, llm=MockLLMProvider(script=script))
+
+        result = kernel.run_goal("Add 2 and 3 with the calculator")
+
+        self.assertEqual(result.status, "completed")
+        self.assertEqual([item.tool_id for item in result.tool_results], ["tool.test.add"])
+        correction = next(
+            message
+            for message in kernel.llm.requests[-1]["messages"]
+            if message["role"] == "tool" and "no callable named" in message["content"]
+        )
+        self.assertIn("tool.test.add", correction["content"])
 
     def test_tool_call_budget_is_enforced(self) -> None:
         registry = _build_registry(_tool_definition())
@@ -576,3 +605,295 @@ class ExampleAndCliTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# A catalog whose entries restate the goal verbatim: hundreds of short, dense
+# skills outrank a single Tool whose description is written in its own domain
+# vocabulary. This is the shape of a real third-party skill corpus sitting next
+# to a handful of Tools, and it put the Tool at rank ~200 of a global top-k.
+def _skill_definition(index: int) -> dict:
+    return _base_fields(
+        f"skill.catalog.entry-{index:04d}",
+        "skill",
+        description="Add 2 and 3 with the calculator.",
+        capabilities=["calculator"],
+        tags=["calculator"],
+        ref=f"skill://catalog/entry-{index:04d}",
+    )
+
+
+def _buried_tool_definition() -> dict:
+    return _tool_definition(
+        description=(
+            "Sum two numeric inputs supplied by the caller and return the total, a calculator "
+            "style helper for spreadsheet totals, invoice lines, ledger balances and other "
+            "numeric aggregation work."
+        )
+    )
+
+
+class CandidatePoolTests(unittest.TestCase):
+    """One crowded kind must not starve the others (per-kind candidate pool)."""
+
+    def _crowded_registry(self) -> ResourceRegistry:
+        return _build_registry(_buried_tool_definition(), *(_skill_definition(index) for index in range(200)))
+
+    def test_a_crowded_kind_does_not_push_the_tool_out_of_the_pool(self) -> None:
+        registry = self._crowded_registry()
+        kernel = _kernel(registry)
+
+        result = kernel.run_goal("Add 2 and 3 with the calculator")
+
+        self.assertEqual(result.status, "completed")
+        self.assertEqual([item.tool_id for item in result.tool_results], ["tool.test.add"])
+
+    def test_the_tool_is_absent_from_a_plain_global_top_k(self) -> None:
+        # Guards the premise: without the top-up the same goal never sees the
+        # Tool, which is what made the crowded case fail silently.
+        from marmo_core import LexicalRetriever, SearchQuery
+
+        results = LexicalRetriever().search(self._crowded_registry(), SearchQuery(task="Add 2 and 3 with the calculator", top_k=8))
+
+        self.assertNotIn("tool.test.add", [item.resource.id for item in results])
+
+    def test_completing_without_any_callable_is_reported(self) -> None:
+        registry = _build_registry(_buried_tool_definition(), *(_skill_definition(index) for index in range(3)))
+        kernel = _kernel(
+            registry,
+            llm=MockLLMProvider(script=[LLMResponse(content="I cannot do that.", tool_calls=())]),
+            set_limits={"skill": 1, "tool": 0},
+        )
+
+        result = kernel.run_goal("Add 2 and 3 with the calculator")
+
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(result.detail, NO_CALLABLE_SELECTED_DETAIL)
+
+
+class InvalidArgumentRepairTests(unittest.TestCase):
+    def test_invalid_arguments_go_back_to_the_model_which_can_correct_them(self) -> None:
+        registry = _build_registry(_tool_definition())
+        script = [
+            LLMResponse(content="", tool_calls=(ToolCall(id="c1", name="tool.test.add", arguments={"a": "two"}),)),
+            LLMResponse(content="", tool_calls=(ToolCall(id="c2", name="tool.test.add", arguments={"a": 2, "b": 3}),)),
+            LLMResponse(content="The sum is 5.", tool_calls=()),
+        ]
+        kernel = _kernel(registry, llm=MockLLMProvider(script=script))
+
+        result = kernel.run_goal("Add 2 and 3 with the calculator")
+
+        self.assertEqual(result.status, "completed")
+        self.assertEqual([item.status for item in result.tool_results], ["success"])
+        correction = next(
+            message
+            for message in kernel.llm.requests[-1]["messages"]
+            if message["role"] == "tool" and message["content"].startswith("Error:")
+        )
+        self.assertIn("input_schema", correction["content"])
+
+    def test_a_model_that_keeps_sending_bad_arguments_still_fails(self) -> None:
+        registry = _build_registry(_tool_definition())
+        script = [
+            LLMResponse(content="", tool_calls=(ToolCall(id=f"c{index}", name="tool.test.add", arguments={"a": "two"}),))
+            for index in range(4)
+        ]
+        kernel = _kernel(registry, llm=MockLLMProvider(script=script), max_input_repairs=2)
+
+        result = kernel.run_goal("Add 2 and 3 with the calculator")
+
+        self.assertEqual(result.status, "failed")
+        self.assertIn("max_input_repairs=2", result.detail)
+
+    def test_the_repair_budget_is_not_refilled_by_continuing_the_task(self) -> None:
+        # A budget that reset whenever the task was picked up again would let a
+        # model loop on bad arguments forever, one interruption at a time.
+        registry = _build_registry(_tool_definition())
+        bad = LLMResponse(content="", tool_calls=(ToolCall(id="c1", name="tool.test.add", arguments={"a": "two"}),))
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = JsonFileStateStore(temp_dir)
+            first = _kernel(
+                registry, llm=MockLLMProvider(script=[bad]), state_store=store, max_input_repairs=1
+            )
+            task_id = first.submit("Add 2 and 3 with the calculator")
+            with self.assertRaises(ValueError):  # the one-response script runs out after the correction
+                first.run(task_id)
+            self.assertEqual(store.load(task_id).frame.get("input_repairs"), 1)
+
+            # A completely separate kernel continues the same persisted task.
+            second = _kernel(
+                registry,
+                llm=MockLLMProvider(script=[bad]),
+                state_store=JsonFileStateStore(temp_dir),
+                max_input_repairs=1,
+            )
+            result = second.run(task_id)
+
+        self.assertEqual(result.status, "failed")
+        self.assertIn("max_input_repairs=1", result.detail)
+
+    def test_a_secret_that_cannot_be_resolved_is_not_handed_to_the_model(self) -> None:
+        # The resolver names the backing variable, and the model cannot fix a
+        # missing secret anyway, so this failure never becomes a correction.
+        registry = _build_registry(_tool_definition())
+        call = ToolCall(id="c1", name="tool.test.add", arguments={"a": {"$secret": "MISSING_KEY"}, "b": 3})
+        kernel = _kernel(
+            registry,
+            llm=MockLLMProvider(script=[LLMResponse(content="", tool_calls=(call,))]),
+            secret_resolver=MappingSecretResolver({}),
+        )
+
+        result = kernel.run_goal("Add 2 and 3 with the calculator")
+
+        self.assertEqual(result.status, "failed")
+        self.assertIn("MISSING_KEY", result.detail)
+        corrections = [
+            message
+            for message in kernel.llm.requests[-1]["messages"]
+            if message["role"] == "tool" and "MISSING_KEY" in message["content"]
+        ]
+        self.assertEqual(corrections, [])
+
+
+class ProviderFailureTests(unittest.TestCase):
+    class _BrokenProvider(MockLLMProvider):
+        def complete(self, messages, tools=()):  # type: ignore[no-untyped-def]
+            raise ProviderHTTPError("HTTP 400 from the provider: context length exceeded", status=400)
+
+    def test_a_provider_error_ends_the_task_instead_of_escaping_the_kernel(self) -> None:
+        registry = _build_registry(_tool_definition())
+        kernel = _kernel(registry, llm=self._BrokenProvider())
+
+        result = kernel.run_goal("Add 2 and 3 with the calculator")
+
+        self.assertEqual(result.status, "failed")
+        self.assertIn("the model provider failed", result.detail)
+        self.assertIn("context length exceeded", result.detail)
+
+    def test_the_failed_task_keeps_its_audit_trail_and_terminal_state(self) -> None:
+        registry = _build_registry(_tool_definition())
+        kernel = _kernel(registry, llm=self._BrokenProvider())
+
+        result = kernel.run_goal("Add 2 and 3 with the calculator")
+
+        self.assertTrue(kernel.state_store.load(result.task_id).terminal)
+        kinds = [record.kind for record in kernel.audit_log.records]
+        self.assertIn("llm", kinds)
+        self.assertIn("task", kinds)
+
+
+class ToolOutputBudgetTests(unittest.TestCase):
+    def _kernel_with_large_output(self, **kwargs) -> Kernel:
+        registry = _build_registry(_tool_definition())
+        script = [
+            LLMResponse(content="", tool_calls=(ToolCall(id="c1", name="tool.test.add", arguments={"a": 1, "b": 2}),)),
+            LLMResponse(content="done", tool_calls=()),
+        ]
+        return _kernel(
+            registry,
+            llm=MockLLMProvider(script=script),
+            tool_implementations={"tool.test.add": lambda a, b: {"blob": "x" * 200_000}},
+            **kwargs,
+        )
+
+    def test_a_large_tool_result_is_truncated_before_it_reaches_the_model(self) -> None:
+        kernel = self._kernel_with_large_output(max_tool_output_tokens=1000)
+
+        kernel.run_goal("Add 2 and 3 with the calculator")
+
+        tool_message = next(
+            message for message in kernel.llm.requests[-1]["messages"] if message["role"] == "tool"
+        )
+        self.assertIn("[truncated:", tool_message["content"])
+        self.assertLess(len(tool_message["content"]), 10_000)
+        # The cut happens inside the delimiters: a truncated result must never
+        # leave the untrusted-content boundary open for the messages after it.
+        self.assertTrue(tool_message["content"].endswith("</untrusted-content>"))
+
+    def test_the_cap_can_be_turned_off(self) -> None:
+        kernel = self._kernel_with_large_output(max_tool_output_tokens=None)
+
+        kernel.run_goal("Add 2 and 3 with the calculator")
+
+        tool_message = next(
+            message for message in kernel.llm.requests[-1]["messages"] if message["role"] == "tool"
+        )
+        self.assertNotIn("[truncated:", tool_message["content"])
+
+
+class PauseRemedyTests(unittest.TestCase):
+    def test_a_side_effect_escalation_offers_the_blanket_flag(self) -> None:
+        registry = _build_registry(_tool_definition(side_effect="write", id="tool.test.write"))
+        kernel = Kernel(
+            registry,
+            MockLLMProvider(tool_arguments={"tool.test.write": {"a": 1, "b": 2}}),
+            tool_implementations={"tool.test.write": _add},
+        )
+
+        result = kernel.run_goal("Add 2 and 3 with the calculator")
+
+        self.assertEqual(result.status, "escalated")
+        self.assertIn("human_approved=True", result.detail)
+        # The flag really does clear it, which is what makes the advice right.
+        cleared = Kernel(
+            registry,
+            MockLLMProvider(tool_arguments={"tool.test.write": {"a": 1, "b": 2}}),
+            tool_implementations={"tool.test.write": _add},
+            policy_context=PolicyContext(human_approved=True),
+        ).run_goal("Add 2 and 3 with the calculator")
+        self.assertEqual(cleared.status, "completed")
+
+    def test_an_always_confirm_agent_is_not_told_to_use_the_blanket_flag(self) -> None:
+        # The Tool path was given the right wording explicitly; the Agent path
+        # has to get it from the request, or it sends the operator round a loop
+        # that widening human_approved cannot end.
+        registry = _build_registry(
+            _base_fields(
+                "agent.test.helper",
+                "agent",
+                agent_interface={
+                    "name": "helper",
+                    "description": "Delegate the calculation to a helper agent.",
+                    "input_schema": {"type": "object", "properties": {"goal": {"type": "string"}}},
+                },
+            )
+        )
+        kernel = Kernel(
+            registry,
+            MockLLMProvider(tool_arguments={"helper": {"goal": "add"}}),
+            agent_implementations={"agent.test.helper": lambda goal: {"answer": 5}},
+            hitl=PendingHitlBroker(HitlPolicy(always_confirm_resources=("agent.test.helper",))),
+            policy_context=PolicyContext(human_approved=True),
+        )
+
+        result = kernel.run_goal("Add 2 and 3 with the calculator")
+
+        self.assertEqual(result.status, "escalated")
+        self.assertIn("does not clear it", result.detail)
+        self.assertNotIn("or re-run with PolicyContext(human_approved=True)", result.detail)
+
+    def test_a_safety_finding_says_the_blanket_flag_will_not_clear_it(self) -> None:
+        # Reading first puts untrusted content in the context, so the write
+        # that follows trips the trust-boundary rule. That escalation is
+        # scoped to the exact call, and human_approved does not clear it --
+        # which is precisely what the old fixed wording told people to try.
+        registry = _build_registry(
+            _tool_definition(id="tool.test.read", side_effect="read"),
+            _tool_definition(id="tool.test.write", side_effect="write"),
+        )
+        script = [
+            LLMResponse(content="", tool_calls=(ToolCall(id="c1", name="tool.test.read", arguments={"a": 1, "b": 2}),)),
+            LLMResponse(content="", tool_calls=(ToolCall(id="c2", name="tool.test.write", arguments={"a": 1, "b": 2}),)),
+        ]
+        kernel = Kernel(
+            registry,
+            MockLLMProvider(script=script),
+            tool_implementations={"tool.test.read": _add, "tool.test.write": _add},
+            policy_context=PolicyContext(human_approved=True),
+            set_limits={"tool": 2},
+        )
+
+        result = kernel.run_goal("Add 2 and 3 with the calculator")
+
+        self.assertEqual(result.status, "escalated")
+        self.assertIn("does not clear this one", result.detail)
+        self.assertIsNotNone(result.hitl)

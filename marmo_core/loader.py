@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Literal, Mapping
 import json
 
 from .errors import PackageError, ResourceLoadError, ResourceValidationError
@@ -26,7 +26,24 @@ SUPPORTED_SUFFIXES = {".json", ".md"}
 def discover_resource_files(paths: Iterable[str | Path]) -> list[Path]:
     """Discover JSON resource definition files from explicit files or directories."""
 
+    return _discover_files(paths)[0]
+
+
+def _discover_files(paths: Iterable[str | Path]) -> tuple[list[Path], list[ValidationIssue]]:
+    """Discover loadable files, plus a warning for every ``.json`` that would not parse.
+
+    A directory scan cannot know which unparsable file was *meant* to be a
+    resource: an agent workspace is full of JSON with comments and trailing
+    commas (``tsconfig.json``, ``.vscode/settings.json``, third-party skill
+    assets). Treating those as errors would refuse to load the directory
+    entirely. Staying silent, which is what the loader used to do, let a
+    typo in someone's own resource file read as "valid: 0 resources". So the
+    file is skipped and reported as a warning, and naming it explicitly still
+    raises -- an explicit path is a statement that the file is a resource.
+    """
+
     files: list[Path] = []
+    issues: list[ValidationIssue] = []
     for raw_path in paths:
         path = Path(raw_path)
         if not path.exists():
@@ -38,9 +55,11 @@ def discover_resource_files(paths: Iterable[str | Path]) -> list[Path]:
         for candidate in sorted(path.rglob("*.json")):
             if candidate.name.startswith("."):
                 continue
-            if not _looks_like_resource_json(candidate):
-                continue
-            files.append(candidate)
+            shape, problem = _classify_resource_json(candidate)
+            if shape == "resource":
+                files.append(candidate)
+            elif shape == "unreadable":
+                issues.append(ValidationIssue(problem, str(candidate), severity="warning"))
         seen_skill_dirs: set[Path] = set()
         for candidate in sorted(path.rglob("*.md"), key=lambda item: (str(item.parent), item.name != "SKILL.md", item.name)):
             if is_skill_markdown(candidate):
@@ -49,7 +68,7 @@ def discover_resource_files(paths: Iterable[str | Path]) -> list[Path]:
                     continue
                 seen_skill_dirs.add(parent)
                 files.append(candidate)
-    return sorted(dict.fromkeys(files))
+    return sorted(dict.fromkeys(files)), issues
 
 
 def load_resource_definitions(
@@ -67,18 +86,22 @@ def load_resource_definitions(
     """
 
     input_paths = list(paths)
-    package_roots, loose_sources = _discover_sources(input_paths)
+    package_roots, loose_sources, issues = _discover_sources(input_paths)
     packages = [verify_local_package(root, kernel_version=kernel_version) for root in package_roots]
     validate_package_dependencies(packages)
     definitions: list[ResourceDefinition] = []
-    issues: list[ValidationIssue] = []
     for file_path, source_root in loose_sources:
         loaded, file_issues = _load_definition_file(file_path, validate=validate, root=source_root)
         definitions.extend(loaded)
         issues.extend(file_issues)
     for package in packages:
         for file_path in package.resource_files:
-            loaded, file_issues = _load_definition_file(file_path, validate=validate, root=package.root)
+            loaded, file_issues = _load_definition_file(
+                file_path,
+                validate=validate,
+                root=package.root,
+                namespace=package.manifest.namespace,
+            )
             for definition in loaded:
                 try:
                     validate_resource_namespace(
@@ -124,9 +147,10 @@ def validate_resource_paths(
     definitions: list[ResourceDefinition] = []
     issues: list[ValidationIssue] = []
     try:
-        package_roots, sources = _discover_sources(list(paths))
+        package_roots, sources, scan_issues = _discover_sources(list(paths))
     except ResourceLoadError as exc:
         return [ValidationIssue(str(exc), "paths")]
+    issues.extend(scan_issues)
     packages: list[LocalResourcePackage] = []
     for root in package_roots:
         try:
@@ -164,7 +188,12 @@ def validate_resource_paths(
             issues.extend(definition.validate(source))
     for package in packages:
         for file_path in package.resource_files:
-            loaded, file_issues = _load_definition_file(file_path, validate=True, root=package.root)
+            loaded, file_issues = _load_definition_file(
+                file_path,
+                validate=True,
+                root=package.root,
+                namespace=package.manifest.namespace,
+            )
             for definition in loaded:
                 try:
                     validate_resource_namespace(package, definition.metadata.id, definition.metadata.kind)
@@ -176,15 +205,17 @@ def validate_resource_paths(
     return issues
 
 
-def _discover_sources(paths: list[str | Path]) -> tuple[list[Path], list[tuple[Path, Path]]]:
+def _discover_sources(
+    paths: list[str | Path],
+) -> tuple[list[Path], list[tuple[Path, Path]], list[ValidationIssue]]:
     package_roots = discover_package_roots(paths)
-    files = discover_resource_files(paths)
+    files, issues = _discover_files(paths)
     loose_sources = [
         (file_path, _source_root(file_path, paths))
         for file_path in files
         if not any(_is_within(file_path.resolve(), root) for root in package_roots)
     ]
-    return package_roots, loose_sources
+    return package_roots, loose_sources, issues
 
 
 def _source_root(file_path: Path, input_paths: list[str | Path]) -> Path:
@@ -214,12 +245,13 @@ def _load_definition_file(
     *,
     validate: bool,
     root: Path | None = None,
+    namespace: str | None = None,
 ) -> tuple[list[ResourceDefinition], list[ValidationIssue]]:
     definitions: list[ResourceDefinition] = []
     issues: list[ValidationIssue] = []
     if is_skill_markdown(file_path):
         try:
-            definition = load_markdown_skill(file_path, root=root or file_path.parent)
+            definition = load_markdown_skill(file_path, root=root or file_path.parent, namespace=namespace)
         except OSError as exc:
             return [], [ValidationIssue(f"cannot read {file_path}: {exc}", str(file_path))]
         definitions.append(definition)
@@ -245,30 +277,35 @@ def _load_definition_file(
 
 
 def _read_json(path: Path) -> Any:
+    # utf-8-sig tolerates the BOM that Windows editors write; ValueError covers
+    # both a decode failure and a syntax error, so neither escapes as a traceback.
     try:
-        with path.open("r", encoding="utf-8") as file:
+        with path.open("r", encoding="utf-8-sig") as file:
             return json.load(file)
-    except json.JSONDecodeError as exc:
+    except ValueError as exc:
         raise ResourceLoadError(f"invalid JSON in {path}: {exc}") from exc
     except OSError as exc:
         raise ResourceLoadError(f"cannot read {path}: {exc}") from exc
 
 
-def _looks_like_resource_json(path: Path) -> bool:
+def _classify_resource_json(path: Path) -> tuple[Literal["resource", "other", "unreadable"], str]:
+    """Classify a discovered JSON file, with the reason when it cannot be read."""
+
     try:
         payload = _read_json(path)
-    except ResourceLoadError:
-        return False
+    except ResourceLoadError as exc:
+        return "unreadable", str(exc)
     if isinstance(payload, Mapping):
         if isinstance(payload.get("resources"), list):
-            return True
+            return "resource", ""
         if isinstance(payload.get("metadata"), Mapping):
             metadata = payload["metadata"]
-            return "id" in metadata and "kind" in metadata
-        return "id" in payload and "kind" in payload
+            return ("resource" if "id" in metadata and "kind" in metadata else "other"), ""
+        return ("resource" if "id" in payload and "kind" in payload else "other"), ""
     if isinstance(payload, list):
-        return all(isinstance(item, Mapping) and _entry_has_resource_shape(item) for item in payload)
-    return False
+        shaped = all(isinstance(item, Mapping) and _entry_has_resource_shape(item) for item in payload)
+        return ("resource" if shaped else "other"), ""
+    return "other", ""
 
 
 def _entry_has_resource_shape(item: Mapping[str, Any]) -> bool:

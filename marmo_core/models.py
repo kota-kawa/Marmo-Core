@@ -275,6 +275,18 @@ class ResourceDefinition:
     def identity(self) -> str:
         return self.metadata.identity
 
+    @property
+    def id(self) -> str:
+        """The resource id, without reaching through ``metadata``."""
+
+        return self.metadata.id
+
+    @property
+    def kind(self) -> str:
+        """The resource kind, without reaching through ``metadata``."""
+
+        return self.metadata.kind
+
     def validate(self, path: str = "") -> list[ValidationIssue]:
         base = path or self.source or self.identity
         issues = self.metadata.validate(base)

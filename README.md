@@ -138,8 +138,18 @@ marmo run resources/tools \
 
 If retrieval matches nothing, the model answers without tools and the result's
 `detail` says so; with `--strict` that is a failure rather than a silent
-success. Provider errors are reported with the HTTP status and the API's own
-message (for example an unsupported parameter or an invalid model name).
+success. The same applies when the registry holds Tools or Agents but none of
+them matched the goal. Every kind gets its own share of the candidate pool, so
+a large Skill catalog cannot crowd the Tools out of a run. Provider errors are
+reported with the HTTP status and the API's own message (for example an
+unsupported parameter or an invalid model name), and end the task as `failed`
+with its audit trail intact.
+
+Arguments that do not match a tool's `input_schema` are handed back to the
+model, which may call again up to `--max-input-repairs` times (default 2). One
+tool result is capped at `--max-tool-output-tokens` estimated tokens (default
+8000) before it reaches the model, with the truncation stated in the text, so
+a large file read cannot overflow the request.
 
 In Python, the same setup is:
 
@@ -166,7 +176,7 @@ cp .env.example .env
 OPENAI_API_KEY=your_key_here
 ANTHROPIC_API_KEY=your_key_here
 OPENAI_MODEL=gpt-5.6-terra
-OPENAI_REASONING_EFFORT=none
+OPENAI_REASONING_EFFORT=
 OPENAI_BASE_URL=
 ANTHROPIC_MODEL=claude-sonnet-5
 ANTHROPIC_MAX_TOKENS=16384
@@ -184,11 +194,15 @@ the provider sends `max_completion_tokens` (current OpenAI models reject
 if the server reports the chosen parameter as unsupported. Tool names are
 encoded on the wire because resource ids such as `tool.files.read-text`
 contain dots that the OpenAI and Anthropic tool grammars reject; the kernel
-and audit log keep seeing the real resource ids. `ANTHROPIC_MAX_TOKENS` is required unless `max_tokens` is passed
-explicitly. `OPENAI_REASONING_EFFORT` is optional and applies when the OpenAI
-model is resolved from the environment. The package loads `.env` without
-overriding values already present in the operating-system environment. `.env`
-is excluded from Git.
+and audit log keep seeing the real resource ids. `OPENAI_BASE_URL` also selects the endpoint for
+`OpenAICompatibleEmbeddingProvider`, so an on-prem or Groq setup never sends
+its key to `api.openai.com`. `ANTHROPIC_MAX_TOKENS` is required unless
+`max_tokens` is passed explicitly. `OPENAI_REASONING_EFFORT` is optional,
+applies when the OpenAI model is resolved from the environment, and is
+provider-specific: OpenAI accepts `none`, while Groq's gpt-oss accepts only
+`low`, `medium`, or `high`. Leave it empty to omit the parameter. The package
+loads `.env` without overriding values already present in the operating-system
+environment. `.env` is excluded from Git.
 
 The benchmark-only embedding and cross-encoder integration is optional:
 

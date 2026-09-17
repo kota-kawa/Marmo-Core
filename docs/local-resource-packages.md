@@ -94,7 +94,7 @@ JSONは従来どおり、単一リソース、リソースの配列、または`
 - Tool: `input_schema`、`output_schema`、`isolation_level`
 - Agent: `delegation_interface`、`model`、`system_prompt`
 
-`SKILL.md`をmanifestから読み込む場合は、名前空間検査に通るようフロントマターで`id`を指定します。
+`SKILL.md`をmanifestに列挙した場合、リソースIDはパッケージの名前空間配下に自動生成されます。namespaceが`com.example`で`skills/review/SKILL.md`なら`skill.com.example.review`です（パッケージルートからの相対ディレクトリのうち先頭の`resources/`と`skills/`を除き、残りを`__`で連結します）。IDを固定したい場合は、フロントマターで`id`を明示します。明示した`id`が常に優先されます。
 
 ```markdown
 ---
