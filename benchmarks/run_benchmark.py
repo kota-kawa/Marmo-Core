@@ -44,6 +44,7 @@ import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_RESOURCES = REPO_ROOT / "resources" / "skills"
 sys.path.insert(0, str(REPO_ROOT))
 
 from marmo_core import (  # noqa: E402
@@ -144,7 +145,7 @@ class _JsonFileCache(dict):
 def main() -> None:
     load_local_dotenv()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--resources", default=str(REPO_ROOT / "resources" / "skills"))
+    parser.add_argument("--resources", default=str(DEFAULT_RESOURCES), help="resource corpus directory (default: the bundled resources/skills, git checkout only)")
     parser.add_argument("--scenarios", default=str(Path(__file__).parent / "scenarios.json"))
     parser.add_argument("--retriever", default="lexical", choices=["lexical", "hybrid-hash", "hybrid-model"])
     parser.add_argument("--top-k", type=int, default=5)
@@ -162,6 +163,32 @@ def main() -> None:
     args = parser.parse_args()
 
     scenarios = json.loads(Path(args.scenarios).read_text(encoding="utf-8"))["scenarios"]
+
+    resources_path = Path(args.resources)
+    if not resources_path.is_dir():
+        # Compare resolved paths: "--resources resources/skills" is the obvious
+        # relative spelling of the default and deserves the same guidance.
+        if resources_path.expanduser().resolve() == DEFAULT_RESOURCES.resolve():
+            raise SystemExit(
+                f"error: the ~1,000-skill benchmark corpus is not present at {resources_path}.\n"
+                "It is ~260MB of third-party skills whose redistribution licensing is not\n"
+                "cleared, so it is not tracked in git and is not shipped in the sdist/wheel.\n"
+                "\n"
+                "Options:\n"
+                "  * point the benchmark at your own resource directory:\n"
+                "        python3 benchmarks/run_benchmark.py --resources PATH\n"
+                "  * rebuild the corpus yourself (needs a GitHub token):\n"
+                f"        OUT_DIR={DEFAULT_RESOURCES} python3 tools/collect_skills.py\n"
+                "    (it writes to <repo>/skills unless OUT_DIR says otherwise);\n"
+                "    see benchmarks/README.md\n"
+                "  * run the benchmarks that ship with their own corpus instead:\n"
+                "        python3 benchmarks/run_set_benchmark.py\n"
+                "        python3 benchmarks/run_scale_benchmark.py\n"
+                "        python3 benchmarks/run_adaptive_benchmark.py"
+            )
+        raise SystemExit(
+            f"error: --resources directory does not exist: {resources_path}"
+        )
 
     load_start = time.perf_counter()
     registry = load_registry([args.resources])

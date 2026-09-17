@@ -1,6 +1,16 @@
 # ルーティングベンチマーク
 
-Marmo-Core の中核主張 —「大量のリソースから、必要なものだけを速く・安全に・コンテキスト汚染なしに選べる」— を実測で検証するスイートです。同梱の約 1,000 件のサードパーティ Skill コーパス(`resources/skills`)に対して、ラベル付きシナリオ 120 件を実行します。
+Marmo-Core の中核主張 —「大量のリソースから、必要なものだけを速く・安全に・コンテキスト汚染なしに選べる」— を実測で検証するスイートです。約 1,000 件のサードパーティ Skill コーパス(`resources/skills`)に対して、ラベル付きシナリオ 120 件を実行します。
+
+## コーパスの入手について
+
+`run_benchmark.py` が既定で使う `resources/skills`(約 260MB)は**外部リポジトリからコピーしたサードパーティ資産で、git にも PyPI の配布物(sdist / wheel)にも含まれていません**。再配布ライセンスの整理が済んでいないためです(下の「注意」参照)。
+
+コーパスが無い環境で `run_benchmark.py` を実行すると、トレースバックではなく次の案内付きエラーで停止します。
+
+- `--resources PATH` で手持ちのリソースディレクトリを指定する
+- `tools/collect_skills.py` でコーパスを再収集する(GitHub トークンが必要)
+- コーパス同梱の他のベンチマーク(`run_set_benchmark.py` / `run_scale_benchmark.py` / `run_adaptive_benchmark.py`)を使う。これらは `benchmarks/corpus/set_corpus.json` と生成スクリプトだけで完結するため、`pip install` で入れた配布物からでもそのまま動きます
 
 ## 実行方法
 
@@ -313,4 +323,4 @@ python3 benchmarks/run_adaptive_benchmark.py --feedback --epochs 5   # 実績メ
 
 ## 注意
 
-`resources/skills` は出典を `SOURCES.md` に記録した外部リポジトリのコピーで、ベンチマーク・検証専用です。再配布ライセンスの整理が完了するまで、このコーパスを成果物として再配布しないでください。
+`resources/skills` は出典を `SOURCES.md` に記録した外部リポジトリのコピーで、ベンチマーク・検証専用です。再配布ライセンスの整理が完了するまで、このコーパスを成果物として再配布しないでください。この方針のため、`.gitignore` で git 管理から外し、`MANIFEST.in` でも sdist から除外しています。
