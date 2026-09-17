@@ -27,6 +27,7 @@ end up with weaker checks than the other.
 
 from __future__ import annotations
 
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace as dataclass_replace
 from typing import Any, Callable, Iterable, Mapping, Sequence
@@ -37,16 +38,16 @@ from .agent_runtime import AgentResult, AgentRuntime
 from .audit import AuditLog
 from .compiler import AgentInterface, ContextCompiler
 from .connectors import Connector, connector_tools
-from .errors import ResourceNotFoundError, SecretResolutionError, ToolInputError
+from .errors import ProviderError, ResourceNotFoundError, SecretResolutionError, ToolInputError
 from .hitl import HitlBroker, HitlError, HitlRequest, HitlResponse, PendingHitlBroker
-from .llm import ChatMessage, LLMProvider, ToolCall
+from .llm import ChatMessage, LLMProvider, ToolCall, characters_for_tokens
 from .models import ResourceDefinition, ResourceMetadata, SearchQuery, SearchResult
 from .planner import Plan, PlanStep, Planner, resources_by_id, validate_plan
 from .policy import PolicyContext, PolicyGateway, PolicyRejectedError
 from .recovery import Failure, RecoveryDecision, RecoveryManager, compensation_for, needs_compensation
 from .registry import ResourceRegistry
 from .retriever import LexicalRetriever, Retriever
-from .selector import RuleBasedSetSelector, SelectionContext, SetSelector
+from .selector import DEFAULT_SET_LIMITS, RuleBasedSetSelector, SelectionContext, SetSelector
 from .safety import redact_sensitive_arguments
 from .security import PromptInjectionInspector, label_untrusted_content
 from .secrets import SecretResolver, ensure_secret_refs, serialize_secret_refs
@@ -81,6 +82,16 @@ class TaskResult:
         """True while the task waits for a human answer (F-HITL-04)."""
 
         return self.status == "escalated"
+
+    @property
+    def hitl(self) -> HitlRequest | None:
+        """The pending confirmation as a :class:`HitlRequest`.
+
+        ``hitl_request`` stays a plain dict because it is persisted and
+        serialized as-is; this is the typed view for calling code.
+        """
+
+        return HitlRequest.from_dict(self.hitl_request) if self.hitl_request else None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -119,13 +130,22 @@ class _RunState:
 
 @dataclass(frozen=True)
 class _CallOutcome:
-    """Result of one guarded call: a result, a control decision, or a failure."""
+    """Result of one guarded call: a result, a control decision, or a failure.
+
+    ``invalid_input`` is the one failure the model itself can fix: arguments
+    that do not satisfy the tool's input schema. It is reported back to the
+    caller instead of ending the task, so the model loop can hand the message
+    to the model and let it call again. Tool calls only: a delegation whose
+    arguments do not fit the Agent interface still ends the task, because the
+    sub-agent's own loop -- not this one -- owns how it recovers.
+    """
 
     result: ToolResult | AgentResult | None = None
     control: TaskResult | None = None
     failure: Failure | None = None
     tool: BoundTool | None = None
     agent: BoundAgent | None = None
+    invalid_input: str | None = None
 
 
 # Detail attached to a completed task when retrieval matched nothing and the
@@ -135,6 +155,17 @@ class _CallOutcome:
 NO_RESOURCE_MATCHED_DETAIL = (
     "no resource matched the goal, so the model answered without tools; "
     "rephrase the goal in the registry's vocabulary or use HydeRetriever for other languages"
+)
+
+# Detail attached to a completed task when Tools or Agents *did* match the goal
+# but none of them reached the model, so it could only answer from its own
+# knowledge. A goal that simply needs no tool never gets this: the candidates
+# have to exist for it to be anomalous. ``marmo run --strict`` treats it as a
+# failure because no guarded call could have run.
+NO_CALLABLE_SELECTED_DETAIL = (
+    "Tools or Agents matched the goal but none reached the model, so it answered "
+    "without tools; raise --set-limit for that kind, or --top-k, and check whether "
+    "the context token budget dropped them"
 )
 
 
@@ -166,6 +197,8 @@ class Kernel:
         top_k: int = 8,
         set_limits: Mapping[str, int] | None = None,
         max_tool_calls: int = 5,
+        max_input_repairs: int = 2,
+        max_tool_output_tokens: int | None = 8000,
         max_agent_depth: int = 1,
         max_agent_cost: float | None = None,
         max_hitl_rounds: int = 8,
@@ -240,6 +273,12 @@ class Kernel:
         self.top_k = top_k
         self.set_limits = dict(set_limits) if set_limits else None
         self.max_tool_calls = max_tool_calls
+        if max_input_repairs < 0:
+            raise ValueError("max_input_repairs must be >= 0")
+        self.max_input_repairs = max_input_repairs
+        if max_tool_output_tokens is not None and max_tool_output_tokens <= 0:
+            raise ValueError("max_tool_output_tokens must be positive or None")
+        self.max_tool_output_tokens = max_tool_output_tokens
         self.max_hitl_rounds = max_hitl_rounds
         self.max_replans = max_replans
         self.max_parallel_steps = max(1, max_parallel_steps)
@@ -427,6 +466,86 @@ class Kernel:
                 kept.append(result)
         return kept
 
+    def _tool_message_content(self, value: Any, *, source: str) -> str:
+        """Label one tool result for the model, capped so it cannot overflow it.
+
+        ``context_token_budget`` bounds the *compiled* context -- instructions,
+        memories, skills, tool specs -- and nothing bounded what a tool handed
+        back, so one 200KB file read could push the whole request past the
+        model's window and end the task with a provider error. The cap is
+        applied to the payload inside the untrusted-content delimiters, so the
+        boundary is always closed, and the cut is announced, because a
+        silently shortened result is one the model reasons about as complete.
+        The budget bounds the payload; the constant-size envelope around it is
+        not counted, so the labelled message runs a few dozen tokens over.
+        """
+
+        budget = self.max_tool_output_tokens
+        return label_untrusted_content(
+            value,
+            source=source,
+            max_characters=None if budget is None else characters_for_tokens(budget),
+        )
+
+    def _candidate_pool(self, goal: str, context: PolicyContext) -> list[SearchResult]:
+        """Rank candidates for the goal, leaving every kind a fillable share.
+
+        Retrieval returns one globally ranked ``top_k``, so a kind holding
+        many entries -- a thousand-skill catalog next to ten Tools -- can take
+        every slot and leave the set selector nothing to fill its per-kind
+        limits with. The run then reports ``tool=0/3`` and the model answers
+        with no tools at all, which reads as a clean completion. Each kind
+        that comes back short therefore gets one extra kind-filtered search
+        over the same cached index.
+
+        Top-ups drop candidates the activation gate would deny, and respect
+        the selector's ``min_score`` floor when it has one: the point is to
+        give the selector something it can actually use, and reporting an
+        unrelated denied resource as "skipped" would turn a clean read-only
+        run into a strict failure. Kinds that surface on their own merit keep
+        the existing rule, where the best match is reported even when denied.
+
+        Filling the Tool slots does mean a goal can now be offered a Tool that
+        a crowded pool used to hide from it. That exposure is not new -- the
+        same Tool is selected today in any registry small enough not to crowd,
+        because no selector applies a relevance floor -- but the crowding was
+        masking it, so removing the crowding removes the mask. The activation
+        and execution gates, the HITL escalation for side-effecting resources,
+        ``set_limits``, and a selector ``min_score`` remain the controls.
+        """
+
+        query = SearchQuery(
+            task=goal,
+            granted_permissions=tuple(context.granted_permissions),
+            top_k=self.top_k,
+        )
+        results = self._policy_feasible_candidates(self.retriever.search(self.registry, query), context)
+        # The selector starts from its own defaults and layers ``set_limits`` on
+        # top, so topping up against ``set_limits`` alone would leave every kind
+        # the caller did not mention starved -- the exact failure this guards.
+        limits = dict(getattr(self.selector, "default_limits", None) or DEFAULT_SET_LIMITS)
+        limits.update(self.set_limits or {})
+        counts = Counter(result.resource.metadata.kind for result in results)
+        seen = {result.resource.identity for result in results}
+        for kind in sorted(limits):
+            shortfall = limits[kind] - counts.get(kind, 0)
+            if shortfall <= 0 or not self.registry.list(kinds=(kind,)):
+                continue
+            floor = float(getattr(self.selector, "min_score", 0.0) or 0.0)
+            for result in self.retriever.search(self.registry, dataclass_replace(query, kinds=(kind,))):
+                if result.resource.kind != kind or result.resource.identity in seen:
+                    continue
+                if result.score < floor:
+                    continue
+                if self.gateway.evaluate(result.resource, context, gate="activation").denied:
+                    continue
+                seen.add(result.resource.identity)
+                results.append(result)
+                shortfall -= 1
+                if shortfall <= 0:
+                    break
+        return results
+
     def _execute(self, state: TaskState) -> TaskResult:
         task_id = state.task_id
         goal = state.goal
@@ -438,12 +557,8 @@ class Kernel:
             self.audit_log.append(kind, payload, trace_id=trace_id)
 
         # Phase 1 - retrieval and set selection. Pure, so a resume redoes it.
-        query = SearchQuery(
-            task=goal,
-            granted_permissions=tuple(context.granted_permissions),
-            top_k=self.top_k,
-        )
-        results = self._policy_feasible_candidates(self.retriever.search(self.registry, query), context)
+        results = self._candidate_pool(goal, context)
+        callable_candidates = any(result.resource.kind in ("tool", "agent") for result in results)
         selection_context = SelectionContext(
             task=goal,
             granted_permissions=tuple(context.granted_permissions),
@@ -587,6 +702,9 @@ class Kernel:
         )
         pending_calls: list[ToolCall] = [_tool_call_from_dict(item) for item in frame.get("calls", ())]
         llm_calls = int(frame.get("llm_calls", 0))
+        # Corrections already handed back to the model, so a pause cannot hand
+        # a model that keeps emitting bad arguments a fresh budget on resume.
+        input_repairs = int(frame.get("input_repairs", 0))
         # Counts callables actually dispatched, not model rounds: one round can
         # request several calls, and it is the side effects that need bounding.
         executed_calls = int(frame.get("executed_calls", 0))
@@ -611,6 +729,8 @@ class Kernel:
                 "llm_calls": llm_calls,
                 "executed_calls": executed_calls,
             }
+            if input_repairs:
+                saved["input_repairs"] = input_repairs
             if override is not None:
                 saved["override"] = override
             if recovery_state:
@@ -663,7 +783,14 @@ class Kernel:
             if not pending_calls:
                 call_untrusted_sources = tuple(untrusted_sources)
                 call_prompt_findings = tuple(prompt_findings)
-                response = self.llm.complete(messages, compiled.tools)
+                try:
+                    response = self.llm.complete(messages, compiled.tools)
+                except ProviderError as exc:
+                    # Ending the task here (rather than letting the exception
+                    # escape) is what keeps the audit log, the terminal task
+                    # status, and any side effects already executed on record.
+                    audit("llm", {"round": llm_calls, "error": f"{type(exc).__name__}: {exc}"})
+                    return failed(f"the model provider failed: {exc}")
                 llm_calls += 1
                 audit(
                     "llm",
@@ -681,6 +808,14 @@ class Kernel:
                         detail = f"completed without {len(skipped)} skipped resource(s): {names}"
                     elif not selected.results and not tool_results and self.registry.list():
                         detail = NO_RESOURCE_MATCHED_DETAIL
+                    elif (
+                        not tools
+                        and not agents
+                        and not tool_results
+                        and not agent_results
+                        and callable_candidates
+                    ):
+                        detail = NO_CALLABLE_SELECTED_DETAIL
                     return self._finish(
                         state,
                         trace_id,
@@ -705,11 +840,29 @@ class Kernel:
                 tool = tools_by_name.get(call.name)
                 called_agent = agents_by_name.get(call.name)
                 if tool is None and called_agent is None:
-                    return failed(
+                    unavailable = (
                         f"the model requested callable {call.name!r} which is not available in the "
                         "compiled context; register and activate it, increase the context token "
                         "budget if it was omitted, or adjust the search so it is selected"
                     )
+                    if input_repairs >= self.max_input_repairs:
+                        return failed(unavailable)
+                    input_repairs += 1
+                    pending_calls.pop(0)
+                    available = ", ".join(sorted({*tools_by_name, *agents_by_name})) or "(none)"
+                    messages.append(
+                        ChatMessage(
+                            role="tool",
+                            name=call.name,
+                            content=(
+                                f"Error: no callable named {call.name!r} is available. "
+                                f"Available callables: {available}. Call one of those, or answer "
+                                "without tools."
+                            ),
+                        )
+                    )
+                    audit("llm", {"event": "unknown_callable", "requested": call.name, "repair": input_repairs})
+                    continue
                 arguments = dict(call.arguments)
                 if override is not None and override.get("call_id") == call.id:
                     arguments = dict(override["arguments"])
@@ -729,6 +882,31 @@ class Kernel:
                     )
                 if outcome.control is not None:
                     return outcome.control
+                if outcome.invalid_input is not None:
+                    # The schema check runs before the handler, so nothing has
+                    # happened yet and the model can simply call again.
+                    if input_repairs >= self.max_input_repairs:
+                        return failed(
+                            f"{outcome.invalid_input}; the model did not produce valid arguments "
+                            f"within max_input_repairs={self.max_input_repairs}"
+                        )
+                    input_repairs += 1
+                    pending_calls.pop(0)
+                    messages.append(
+                        ChatMessage(
+                            role="tool",
+                            name=call.name,
+                            content=(
+                                f"Error: {outcome.invalid_input}. Call the tool again with "
+                                "arguments that match its input_schema."
+                            ),
+                        )
+                    )
+                    audit(
+                        "llm",
+                        {"event": "invalid_arguments", "requested": call.name, "repair": input_repairs},
+                    )
+                    continue
                 result = outcome.result
                 assert result is not None  # no control means the call produced a result
 
@@ -766,7 +944,7 @@ class Kernel:
                     ChatMessage(
                         role="tool",
                         name=call.name,
-                        content=label_untrusted_content(result.output, source=source),
+                        content=self._tool_message_content(result.output, source=source),
                     )
                 )
             self.state_store.append(task_id, "frame", {"frame": current_frame()})
@@ -864,6 +1042,10 @@ class Kernel:
         # A rollback target for this step, before it can leave a mark (F-RECOV-04).
         self.state_store.checkpoint(run.task_id, f"before:{call_id}")
         entry = run.recovery_state.setdefault(call_id, {"attempts": 0, "tried": []})
+        # Recovery can substitute a stand-in tool after the original already
+        # ran, so "nothing happened yet" only holds until this call produces
+        # its first result. After that a schema failure is a real failure.
+        results_before = len(run.tool_results)
         while True:
             try:
                 result = self.tool_runtime.execute(tool, arguments, run.context)
@@ -907,11 +1089,17 @@ class Kernel:
                     )
                 )
             except ToolInputError as exc:
+                # A SecretRef that cannot be materialized is not a mistake the
+                # model can correct, and the resolver names the backing
+                # variable -- neither belongs in the conversation.
+                repairable = not isinstance(exc, SecretResolutionError) and len(run.tool_results) == results_before
                 failure = self.recovery.classify_validation(tool.metadata, str(exc))
-                audit("recover", {"failure": failure.to_dict(), "action": "fail"})
+                audit("recover", {"failure": failure.to_dict(), "action": "repair" if repairable else "fail"})
                 audit("execute", {"tool": label, "status": "invalid_input", "error": str(exc)})
                 if not abort_on_failure:
                     return _CallOutcome(failure=failure)
+                if repairable:
+                    return _CallOutcome(invalid_input=str(exc), tool=tool)
                 return _CallOutcome(
                     control=self._finish(
                         run.state,
@@ -1435,6 +1623,12 @@ class Kernel:
         """Turn a completed plan into a final answer."""
 
         messages = list(compiled.messages)
+        # The step results are handed over as one user turn, not as ``tool``
+        # messages: nothing in this conversation ever requested a tool call, and
+        # a tool message without the assistant tool_call it answers is a
+        # malformed request that both the OpenAI and Anthropic APIs reject --
+        # which used to make every plan run fall back to the canned summary.
+        sections: list[str] = []
         for step in plan.steps:
             if step.status != "completed" or not step.result:
                 continue
@@ -1452,11 +1646,18 @@ class Kernel:
                         "findings": [finding.to_dict() for finding in findings],
                     },
                 )
+            sections.append(
+                f"Result of step {step.id} ({step.resource_id}):\n"
+                + self._tool_message_content(output, source=source)
+            )
+        if sections:
             messages.append(
                 ChatMessage(
-                    role="tool",
-                    name=step.resource_id,
-                    content=label_untrusted_content(output, source=source),
+                    role="user",
+                    content=(
+                        "The plan for the goal above has finished. Answer the goal using these "
+                        "step results.\n\n" + "\n\n".join(sections)
+                    ),
                 )
             )
         output = ""
@@ -1726,8 +1927,13 @@ class Kernel:
             f"side_effect={metadata.side_effect}, trust_level={metadata.trust_level}, "
             f"cost_estimate={metadata.cost_estimate:g}"
         )
+        review: dict[str, Any] = dict(decision) if decision else {}
         if always_confirm:
             impact += "; the HITL policy always confirms this resource"
+            # Recorded on the request, not only in the prose, so every pause
+            # built this way gets the right remedy without its call site
+            # having to remember to pass one.
+            review["always_confirm"] = True
         findings = decision.get("risk_findings", ()) if decision else ()
         if findings:
             messages = [str(item.get("message", "")) for item in findings if isinstance(item, Mapping)]
@@ -1751,8 +1957,40 @@ class Kernel:
             recommendation=recommendation,
             resource=metadata.identity,
             arguments=review_arguments,
-            decision=decision,
+            decision=review or None,
         )
+
+    def _pause_remedy(self, request: HitlRequest) -> str:
+        """The sentence that tells an operator how to actually clear this pause.
+
+        The remedies are not interchangeable. A blanket
+        ``PolicyContext(human_approved=True)`` clears a side-effect
+        escalation, but deliberately does not clear a safety finding or an
+        "always confirm" rule -- both are scoped to the exact call a person
+        was shown. Naming the wrong one sends people round a loop that cannot
+        terminate, which is what the old fixed wording did.
+        """
+
+        approve = "Answer with Kernel.resume(task_id, HitlResponse(kind='approve'))"
+        decision = request.decision or {}
+        if "recovery" in decision:
+            return f"{approve} to give the step a fresh retry budget, or kind='reject' to end the task"
+        if decision.get("always_confirm"):
+            return (
+                f"{approve}; an always-confirm rule is answered per resource, so "
+                "PolicyContext(human_approved=True) does not clear it"
+            )
+        if decision.get("approval_token"):
+            return (
+                f"{approve}; the approval is scoped to the exact call under review, so "
+                "PolicyContext(human_approved=True) does not clear this one"
+            )
+        if request.stage == "selection":
+            return (
+                f"{approve} once the missing permissions are granted, or re-run with "
+                "PolicyContext(granted_permissions=...) / --granted-permission"
+            )
+        return f"{approve}, or re-run with PolicyContext(human_approved=True) after a human review"
 
     def _pause(
         self,
@@ -1761,6 +1999,7 @@ class Kernel:
         request: HitlRequest,
         *,
         detail: str,
+        remedy: str | None = None,
         frame: Mapping[str, Any] | None = None,
         tool_results: Iterable[ToolResult] = (),
         agent_results: Iterable[AgentResult] | None = None,
@@ -1774,10 +2013,7 @@ class Kernel:
             if agent_results is not None
             else _stored_agent_results(self.state_store.load(state.task_id))
         )
-        detail = (
-            f"{detail}. Answer with Kernel.resume(task_id, HitlResponse(kind='approve')), "
-            "or re-run with PolicyContext(human_approved=True) after a human review"
-        )
+        detail = f"{detail}. {remedy or self._pause_remedy(request)}"
         payload: dict[str, Any] = {"request": request.to_dict(), "detail": detail}
         if frame is not None:
             payload["frame"] = dict(frame)

@@ -285,6 +285,9 @@ class KernelCompilerIntegrationTests(unittest.TestCase):
             llm,
             tool_implementations={"tool.large": lambda: calls.append(True)},
             context_token_budget=base.estimated_tokens + 5,
+            # This test is about the compiler budget, not about giving the
+            # model corrections: fail on the first unavailable call.
+            max_input_repairs=0,
         )
 
         result = kernel.run_goal(goal)
