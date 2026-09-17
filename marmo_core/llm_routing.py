@@ -22,6 +22,12 @@ All accept an injectable ``cache`` mapping so benchmark runs are
 reproducible and re-runs cost nothing; on any LLM failure the retrievers
 degrade to the unmodified query / inner ranking, and the set selector
 abstains, rather than failing the search.
+
+That degradation is deliberate but never silent: every failure is reported
+through the ``marmo_core.llm_routing`` logger and recorded on the object as
+``failures`` (a count) and ``last_failure`` (the exception), so a run that
+quietly fell back to plain lexical retrieval is visible rather than
+indistinguishable from a successful one.
 """
 
 from __future__ import annotations
@@ -30,6 +36,7 @@ from dataclasses import replace
 from typing import MutableMapping
 import hashlib
 import json
+import logging
 import re
 
 from .llm import ChatMessage, LLMProvider
@@ -59,8 +66,39 @@ _RERANK_SYSTEM = (
 
 _DESCRIPTION_LIMIT = 240
 
+_LOGGER = logging.getLogger(__name__)
 
-class HydeRetriever(Retriever):
+
+class _LLMFailureTracker:
+    """Failure bookkeeping shared by the LLM-assisted layers.
+
+    The first failure of an instance is logged at WARNING with the exception
+    type and message; later ones drop to DEBUG. One line per failure would mean
+    one line per uncached query against a provider that is down — loud enough to
+    be ignored — while the first line is what tells a user that ``--retriever
+    hyde`` is silently behaving like the plain lexical retriever.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.failures = 0
+        self.last_failure: Exception | None = None
+
+    def _record_failure(self, operation: str, error: Exception) -> None:
+        self.failures += 1
+        self.last_failure = error
+        log = _LOGGER.warning if self.failures == 1 else _LOGGER.debug
+        log(
+            "%s: %s failed (%s: %s); degrading gracefully (failure %d for this instance)",
+            type(self).__name__,
+            operation,
+            type(error).__name__,
+            error,
+            self.failures,
+        )
+
+
+class HydeRetriever(_LLMFailureTracker, Retriever):
     """Rewrite the task with one LLM call, then delegate to an inner retriever."""
 
     def __init__(
@@ -70,10 +108,10 @@ class HydeRetriever(Retriever):
         *,
         cache: MutableMapping[str, str] | None = None,
     ) -> None:
+        super().__init__()
         self.llm = llm
         self.inner = inner
         self.cache = cache if cache is not None else {}
-        self.failures = 0
 
     def search(self, registry: ResourceRegistry, query: SearchQuery) -> list[SearchResult]:
         task = query.task.strip()
@@ -92,15 +130,15 @@ class HydeRetriever(Retriever):
                     ]
                 )
                 cached = response.content.strip()
-            except Exception:
-                self.failures += 1
+            except Exception as error:
+                self._record_failure("HyDE query rewrite", error)
                 cached = ""
             self.cache[task] = cached
         # Keep the original wording so direct-vocabulary matches never regress.
         return f"{task}\n{cached}" if cached else task
 
 
-class LLMRerankRetriever(Retriever):
+class LLMRerankRetriever(_LLMFailureTracker, Retriever):
     """Re-order an inner retriever's candidates with one LLM call.
 
     The reranker only permutes: ids named by the LLM move to the front in
@@ -119,12 +157,12 @@ class LLMRerankRetriever(Retriever):
         rerank_limit: int = 10,
         cache: MutableMapping[str, str] | None = None,
     ) -> None:
+        super().__init__()
         self.llm = llm
         self.inner = inner
         self.rerank_pool = max(1, rerank_pool)
         self.rerank_limit = max(1, rerank_limit)
         self.cache = cache if cache is not None else {}
-        self.failures = 0
 
     def search(self, registry: ResourceRegistry, query: SearchQuery) -> list[SearchResult]:
         task = query.task.strip()
@@ -160,8 +198,8 @@ class LLMRerankRetriever(Retriever):
                     ]
                 )
                 cached = response.content
-            except Exception:
-                self.failures += 1
+            except Exception as error:
+                self._record_failure("candidate rerank", error)
                 cached = ""
             self.cache[key] = cached
         return _extract_ids(cached, ids)
@@ -216,7 +254,7 @@ _SET_SELECT_SYSTEM = (
 )
 
 
-class LLMSetSelector(SetSelector):
+class LLMSetSelector(_LLMFailureTracker, SetSelector):
     """案C applied to the second layer: one LLM call picks the resource set.
 
     The comparison target for 案H's constrained solvers (§15.3). The LLM is
@@ -239,9 +277,9 @@ class LLMSetSelector(SetSelector):
         *,
         cache: MutableMapping[str, str] | None = None,
     ) -> None:
+        super().__init__()
         self.llm = llm
         self.cache = cache if cache is not None else {}
-        self.failures = 0
 
     def select(
         self, results: list[SearchResult], *, context: SelectionContext | None = None
@@ -293,8 +331,8 @@ class LLMSetSelector(SetSelector):
                     ]
                 )
                 cached = response.content
-            except Exception:
-                self.failures += 1
+            except Exception as error:
+                self._record_failure("set selection", error)
                 cached = ""
             self.cache[key] = cached
         if not cached:

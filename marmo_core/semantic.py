@@ -23,7 +23,7 @@ import urllib.error
 import urllib.request
 
 from ._version import __version__
-from .environment import load_local_dotenv, required_environment
+from .environment import load_local_dotenv, optional_environment, required_environment
 from .errors import ProviderError, ProviderHTTPError
 from .models import SearchQuery, SearchResult
 from .registry import ResourceRegistry
@@ -34,12 +34,22 @@ from .retriever import (
     _resource_search_text,
     _tokens,
 )
+from .secrets import redact_credentials
 
 _EMBED_TEXT_LIMIT = 4000
 _DEFAULT_BATCH_SIZE = 64
 
 USER_AGENT = f"marmo-core/{__version__}"
 
+# Lives here rather than in ``providers`` because this module is imported *by*
+# ``providers``; both OpenAI-compatible clients resolve their endpoint the same
+# way, so the literal must have exactly one home.
+DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
+
+MISSING_API_KEY_HINT = (
+    "no API key was sent: {variable} is empty (unset in the environment and .env) — "
+    "set it, or point the provider at a server that needs no key"
+)
 
 class EmbeddingProvider(ABC):
     """Text embedding interface. Implementations are swappable plugins."""
@@ -83,6 +93,12 @@ class OpenAICompatibleEmbeddingProvider(EmbeddingProvider):
     Requests go through ``urllib``. The ``transport`` argument accepts a
     ``(url, payload, headers, timeout) -> dict`` callable so tests can run
     offline.
+
+    ``base_url`` resolves exactly like ``OpenAICompatibleLLMProvider``'s:
+    the explicit argument wins, then ``OPENAI_BASE_URL`` from the environment
+    or ``.env``, then the OpenAI endpoint. Defaulting to OpenAI regardless of
+    the configured endpoint would send a non-OpenAI key (Groq, vLLM, an
+    on-prem gateway) to ``api.openai.com``.
     """
 
     def __init__(
@@ -90,15 +106,17 @@ class OpenAICompatibleEmbeddingProvider(EmbeddingProvider):
         model: str | None = None,
         *,
         api_key: str | None = None,
-        base_url: str = "https://api.openai.com/v1",
+        base_url: str | None = None,
         timeout: float = 30.0,
         batch_size: int = _DEFAULT_BATCH_SIZE,
         transport: Callable[[str, dict, dict, float], dict] | None = None,
     ) -> None:
         self.model = model if model is not None else required_environment("OPENAI_EMBEDDING_MODEL")
-        if api_key is None:
+        if api_key is None or base_url is None:
             load_local_dotenv()
         self.api_key = api_key if api_key is not None else os.environ.get("OPENAI_API_KEY", "")
+        if base_url is None:
+            base_url = optional_environment("OPENAI_BASE_URL") or DEFAULT_OPENAI_BASE_URL
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.batch_size = max(1, batch_size)
@@ -112,7 +130,10 @@ class OpenAICompatibleEmbeddingProvider(EmbeddingProvider):
             headers = {"Content-Type": "application/json"}
             if self.api_key:
                 headers["Authorization"] = f"Bearer {self.api_key}"
-            response = self.transport(f"{self.base_url}/embeddings", payload, headers, self.timeout)
+            try:
+                response = self.transport(f"{self.base_url}/embeddings", payload, headers, self.timeout)
+            except ProviderHTTPError as error:
+                raise with_missing_api_key_hint(error, self.api_key) from None
             data = response.get("data")
             if not isinstance(data, list) or len(data) != len(batch):
                 raise ValueError("embedding endpoint returned an unexpected payload shape")
@@ -243,16 +264,41 @@ def _post_json(url: str, payload: dict, headers: dict, timeout: float) -> dict:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
+        # Error bodies echo the rejected credential (OpenAI's 401 returns a
+        # partially masked key) and the CLI prints them to stderr, so redact
+        # at this boundary — every caller of both providers benefits (F-SEC-06).
+        body = redact_credentials(exc.read().decode("utf-8", errors="replace"))
         exc.close()
+        safe_url = redact_credentials(url)
         raise ProviderHTTPError(
-            message=f"HTTP {exc.code} from {url}: {provider_error_message(body) or exc.reason}",
+            message=f"HTTP {exc.code} from {safe_url}: {provider_error_message(body) or exc.reason}",
             status=int(exc.code),
             body=body,
-            url=url,
+            url=safe_url,
         ) from None
     except urllib.error.URLError as exc:
-        raise ProviderError(message=f"cannot reach {url}: {exc.reason}") from None
+        raise ProviderError(message=f"cannot reach {redact_credentials(url)}: {exc.reason}") from None
+
+
+def with_missing_api_key_hint(
+    error: ProviderHTTPError, api_key: str, variable: str = "OPENAI_API_KEY"
+) -> ProviderHTTPError:
+    """Explain an auth rejection that an unset API key accounts for.
+
+    Sending no ``Authorization`` header is deliberate (local servers such as
+    Ollama and vLLM need no key), so an empty key is never an error by itself.
+    It only becomes the likely explanation once the server answers 401/403, and
+    the server's own status and message are kept alongside the hint.
+    """
+
+    if api_key or error.status not in (401, 403):
+        return error
+    return ProviderHTTPError(
+        message=f"{error.message} ({MISSING_API_KEY_HINT.format(variable=variable)})",
+        status=error.status,
+        body=error.body,
+        url=error.url,
+    )
 
 
 def provider_error_message(body: str) -> str:

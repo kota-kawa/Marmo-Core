@@ -18,6 +18,7 @@ from marmo_core import (
     SearchResult,
     SelectionContext,
 )
+from marmo_core.errors import ProviderHTTPError
 from marmo_core.llm_routing import _extract_ids, _parse_set_reply
 
 
@@ -74,7 +75,8 @@ class HydeRetrieverTests(unittest.TestCase):
                 raise RuntimeError("boom")
 
         retriever = HydeRetriever(FailingLLM(), LexicalRetriever())
-        results = retriever.search(self.registry, SearchQuery(task="build an invoice", top_k=1))
+        with self.assertLogs("marmo_core.llm_routing", "WARNING"):
+            results = retriever.search(self.registry, SearchQuery(task="build an invoice", top_k=1))
         self.assertEqual(results[0].resource.metadata.id, "tool.invoice.builder")
         self.assertEqual(retriever.failures, 1)
 
@@ -99,7 +101,8 @@ class LLMRerankRetrieverTests(unittest.TestCase):
                 raise RuntimeError("boom")
 
         retriever = LLMRerankRetriever(FailingLLM(), LexicalRetriever())
-        results = retriever.search(self.registry, SearchQuery(task="verify report quality", top_k=2))
+        with self.assertLogs("marmo_core.llm_routing", "WARNING"):
+            results = retriever.search(self.registry, SearchQuery(task="verify report quality", top_k=2))
         self.assertEqual(len(results), 2)
         self.assertEqual(retriever.failures, 1)
 
@@ -200,7 +203,8 @@ class LLMSetSelectorTests(unittest.TestCase):
                 raise RuntimeError("api down")
 
         selector = LLMSetSelector(FailingLLM())
-        selection = selector.select([_candidate("tool.a")], context=SelectionContext(task="t"))
+        with self.assertLogs("marmo_core.llm_routing", "WARNING"):
+            selection = selector.select([_candidate("tool.a")], context=SelectionContext(task="t"))
         self.assertEqual(selection.status, "abstain")
         self.assertEqual(selector.failures, 1)
 
@@ -271,6 +275,71 @@ class ParseSetReplyTests(unittest.TestCase):
 
     def test_garbage_returns_none(self) -> None:
         self.assertIsNone(_parse_set_reply("no ids here", ["a", "b"]))
+
+
+class _FailingLLM(MockLLMProvider):
+    """An LLM that is down, the way a misconfigured real provider is."""
+
+    def complete(self, messages, tools=()):
+        raise ProviderHTTPError(
+            message="HTTP 400 from https://api.groq.com/openai/v1/chat/completions: unsupported value",
+            status=400,
+            body="{}",
+            url="https://api.groq.com/openai/v1/chat/completions",
+        )
+
+
+class FailureObservabilityTests(unittest.TestCase):
+    """Degradation stays graceful, but must never be silent."""
+
+    def setUp(self) -> None:
+        self.registry = ResourceRegistry()
+        self.registry.add(_tool("tool.alpha", "Verify report quality and structure."))
+        self.registry.add(_tool("tool.beta", "Verify report quality and formatting details."))
+
+    def test_hyde_warns_and_records_the_exception(self) -> None:
+        retriever = HydeRetriever(_FailingLLM(), LexicalRetriever())
+        with self.assertLogs("marmo_core.llm_routing", level="WARNING") as logs:
+            retriever.search(self.registry, SearchQuery(task="verify report quality", top_k=1))
+        self.assertEqual(len(logs.output), 1)
+        self.assertIn("HydeRetriever", logs.output[0])
+        self.assertIn("ProviderHTTPError", logs.output[0])
+        self.assertIn("unsupported value", logs.output[0])
+        self.assertEqual(retriever.failures, 1)
+        self.assertIsInstance(retriever.last_failure, ProviderHTTPError)
+
+    def test_rerank_warns_and_records_the_exception(self) -> None:
+        retriever = LLMRerankRetriever(_FailingLLM(), LexicalRetriever())
+        with self.assertLogs("marmo_core.llm_routing", level="WARNING") as logs:
+            results = retriever.search(self.registry, SearchQuery(task="verify report quality", top_k=2))
+        self.assertEqual(len(results), 2)  # still degrades to the inner ranking
+        self.assertIn("LLMRerankRetriever", logs.output[0])
+        self.assertIsInstance(retriever.last_failure, ProviderHTTPError)
+
+    def test_set_selector_warns_and_records_the_exception(self) -> None:
+        selector = LLMSetSelector(_FailingLLM())
+        with self.assertLogs("marmo_core.llm_routing", level="WARNING") as logs:
+            selection = selector.select([_candidate("tool.a")], context=SelectionContext(task="t"))
+        self.assertEqual(selection.status, "abstain")
+        self.assertIn("LLMSetSelector", logs.output[0])
+        self.assertIsInstance(selector.last_failure, ProviderHTTPError)
+
+    def test_only_the_first_failure_warns(self) -> None:
+        retriever = HydeRetriever(_FailingLLM(), LexicalRetriever())
+        with self.assertLogs("marmo_core.llm_routing", level="DEBUG") as logs:
+            for task in ("verify report quality", "check formatting", "structure the report"):
+                retriever.search(self.registry, SearchQuery(task=task, top_k=1))
+        levels = [record.levelname for record in logs.records]
+        self.assertEqual(levels, ["WARNING", "DEBUG", "DEBUG"])
+        self.assertEqual(retriever.failures, 3)
+
+    def test_a_healthy_run_logs_nothing(self) -> None:
+        llm = MockLLMProvider(script=[LLMResponse(content="report quality checks")])
+        retriever = HydeRetriever(llm, LexicalRetriever())
+        with self.assertNoLogs("marmo_core.llm_routing", level="DEBUG"):
+            retriever.search(self.registry, SearchQuery(task="verify report quality", top_k=1))
+        self.assertEqual(retriever.failures, 0)
+        self.assertIsNone(retriever.last_failure)
 
 
 if __name__ == "__main__":

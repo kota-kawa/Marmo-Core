@@ -9,7 +9,9 @@ vendor SDK behind the same ``LLMProvider`` interface as an optional extra.
 Both providers accept a ``transport`` callable ``(url, payload, headers,
 timeout) -> dict`` so tests run offline. API keys come from the environment
 (``ANTHROPIC_API_KEY`` / ``OPENAI_API_KEY``) unless passed explicitly; keys
-are held by the provider and never enter prompts, state, or logs (F-SEC-06).
+are held by the provider and never enter prompts, state, or logs (F-SEC-06) —
+error bodies are run through ``redact_credentials`` before they reach an
+exception, because providers echo the rejected key back in 401 responses.
 
 Marmo resource ids such as ``tool.files.read-text`` contain dots, which both
 the OpenAI and Anthropic tool-name grammars reject (``^[a-zA-Z0-9_-]{1,64}$``).
@@ -35,10 +37,9 @@ from .environment import (
 )
 from .errors import ProviderHTTPError
 from .llm import ChatMessage, LLMProvider, LLMResponse, LLMToolSpec, ToolCall
-from .semantic import _post_json
+from .semantic import DEFAULT_OPENAI_BASE_URL, _post_json, with_missing_api_key_hint
 
 ANTHROPIC_VERSION = "2023-06-01"
-DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 
 Transport = Callable[[str, dict, dict, float], dict]
 
@@ -236,14 +237,22 @@ class OpenAICompatibleLLMProvider(LLMProvider):
         url = f"{self.base_url}/chat/completions"
         payload = self.build_request(messages, tools)
         try:
-            response = self.transport(url, payload, headers, self.timeout)
+            response = self._request(url, payload, headers)
         except ProviderHTTPError as exc:
             alternative = _alternative_max_tokens_parameter(exc, self.max_tokens_parameter)
             if alternative is None:
                 raise
             self.max_tokens_parameter = alternative
-            response = self.transport(url, self.build_request(messages, tools), headers, self.timeout)
+            response = self._request(url, self.build_request(messages, tools), headers)
         return self.parse_response(response)
+
+    def _request(self, url: str, payload: dict[str, Any], headers: dict[str, str]) -> dict:
+        try:
+            return self.transport(url, payload, headers, self.timeout)
+        except ProviderHTTPError as exc:
+            # A 401/403 with no key configured is otherwise reported as the
+            # server's bare "Invalid API Key", which hides the actual cause.
+            raise with_missing_api_key_hint(exc, self.api_key) from None
 
     def build_request(self, messages: Sequence[ChatMessage], tools: Sequence[LLMToolSpec]) -> dict[str, Any]:
         payload: dict[str, Any] = {
