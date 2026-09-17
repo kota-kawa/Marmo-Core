@@ -12,6 +12,8 @@ from .models import ResourceDefinition, ResourceMetadata, ResourceStats
 SKILL_MARKDOWN_NAMES = {"skill.md", "SKILL.md"}
 
 _WORD_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
+# Block scalar header: style char plus optional indentation/chomping indicators (``|``, ``>-``, ``|2+`` ...).
+_BLOCK_SCALAR_RE = re.compile(r"^([|>])(?:[1-9][+-]?|[+-][1-9]?)?$")
 _SEMVER_RE = re.compile(
     r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
     r"(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
@@ -23,7 +25,7 @@ def is_skill_markdown(path: Path) -> bool:
     return path.name in SKILL_MARKDOWN_NAMES
 
 
-def load_markdown_skill(path: Path, root: Path | None = None) -> ResourceDefinition:
+def load_markdown_skill(path: Path, root: Path | None = None, *, namespace: str | None = None) -> ResourceDefinition:
     content = path.read_text(encoding="utf-8")
     frontmatter, body = parse_frontmatter(content)
     skill_name = _clean_str(frontmatter.get("name")) or _humanize(path.parent.name)
@@ -32,7 +34,7 @@ def load_markdown_skill(path: Path, root: Path | None = None) -> ResourceDefinit
     version = original_version if _SEMVER_RE.match(original_version) else "1.0.0"
     tags = _derive_tags(path=path, name=skill_name, description=description, frontmatter=frontmatter)
     capabilities = _derive_capabilities(skill_name, description, tags)
-    resource_id = _clean_str(frontmatter.get("id")) or _resource_id_from_path(path, root)
+    resource_id = _clean_str(frontmatter.get("id")) or _resource_id_from_path(path, root, namespace=namespace)
     metadata = ResourceMetadata(
         id=resource_id,
         kind="skill",
@@ -88,20 +90,27 @@ def _parse_simple_yaml(header: str) -> dict[str, Any]:
     data: dict[str, Any] = {}
     current_key: str | None = None
     current_values: list[str] = []
+    current_style: str = ""
 
     def commit() -> None:
-        nonlocal current_key, current_values
+        nonlocal current_key, current_values, current_style
         if current_key is not None and current_values:
-            data[current_key] = " ".join(value.strip() for value in current_values if value.strip()).strip()
+            # Literal blocks keep line breaks; folded and plain continuations join with a space.
+            separator = "\n" if current_style == "|" else " "
+            data[current_key] = separator.join(value.strip() for value in current_values if value.strip()).strip()
         current_key = None
         current_values = []
+        current_style = ""
 
     for raw_line in header.splitlines():
-        if not raw_line.strip() or raw_line.lstrip().startswith("#"):
+        # A "#" line indented under a block scalar is content, not a comment.
+        in_block = bool(current_style) and raw_line[:1].isspace()
+        if not raw_line.strip() or (not in_block and raw_line.lstrip().startswith("#")):
             continue
         if raw_line[:1].isspace() and current_key is not None:
             stripped = raw_line.strip()
-            if stripped.startswith("- "):
+            # Inside a block scalar every indented line is literal text, including "- " and "key: value" lines.
+            if not current_style and stripped.startswith("- "):
                 existing = data.get(current_key)
                 if not isinstance(existing, list):
                     data[current_key] = []
@@ -117,10 +126,12 @@ def _parse_simple_yaml(header: str) -> dict[str, Any]:
         value = value.strip()
         if not key:
             continue
-        if value in {"|", ">"}:
+        block_scalar = _BLOCK_SCALAR_RE.match(value)
+        if block_scalar:
             data[key] = ""
             current_key = key
             current_values = []
+            current_style = block_scalar.group(1)
         elif value:
             data[key] = _parse_scalar_or_list(value)
         else:
@@ -175,7 +186,7 @@ def _derive_capabilities(name: str, description: str, tags: list[str]) -> list[s
     return capabilities
 
 
-def _resource_id_from_path(path: Path, root: Path | None) -> str:
+def _resource_id_from_path(path: Path, root: Path | None, *, namespace: str | None = None) -> str:
     try:
         relative = path.parent.resolve().relative_to((root or Path.cwd()).resolve())
         parts = _strip_resource_prefix(relative.parts)
@@ -185,6 +196,10 @@ def _resource_id_from_path(path: Path, root: Path | None) -> str:
     normalized = re.sub(r"[^A-Za-z0-9_.-]+", "-", slug).strip("-._").lower()
     if not normalized:
         normalized = re.sub(r"[^A-Za-z0-9_.-]+", "-", path.parent.name).strip("-._").lower()
+    # Package files derive their id inside the owning package namespace so the namespace check passes without an
+    # explicit ``id:`` in the frontmatter.
+    if namespace:
+        return f"skill.{namespace}.{normalized}"
     return f"skill.{normalized}"
 
 
