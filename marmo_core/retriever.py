@@ -13,7 +13,12 @@ Two properties of that component are load-bearing for everything downstream:
   depend on what else the query happened to match, so a threshold means the
   same thing for every query. Normalizing by the best score in the result set
   made the top hit of *any* query look like a strong match, which left the set
-  selector's abstain gate (§15.6) with nothing to threshold on.
+  selector's abstain gate (§15.6) with nothing to threshold on. The yardstick
+  is a per-query constant, so it would preserve the ranking exactly were it
+  not for the clamp at 1.0: documents that beat the reference tie there, and
+  on the 120-scenario benchmark that costs two scenarios at rank 1 (hit@1
+  66.7% -> 65.0%, MRR 0.702 -> 0.694) while hit@5 and recall@20/@50 are
+  unchanged. That is the price of a gate that can say no.
 - **It is field-weighted.** Metadata a resource declares about itself (id,
   name, description, capabilities, tags) outranks the body of an attached
   document, so a 7,000-token SKILL.md cannot beat a purpose-built Tool on
@@ -531,13 +536,12 @@ def _relevance(
     if not task_token_set:
         return 0.0
     coverage = _field_coverage(task_token_set, head_tokens, doc_tokens)
-    # Against the highest score the query could possibly produce, not against
-    # the best score it happened to produce here: a query the catalog cannot
-    # serve has to be allowed to score low, or no threshold downstream means
-    # anything. Every candidate of one query is divided by the same constant,
-    # so the ranking within that query is untouched -- on the 120-scenario
-    # benchmark, hit@1 / hit@5 / MRR / recall@50 are identical to the
-    # rank-normalized version, per style as well as overall.
+    # Against a document that answers the query, not against the best score
+    # this query happened to produce: a query the catalog cannot serve has to
+    # be allowed to score low, or no threshold downstream means anything.
+    # Every candidate of one query is divided by the same constant, so the
+    # only ranking the change moves is between documents that beat the
+    # reference and tie at the clamp -- two scenarios of 120 at rank 1.
     bm25_norm = min(1.0, bm25_score / reference_bm25) if reference_bm25 > 0 else 0.0
     # BM25 carries term rarity (a match on "okr" outranks matches on common
     # words); coverage keeps multi-facet queries honest.

@@ -102,11 +102,18 @@ class CapabilityGraphRetriever(Retriever):
     own text relevance (``max`` merge) and never exceeds the seed's.
 
     ``min_seed_token_matches`` demands absolute evidence before a seed may
-    expand: BM25 relevance is rank-normalized, so for an off-catalog task
-    even a one-token coincidence ("full" matching "full workbench tool")
-    ranks ~0.7 — without this guard such a seed pulls its dependency into
-    the pool, completes a closure that was rightly incomplete, and flips a
-    correct abstain into a wrong selection. A seed with fewer token matches
+    expand. It was written when BM25 relevance was rank-normalized, so for
+    an off-catalog task even a one-token coincidence ("full" matching "full
+    workbench tool") ranked ~0.7 — without the guard such a seed pulled its
+    dependency into the pool, completed a closure that was rightly
+    incomplete, and flipped a correct abstain into a wrong selection. The
+    relevance component is absolute now and the same coincidence scores
+    around 0.1, so this is a second line of defence rather than the only
+    one; it stays because it also bounds seeds that arrive on embedding
+    similarity alone. ``seed_min_relevance`` reads on that absolute scale
+    too and has not been re-swept against it: the set benchmark is
+    unchanged at the current value, but a catalog with a different
+    vocabulary should measure its own. A seed with fewer token matches
     still qualifies when its (absolute) embedding similarity reaches
     ``min_seed_semantic``, so purely semantic paraphrase seeds from a
     hybrid base keep their expansion power.

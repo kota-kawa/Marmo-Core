@@ -18,9 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   skill, and the kernel activated it. Relevance is now measured against a
   document that names every query term once — 1.0 reads as "covers the whole
   query", and that goal scores 0.15. The yardstick is a per-query constant, so
-  ranking inside a query is untouched: hit@1, hit@5, MRR and recall@50 on the
-  120-scenario routing benchmark are identical before and after the change of
-  scale, per wording style as well as overall.
+  the only ranking it moves is between documents that beat the reference and
+  tie at the clamp: measured against the same code with the old divisor,
+  hit@5 and recall@20/@50 on the 120-scenario routing benchmark are identical
+  and hit@1 costs two scenarios (66.7% -> 65.0%, MRR 0.702 -> 0.694). A gate
+  that can distinguish a real match from the least-bad one is worth that.
 - Retrieval indexes a resource's declared metadata and an attached SKILL.md
   body as two BM25F fields, with the body discounted (`BODY_FIELD_WEIGHT`).
   Indexing the body at full weight let a long document win on words its
@@ -28,8 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   XXE-scanner skill (7,551 indexed tokens) scored 0.79 against 0.58 for the
   file-reading Tool whose description is that sentence. The Tool now ranks
   first of all 1,030 resources, and on the routing benchmark hit@1 rises
-  61.7% → 65.0% (paraphrased wording 31% → 46%, abstract 48% → 55%) with
-  recall@20 84% → 88%. With a model-backed hybrid retriever at the library's
+  61.7% → 65.0% net of the two scenarios the clamp above costs (paraphrased
+  wording 31% → 46%, abstract 48% → 55%) with recall@20 84% → 88%. With a
+  model-backed hybrid retriever at the library's
   default `semantic_weight`, hit@1 rises 67% → 70% (bge-small) and
   68% → 73% (OpenAI embeddings).
 - Writing execution stats back to the registry no longer rebuilds the inverted

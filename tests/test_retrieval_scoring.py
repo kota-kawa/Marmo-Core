@@ -18,6 +18,8 @@ from marmo_core import (
     RuleBasedSetSelector,
 )
 from marmo_core.evaluator import ExecutionEvaluator
+from marmo_core.graph_routing import CapabilityGraphRetriever
+from marmo_core.hierarchy import EmbeddingClusterGrouping, HierarchicalRetriever
 
 
 def _resource(resource_id: str, kind: str, description: str, **overrides) -> ResourceDefinition:
@@ -261,6 +263,117 @@ class RegistryCountTests(unittest.TestCase):
         self.assertEqual(registry.count("tool"), 1)
         registry.enable("tool.b")
         self.assertEqual(registry.count("tool"), 2)
+
+
+class KernelRelevanceFloorTests(unittest.TestCase):
+    def _registry(self) -> ResourceRegistry:
+        registry = ResourceRegistry()
+        registry.add(_resource("tool.invoice", "tool", "Generate a monthly invoice from billing records."))
+        registry.add(_resource("tool.deploy", "tool", "Deploy the release to the production cluster."))
+        registry.add(_resource("skill.chart", "skill", "Draw a bar chart from a table of numbers."))
+        return registry
+
+    def _selected(self, registry: ResourceRegistry, goal: str, floor: float) -> list[str]:
+        kernel = Kernel(
+            registry,
+            MockLLMProvider(),
+            policy_context=PolicyContext(),
+            min_relevance=floor,
+        )
+        kernel.run_goal(goal)
+        for record in kernel.audit_log.records:
+            if record.kind == "retrieve":
+                return list(record.payload.get("selected", []))
+        return []
+
+    def test_kernel_passes_its_floor_to_the_selector(self) -> None:
+        registry = self._registry()
+        goal = "chart a course across the north atlantic by sextant"
+
+        self.assertTrue(self._selected(registry, goal, 0.0))
+        self.assertEqual(self._selected(registry, goal, 0.95), [])
+
+    def test_a_goal_the_catalog_serves_survives_the_floor(self) -> None:
+        registry = self._registry()
+        selected = self._selected(registry, "generate a monthly invoice from billing records", 0.5)
+
+        self.assertIn("tool.invoice@1.0.0", selected)
+
+
+class DerivedIndexCacheTests(unittest.TestCase):
+    """The hierarchical router and the capability graph key on content too."""
+
+    def _registry(self) -> ResourceRegistry:
+        registry = ResourceRegistry()
+        for index in range(6):
+            registry.add(
+                _resource(
+                    f"tool.invoice{index}",
+                    "tool",
+                    "Generate a monthly invoice from billing records.",
+                    dependencies=["skill.billing"] if index == 0 else [],
+                )
+            )
+        registry.add(_resource("skill.billing", "skill", "How billing records are laid out."))
+        return registry
+
+    def _write_stats(self, registry: ResourceRegistry) -> None:
+        evaluator = ExecutionEvaluator()
+        evaluator.observe_task("invoice", ["tool.invoice0"], success=True)
+        self.assertEqual(evaluator.apply(registry), 1)
+
+    def test_stats_feedback_does_not_re_cluster_the_hierarchy(self) -> None:
+        registry = self._registry()
+        provider = _CountingEmbeddings()
+        retriever = HierarchicalRetriever(
+            LexicalRetriever(),
+            EmbeddingClusterGrouping(provider, clusters=2),
+            embedding_provider=provider,
+        )
+        query = SearchQuery(task="generate a monthly invoice", top_k=3)
+
+        retriever.search(registry, query)
+        after_first = provider.embedded_texts
+        self._write_stats(registry)
+        retriever.search(registry, query)
+
+        # Only the query itself may be embedded again; re-clustering would
+        # re-embed every resource, which is what the revision key used to do.
+        self.assertLessEqual(provider.embedded_texts - after_first, 1)
+
+    def test_hierarchy_routes_on_current_definitions_after_a_stats_write(self) -> None:
+        registry = self._registry()
+        provider = _CountingEmbeddings()
+        retriever = HierarchicalRetriever(
+            LexicalRetriever(),
+            EmbeddingClusterGrouping(provider, clusters=2),
+            embedding_provider=provider,
+        )
+        query = SearchQuery(task="generate a monthly invoice", top_k=3)
+        retriever.search(registry, query)
+        self._write_stats(registry)
+
+        results = retriever.search(registry, query)
+        stats = {
+            result.resource.metadata.id: result.resource.metadata.stats.usage_count
+            for result in results
+        }
+
+        self.assertEqual(stats.get("tool.invoice0"), 1)
+
+    def test_stats_feedback_does_not_rebuild_the_capability_graph(self) -> None:
+        registry = self._registry()
+        retriever = CapabilityGraphRetriever(LexicalRetriever())
+        query = SearchQuery(task="generate a monthly invoice", top_k=3)
+
+        retriever.search(registry, query)
+        graph = retriever._graph_for(registry)
+        self._write_stats(registry)
+        retriever.search(registry, query)
+
+        self.assertIs(retriever._graph_for(registry), graph)
+        registry.replace(_resource("skill.billing", "skill", "A different description entirely."))
+        self.assertIsNot(retriever._graph_for(registry), graph)
 
 
 class CandidatePoolSearchBudgetTests(unittest.TestCase):
