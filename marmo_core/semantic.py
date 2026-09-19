@@ -12,6 +12,7 @@ form.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections import OrderedDict
 from dataclasses import replace
 from typing import Callable, Sequence
 from weakref import WeakKeyDictionary
@@ -152,7 +153,12 @@ class HybridRetriever(Retriever):
     every candidate is then blended: ``(1 - weight) * lexical + weight *
     semantic``. All other composite components (permissions, trust, side
     effects, cost, success history) are unchanged, so policy-aware ranking is
-    preserved. Document embeddings are cached per registry revision.
+    preserved. Document embeddings are cached per registry *content* revision
+    -- writing execution stats back does not change a single character of the
+    embedded text, and re-embedding the catalog for it means re-billing every
+    resource after every task. Query vectors are cached too, bounded, because
+    one goal fans out into several searches (the kernel tops up starved kinds)
+    that all embed the same task string.
     """
 
     def __init__(
@@ -162,6 +168,7 @@ class HybridRetriever(Retriever):
         lexical: LexicalRetriever | None = None,
         semantic_weight: float = 0.5,
         candidate_pool: int = 50,
+        query_cache_size: int = 128,
     ) -> None:
         if not 0.0 <= semantic_weight <= 1.0:
             raise ValueError("semantic_weight must be between 0.0 and 1.0")
@@ -169,9 +176,11 @@ class HybridRetriever(Retriever):
         self.lexical = lexical or LexicalRetriever()
         self.semantic_weight = semantic_weight
         self.candidate_pool = max(1, candidate_pool)
+        self.query_cache_size = max(0, query_cache_size)
         self._vector_cache: WeakKeyDictionary[ResourceRegistry, tuple[int, dict[str, list[float]]]] = (
             WeakKeyDictionary()
         )
+        self._query_vectors: OrderedDict[str, list[float]] = OrderedDict()
 
     def search(self, registry: ResourceRegistry, query: SearchQuery) -> list[SearchResult]:
         if not query.task.strip() or self.semantic_weight == 0.0:
@@ -184,7 +193,7 @@ class HybridRetriever(Retriever):
         )
         candidates = self.lexical.search(registry, widened)
         vectors = self._vectors_for(registry)
-        query_vector = self.embedding_provider.embed([query.task])[0]
+        query_vector = self._query_vector(query.task)
         semantic_scores = {
             identity: _cosine_01(query_vector, vector) for identity, vector in vectors.items()
         }
@@ -218,19 +227,34 @@ class HybridRetriever(Retriever):
             reverse=True,
         )
         filtered = [result for result in rescored if result.score >= query.min_score]
-        return self.lexical._apply_limits(filtered, query)
+        return self.lexical.apply_limits(filtered, query)
 
     def _vectors_for(self, registry: ResourceRegistry) -> dict[str, list[float]]:
         cached = self._vector_cache.get(registry)
-        revision = registry.revision
-        if cached is not None and cached[0] == revision:
+        content_revision = registry.content_revision
+        if cached is not None and cached[0] == content_revision:
             return cached[1]
         definitions = registry.all()
         texts = [_embedding_text(definition) for definition in definitions]
         embedded = self.embedding_provider.embed(texts)
         vectors = {definition.identity: vector for definition, vector in zip(definitions, embedded)}
-        self._vector_cache[registry] = (revision, vectors)
+        self._vector_cache[registry] = (content_revision, vectors)
         return vectors
+
+    def _query_vector(self, task: str) -> list[float]:
+        """Embed one task string, reusing the last ``query_cache_size`` of them."""
+
+        if self.query_cache_size == 0:
+            return self.embedding_provider.embed([task])[0]
+        cached = self._query_vectors.get(task)
+        if cached is not None:
+            self._query_vectors.move_to_end(task)
+            return cached
+        vector = self.embedding_provider.embed([task])[0]
+        self._query_vectors[task] = vector
+        while len(self._query_vectors) > self.query_cache_size:
+            self._query_vectors.popitem(last=False)
+        return vector
 
 
 def _embedding_text(definition) -> str:

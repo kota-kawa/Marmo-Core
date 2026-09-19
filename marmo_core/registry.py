@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import replace as dataclass_replace
 from typing import Iterable
 
 from .errors import ResourceNotFoundError, ResourceValidationError
-from .models import KINDS, ResourceDefinition, parse_resource_ref
+from .models import KINDS, ResourceDefinition, ResourceStats, parse_resource_ref
 
 
 class ResourceRegistry:
@@ -16,13 +17,29 @@ class ResourceRegistry:
         self._resources: dict[tuple[str, str], ResourceDefinition] = {}
         self._by_id: dict[str, list[ResourceDefinition]] = defaultdict(list)
         self._disabled: set[tuple[str, str]] = set()
+        self._kind_counts: dict[str, int] = defaultdict(int)
         self._revision = 0
+        self._content_revision = 0
 
     @property
     def revision(self) -> int:
-        """Monotonic change counter used to invalidate retrieval indexes."""
+        """Monotonic change counter: any add, replace, disable, or enable."""
 
         return self._revision
+
+    @property
+    def content_revision(self) -> int:
+        """Change counter for the part of a resource retrieval reads.
+
+        Bumped by everything except a replacement that only rewrites
+        ``stats``. Execution feedback (F-REG-05) rewrites ``stats`` on every
+        resource it observed, and keying an inverted index or an embedding
+        cache on ``revision`` therefore threw both away after every task --
+        re-tokenizing the catalog, and re-billing a full embedding pass, for
+        text that had not changed by one character.
+        """
+
+        return self._content_revision
 
     def add(self, definition: ResourceDefinition) -> None:
         issues = definition.validate()
@@ -35,7 +52,9 @@ class ResourceRegistry:
         self._resources[key] = definition
         self._by_id[definition.metadata.id].append(definition)
         self._by_id[definition.metadata.id].sort(key=lambda item: item.metadata.version, reverse=True)
+        self._kind_counts[definition.metadata.kind] += 1
         self._revision += 1
+        self._content_revision += 1
 
     def extend(self, definitions: Iterable[ResourceDefinition]) -> None:
         for definition in definitions:
@@ -45,8 +64,10 @@ class ResourceRegistry:
         """Swap an already-registered id@version for an updated definition.
 
         Used by the Execution Evaluator (F-LOG-08) to write measured stats
-        back onto resources (F-REG-05). The revision counter is bumped so
-        retrieval indexes rebuild — the composite score depends on stats.
+        back onto resources (F-REG-05). ``revision`` always moves, so caches
+        pick up the new objects; ``content_revision`` moves only when the
+        replacement changed something retrieval indexes, which a stats
+        write does not.
         """
 
         issues = definition.validate()
@@ -54,8 +75,12 @@ class ResourceRegistry:
             joined = "\n".join(f"{issue.path}: {issue.message}" for issue in issues)
             raise ResourceValidationError(joined)
         key = (definition.metadata.id, definition.metadata.version)
-        if key not in self._resources:
+        previous = self._resources.get(key)
+        if previous is None:
             raise ResourceNotFoundError(f"resource not found: {definition.identity}")
+        if previous.metadata.kind != definition.metadata.kind and key not in self._disabled:
+            self._kind_counts[previous.metadata.kind] -= 1
+            self._kind_counts[definition.metadata.kind] += 1
         self._resources[key] = definition
         versions = self._by_id[definition.metadata.id]
         for index, existing in enumerate(versions):
@@ -63,6 +88,8 @@ class ResourceRegistry:
                 versions[index] = definition
                 break
         self._revision += 1
+        if not _same_content(previous, definition):
+            self._content_revision += 1
 
     def disable(self, resource_id: str, version: str | None = None) -> None:
         """Keep a resource registered while removing it from use (F-REG-03)."""
@@ -71,7 +98,9 @@ class ResourceRegistry:
         key = (definition.metadata.id, definition.metadata.version)
         if key not in self._disabled:
             self._disabled.add(key)
+            self._kind_counts[definition.metadata.kind] -= 1
             self._revision += 1
+            self._content_revision += 1
 
     def enable(self, resource_id: str, version: str | None = None) -> None:
         """Make a disabled resource available to retrieval and activation again."""
@@ -80,7 +109,9 @@ class ResourceRegistry:
         key = (definition.metadata.id, definition.metadata.version)
         if key in self._disabled:
             self._disabled.remove(key)
+            self._kind_counts[definition.metadata.kind] += 1
             self._revision += 1
+            self._content_revision += 1
 
     def is_enabled(self, resource_id: str, version: str | None = None) -> bool:
         definition = self._resolve(resource_id, version, include_disabled=True)
@@ -168,6 +199,15 @@ class ResourceRegistry:
             raise ResourceNotFoundError(f"resource id is ambiguous, specify version: {resource_id} ({versions})")
         return matches[0]
 
+    def count(self, kind: str) -> int:
+        """Enabled resources of one kind, without materializing the catalog.
+
+        ``list(kinds=(kind,))`` sorts every resource in the registry, which is
+        wasted work for callers that only need to know whether a kind exists.
+        """
+
+        return self._kind_counts.get(kind, 0)
+
     def summary(self) -> dict[str, int]:
         counts = {kind: 0 for kind in KINDS}
         for definition in self.all():
@@ -179,3 +219,23 @@ class ResourceRegistry:
 
     def __len__(self) -> int:
         return len(self._resources)
+
+
+_NO_STATS = ResourceStats()
+
+
+def _same_content(left: ResourceDefinition, right: ResourceDefinition) -> bool:
+    """Do two versions of one resource carry identical searchable content?
+
+    Everything but ``stats``: measured success rate and latency feed the
+    composite score, but not the index, the embeddings, or the capability
+    graph.
+    """
+
+    if left is right:
+        return True
+    if left.extras != right.extras or left.source != right.source:
+        return False
+    return dataclass_replace(left.metadata, stats=_NO_STATS) == dataclass_replace(
+        right.metadata, stats=_NO_STATS
+    )

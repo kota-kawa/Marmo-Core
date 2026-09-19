@@ -289,13 +289,16 @@ class CapabilityGraphRetriever(Retriever):
                 ),
                 reverse=True,
             )
-        return self.lexical._apply_limits(filtered, query)
+        return self.lexical.apply_limits(filtered, query)
 
     def _graph_for(self, registry: ResourceRegistry) -> _MetadataGraph:
+        # Content revision: the graph is built from declared dependencies,
+        # conflicts, and capability namespaces, none of which an execution
+        # stats write touches.
         cached = self._graph_cache.get(registry)
-        revision = registry.revision
-        if cached is not None and cached[0] == revision:
+        content_revision = registry.content_revision
+        if cached is not None and cached[0] == content_revision:
             return cached[1]
         graph = _MetadataGraph(registry, max_namespace_size=self.max_namespace_size)
-        self._graph_cache[registry] = (revision, graph)
+        self._graph_cache[registry] = (content_revision, graph)
         return graph

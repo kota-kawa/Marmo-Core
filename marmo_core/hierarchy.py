@@ -209,9 +209,9 @@ class HierarchicalRetriever(Retriever):
             self.embedding_provider = base.embedding_provider
         else:
             self.embedding_provider = None
-        self._cache: WeakKeyDictionary[ResourceRegistry, tuple[int, _HierarchyState]] = (
-            WeakKeyDictionary()
-        )
+        self._cache: WeakKeyDictionary[
+            ResourceRegistry, tuple[int, int, _HierarchyState]
+        ] = WeakKeyDictionary()
 
     # -- public surface used by benchmarks ------------------------------------
 
@@ -266,12 +266,26 @@ class HierarchicalRetriever(Retriever):
     # -- cached per-registry state ---------------------------------------------
 
     def _state_for(self, registry: ResourceRegistry) -> "_HierarchyState":
+        """Cached partition for this registry, re-clustered only on text changes.
+
+        Grouping, group-level BM25 statistics, and centroids are all derived
+        from resource text, so an execution stats write must not discard them
+        (with an embedding-backed strategy, re-clustering re-embeds the whole
+        catalog). The routed sub-registries do have to be rebuilt from the new
+        definition objects, so ``refresh`` drops those alone.
+        """
+
         cached = self._cache.get(registry)
+        content_revision = registry.content_revision
         revision = registry.revision
-        if cached is not None and cached[0] == revision:
-            return cached[1]
+        if cached is not None and cached[0] == content_revision:
+            state = cached[2]
+            if cached[1] != revision:
+                state.refresh(registry.all())
+                self._cache[registry] = (content_revision, revision, state)
+            return state
         state = _HierarchyState(self.strategy.partition(registry.all()))
-        self._cache[registry] = (revision, state)
+        self._cache[registry] = (content_revision, revision, state)
         return state
 
 
@@ -301,6 +315,22 @@ class _HierarchyState:
                 self._postings[token].append(group)
         self._centroids: dict[int, dict[str, list[float]]] = {}
         self._unions: dict[tuple[str, ...], ResourceRegistry] = {}
+
+    def refresh(self, definitions: list[ResourceDefinition]) -> None:
+        """Adopt replacement definition objects without re-clustering.
+
+        Called only when the registry's indexed text is unchanged, so every
+        member keeps its identity and its group; the token statistics and the
+        centroids stay valid. The routed sub-registries are built from the old
+        objects, so they are dropped and rebuilt on demand.
+        """
+
+        by_identity = {definition.identity: definition for definition in definitions}
+        self.groups = {
+            group: [by_identity.get(member.identity, member) for member in members]
+            for group, members in self.groups.items()
+        }
+        self._unions.clear()
 
     def bm25(self, query_tokens: Sequence[str]) -> dict[str, float]:
         scores: dict[str, float] = defaultdict(float)

@@ -131,7 +131,7 @@ class CrossEncoderRerankRetriever(Retriever):
         )
         ordered = rescored + list(candidates[self.rerank_pool :])
         filtered = [result for result in ordered if result.score >= query.min_score]
-        return self.lexical._apply_limits(filtered, query)
+        return self.lexical.apply_limits(filtered, query)
 
 
 def _inner_lexical(inner: Retriever) -> LexicalRetriever:

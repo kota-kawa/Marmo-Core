@@ -196,6 +196,7 @@ class Kernel:
         session_id: str = "",
         top_k: int = 8,
         set_limits: Mapping[str, int] | None = None,
+        min_relevance: float = 0.0,
         max_tool_calls: int = 5,
         max_input_repairs: int = 2,
         max_tool_output_tokens: int | None = 8000,
@@ -272,6 +273,13 @@ class Kernel:
         self.session_id = session_id
         self.top_k = top_k
         self.set_limits = dict(set_limits) if set_limits else None
+        # Floor on the text-relevance component, passed to the selector: the
+        # gate that keeps a resource matching nothing in the goal out of the
+        # compiled context. It is off by default because the right value
+        # depends on the catalog -- relevance is absolute (1.0 = a resource
+        # naming every term of the goal), so measure it against your own
+        # resources before setting one.
+        self.min_relevance = min_relevance
         self.max_tool_calls = max_tool_calls
         if max_input_repairs < 0:
             raise ValueError("max_input_repairs must be >= 0")
@@ -494,9 +502,11 @@ class Kernel:
         many entries -- a thousand-skill catalog next to ten Tools -- can take
         every slot and leave the set selector nothing to fill its per-kind
         limits with. The run then reports ``tool=0/3`` and the model answers
-        with no tools at all, which reads as a clean completion. Each kind
-        that comes back short therefore gets one extra kind-filtered search
-        over the same cached index.
+        with no tools at all, which reads as a clean completion. The kinds
+        that come back short therefore get *one* extra search between them,
+        restricted to those kinds and limited per kind, over the same cached
+        index. One, not one per kind: with an embedding-backed or LLM-backed
+        retriever each search is a paid round trip on the same goal string.
 
         Top-ups drop candidates the activation gate would deny, and respect
         the selector's ``min_score`` floor when it has one: the point is to
@@ -527,23 +537,34 @@ class Kernel:
         limits.update(self.set_limits or {})
         counts = Counter(result.resource.metadata.kind for result in results)
         seen = {result.resource.identity for result in results}
-        for kind in sorted(limits):
-            shortfall = limits[kind] - counts.get(kind, 0)
-            if shortfall <= 0 or not self.registry.list(kinds=(kind,)):
+        shortfalls = {
+            kind: limits[kind] - counts.get(kind, 0)
+            for kind in sorted(limits)
+            if limits[kind] - counts.get(kind, 0) > 0 and self.registry.count(kind)
+        }
+        if not shortfalls:
+            return results
+        floor = float(getattr(self.selector, "min_score", 0.0) or 0.0)
+        # Each starved kind gets its own depth to walk (candidates already in
+        # the pool, or denied at the activation gate, do not count against the
+        # shortfall), which is what the per-kind search gave it before.
+        topup = dataclass_replace(
+            query,
+            kinds=tuple(shortfalls),
+            per_kind_limits={kind: self.top_k for kind in shortfalls},
+            top_k=self.top_k * len(shortfalls),
+        )
+        for result in self.retriever.search(self.registry, topup):
+            kind = result.resource.kind
+            if shortfalls.get(kind, 0) <= 0 or result.resource.identity in seen:
                 continue
-            floor = float(getattr(self.selector, "min_score", 0.0) or 0.0)
-            for result in self.retriever.search(self.registry, dataclass_replace(query, kinds=(kind,))):
-                if result.resource.kind != kind or result.resource.identity in seen:
-                    continue
-                if result.score < floor:
-                    continue
-                if self.gateway.evaluate(result.resource, context, gate="activation").denied:
-                    continue
-                seen.add(result.resource.identity)
-                results.append(result)
-                shortfall -= 1
-                if shortfall <= 0:
-                    break
+            if result.score < floor:
+                continue
+            if self.gateway.evaluate(result.resource, context, gate="activation").denied:
+                continue
+            seen.add(result.resource.identity)
+            results.append(result)
+            shortfalls[kind] -= 1
         return results
 
     def _execute(self, state: TaskState) -> TaskResult:
@@ -563,6 +584,7 @@ class Kernel:
             task=goal,
             granted_permissions=tuple(context.granted_permissions),
             per_kind_limits=dict(self.set_limits) if self.set_limits else {},
+            min_relevance=self.min_relevance,
         )
         selected = self.selector.select(results, context=selection_context)
         audit(
