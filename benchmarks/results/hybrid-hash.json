@@ -5,47 +5,48 @@
     "candidate_pool": 50,
     "embed_model": null
   },
+  "llm_config": null,
   "corpus_size": 1000,
   "scenarios": 120,
   "top_k": 5,
-  "load_seconds": 0.782,
-  "index_build_seconds": 2.415,
-  "warm_latency_ms_mean": 60.54,
-  "warm_latency_ms_p95": 77.92,
-  "hit_at_1": 0.6,
-  "hit_at_5": 0.733,
-  "mrr": 0.648,
-  "recall_at_20": 0.817,
-  "recall_at_50": 0.9,
+  "load_seconds": 0.559,
+  "index_build_seconds": 1.995,
+  "warm_latency_ms_mean": 54.2,
+  "warm_latency_ms_p95": 62.12,
+  "hit_at_1": 0.617,
+  "hit_at_5": 0.717,
+  "mrr": 0.659,
+  "recall_at_20": 0.858,
+  "recall_at_50": 0.858,
   "by_style": {
     "abstract": {
       "scenarios": 33,
-      "hit_at_1": 0.424,
-      "hit_at_5": 0.636,
-      "mrr": 0.494,
-      "recall_at_20": 0.758,
-      "recall_at_50": 0.848
+      "hit_at_1": 0.455,
+      "hit_at_5": 0.606,
+      "mrr": 0.523,
+      "recall_at_20": 0.788,
+      "recall_at_50": 0.788
     },
     "direct": {
       "scenarios": 52,
-      "hit_at_1": 0.885,
-      "hit_at_5": 0.923,
-      "mrr": 0.904,
-      "recall_at_20": 0.942,
+      "hit_at_1": 0.846,
+      "hit_at_5": 0.904,
+      "mrr": 0.866,
+      "recall_at_20": 0.981,
       "recall_at_50": 0.981
     },
     "paraphrase": {
       "scenarios": 35,
-      "hit_at_1": 0.343,
+      "hit_at_1": 0.429,
       "hit_at_5": 0.543,
-      "mrr": 0.413,
-      "recall_at_20": 0.686,
-      "recall_at_50": 0.829
+      "mrr": 0.481,
+      "recall_at_20": 0.743,
+      "recall_at_50": 0.743
     }
   },
-  "catalog_metadata_tokens": 221094,
-  "routed_top_k_tokens": 1285,
-  "context_token_savings": 0.9942,
+  "catalog_metadata_tokens": 223775,
+  "routed_top_k_tokens": 1326,
+  "context_token_savings": 0.9941,
   "misses": [
     {
       "task": "run a security audit to find vulnerabilities in the codebase",
@@ -55,8 +56,8 @@
         "007"
       ],
       "style": "direct",
-      "rank": 25,
-      "top1": "skill.matthewbspeicher__remembr-dev__parallel-agents"
+      "rank": 17,
+      "top1": "skill.utkusen__sast-skills__sast-businesslogic"
     },
     {
       "task": "debug a failing system systematically by isolating the root cause",
@@ -66,8 +67,28 @@
         "debugging-patterns"
       ],
       "style": "direct",
-      "rank": 7,
+      "rank": 5,
       "top1": "skill.anthropics__knowledge-work-plugins__debug-zoom"
+    },
+    {
+      "task": "visualize an AWS Step Functions state machine",
+      "expected": [
+        "stepfunctions-visualizer"
+      ],
+      "style": "direct",
+      "rank": 11,
+      "top1": "skill.onlypfachi__chief__plan-ceo-review"
+    },
+    {
+      "task": "write an email marketing campaign that converts",
+      "expected": [
+        "email-marketing-bible",
+        "email-sequence",
+        "email-copywriting"
+      ],
+      "style": "direct",
+      "rank": 3,
+      "top1": "skill.anthropics__knowledge-work-plugins__campaign-plan"
     },
     {
       "task": "draft German AGB terms and conditions from scratch",
@@ -75,7 +96,7 @@
         "agb-entwurf-kaltstart"
       ],
       "style": "direct",
-      "rank": 21,
+      "rank": 9,
       "top1": "skill.anthropics__knowledge-work-plugins__brand-voice-enforcement"
     },
     {
@@ -84,8 +105,8 @@
         "competitive-brief"
       ],
       "style": "direct",
-      "rank": 2,
-      "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__ink-brief"
+      "rank": 6,
+      "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__pitch-position"
     },
     {
       "task": "review this plan adversarially and attack its weak points",
@@ -94,17 +115,16 @@
       ],
       "style": "direct",
       "rank": null,
-      "top1": "skill.matthewbspeicher__remembr-dev__vulnerability-scanner"
+      "top1": "skill.revfactory__harness-100__threat-modeling"
     },
     {
-      "task": "embed Zoom meetings in a native iOS app",
+      "task": "run a Porter five forces analysis of an industry",
       "expected": [
-        "plugins__ios",
-        "meeting-sdk"
+        "porter-five-forces"
       ],
       "style": "direct",
       "rank": 2,
-      "top1": "skill.anthropics__knowledge-work-plugins__general"
+      "top1": "skill.revfactory__harness-100__market-research"
     },
     {
       "task": "my key results feel vague, make sure they are actually measurable",
@@ -125,7 +145,7 @@
       ],
       "style": "paraphrase",
       "rank": null,
-      "top1": "skill.onlypfachi__chief__root"
+      "top1": "skill.anthropics__knowledge-work-plugins__incident-response"
     },
     {
       "task": "the build broke and I cannot tell why, help me narrow it down step by step",
@@ -136,8 +156,8 @@
         "rca-methodology"
       ],
       "style": "paraphrase",
-      "rank": 29,
-      "top1": "skill.anthropics__knowledge-work-plugins__debug"
+      "rank": 13,
+      "top1": "skill.onlypfachi__chief__office-hours"
     },
     {
       "task": "I want to write the checks before the code so I know when I am done",
@@ -146,8 +166,17 @@
         "tdd-workflow"
       ],
       "style": "paraphrase",
-      "rank": 16,
+      "rank": 2,
       "top1": "skill.microsoft__fluidframework__using-skills"
+    },
+    {
+      "task": "decide which features to build first given reach and effort",
+      "expected": [
+        "rice-prioritizer"
+      ],
+      "style": "paraphrase",
+      "rank": 2,
+      "top1": "skill.wellapp-ai__well__qa-planning"
     },
     {
       "task": "log how many hours I spend on each project",
@@ -156,7 +185,7 @@
       ],
       "style": "paraphrase",
       "rank": null,
-      "top1": "skill.microsoft__fluidframework__systematic-debugging"
+      "top1": "skill.anthropics__knowledge-work-plugins__process-optimization"
     },
     {
       "task": "sketch the tables and relations for our new app's storage layer",
@@ -177,8 +206,8 @@
         "plan-eng-review"
       ],
       "style": "paraphrase",
-      "rank": 9,
-      "top1": "skill.belos-street__skill-kit__brainstorming"
+      "rank": null,
+      "top1": "skill.fredrikaverpil__dotfiles__git-commit"
     },
     {
       "task": "turn our whitepaper into tweets, a newsletter issue, and a slide deck",
@@ -187,8 +216,8 @@
         "content-atomization"
       ],
       "style": "paraphrase",
-      "rank": 5,
-      "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__ink-distribute"
+      "rank": 7,
+      "top1": "skill.revfactory__harness-100__pitch-deck-framework"
     },
     {
       "task": "estimate what we would pay AWS each month and how to cut it",
@@ -196,7 +225,7 @@
         "cloud-cost-models"
       ],
       "style": "paraphrase",
-      "rank": 31,
+      "rank": 17,
       "top1": "skill.anthropics__knowledge-work-plugins__close-management"
     },
     {
@@ -206,26 +235,8 @@
         "surge-retention"
       ],
       "style": "paraphrase",
-      "rank": 30,
-      "top1": "skill.thatrebeccarae__claude-marketing__copywriting-frameworks"
-    },
-    {
-      "task": "write questions to ask candidates for a backend engineering role",
-      "expected": [
-        "interview-prep"
-      ],
-      "style": "paraphrase",
-      "rank": 4,
-      "top1": "skill.gmickel__flow-next__flow-next-plan"
-    },
-    {
-      "task": "draft the paperwork offering the job to our chosen candidate",
-      "expected": [
-        "draft-offer"
-      ],
-      "style": "paraphrase",
-      "rank": 2,
-      "top1": "skill.anthropics__knowledge-work-plugins__compose-outreach"
+      "rank": null,
+      "top1": "skill.anthropics__knowledge-work-plugins__customer-escalation"
     },
     {
       "task": "how many vacation days am I allowed to take",
@@ -233,8 +244,8 @@
         "policy-lookup"
       ],
       "style": "paraphrase",
-      "rank": 8,
-      "top1": "skill.microsoft__fluidframework__using-skills"
+      "rank": 13,
+      "top1": "skill.anthropics__knowledge-work-plugins__process-optimization"
     },
     {
       "task": "make a slideshow presentation out of this research paper",
@@ -244,7 +255,7 @@
         "presentation-designer"
       ],
       "style": "paraphrase",
-      "rank": 24,
+      "rank": 6,
       "top1": "skill.junshi-research__research-junshi__root"
     },
     {
@@ -254,7 +265,7 @@
       ],
       "style": "paraphrase",
       "rank": null,
-      "top1": "skill.daedalus__nanocode__root"
+      "top1": "skill.anthropics__knowledge-work-plugins__call-prep"
     },
     {
       "task": "figure out the going salary for a senior engineer in our market",
@@ -262,7 +273,7 @@
         "comp-analysis"
       ],
       "style": "paraphrase",
-      "rank": 2,
+      "rank": 8,
       "top1": "skill.sickn33__antigravity-awesome-skills__ai-dev-jobs-mcp"
     },
     {
@@ -272,7 +283,7 @@
       ],
       "style": "paraphrase",
       "rank": null,
-      "top1": "skill.onlypfachi__chief__office-hours"
+      "top1": "skill.anthropics__knowledge-work-plugins__org-planning"
     },
     {
       "task": "catch me up on everything that happened while I was away",
@@ -280,8 +291,8 @@
         "digest"
       ],
       "style": "paraphrase",
-      "rank": 10,
-      "top1": "skill.revfactory__harness-100__hook-writing"
+      "rank": 3,
+      "top1": "skill.onlypfachi__chief__office-hours"
     },
     {
       "task": "our monthly books need closing, sequence the tasks",
@@ -294,22 +305,13 @@
       "top1": "skill.anthropics__knowledge-work-plugins__financial-statements"
     },
     {
-      "task": "will we run out of cash next quarter",
-      "expected": [
-        "cash-flow-forecast"
-      ],
-      "style": "paraphrase",
-      "rank": 4,
-      "top1": "skill.anthropics__knowledge-work-plugins__performance-report"
-    },
-    {
       "task": "respond to a German cease-and-desist warning letter",
       "expected": [
         "abmahnung"
       ],
       "style": "paraphrase",
       "rank": null,
-      "top1": "skill.anthropics__knowledge-work-plugins__legal-response"
+      "top1": "skill.anthropics__knowledge-work-plugins__draft-offer"
     },
     {
       "task": "take my plain English idea all the way to a deployed working app",
@@ -319,18 +321,8 @@
         "remembr-dev__app-builder"
       ],
       "style": "paraphrase",
-      "rank": 43,
+      "rank": null,
       "top1": "skill.onlypfachi__chief__qa"
-    },
-    {
-      "task": "hunt for passwords and API keys accidentally committed to the repo",
-      "expected": [
-        "sast-hardcodedsecrets",
-        "vulnerability-scanner"
-      ],
-      "style": "paraphrase",
-      "rank": 4,
-      "top1": "skill.revfactory__harness-100__api-security-checklist"
     },
     {
       "task": "we shipped something broken to production and need to write up what went wrong for the team",
@@ -339,7 +331,7 @@
         "incident-response"
       ],
       "style": "abstract",
-      "rank": 4,
+      "rank": 2,
       "top1": "skill.onlypfachi__chief__retro"
     },
     {
@@ -350,8 +342,8 @@
         "keep-churn"
       ],
       "style": "abstract",
-      "rank": 7,
-      "top1": "skill.thatrebeccarae__claude-marketing__copywriting-frameworks"
+      "rank": 6,
+      "top1": "skill.microsoft__fluidframework__root-cause-tracing"
     },
     {
       "task": "this ancient codebase scares everyone, make it maintainable again without a rewrite",
@@ -362,8 +354,18 @@
         "apex-takeover"
       ],
       "style": "abstract",
-      "rank": 40,
-      "top1": "skill.gmickel__flow-next__flow-next-prime"
+      "rank": 10,
+      "top1": "skill.onlypfachi__chief__plan-design-review"
+    },
+    {
+      "task": "I want the model to grade its own outputs against a rubric",
+      "expected": [
+        "advanced-evaluation",
+        "agent-evaluation"
+      ],
+      "style": "abstract",
+      "rank": 4,
+      "top1": "skill.majiayu000__claude-skill-registry__81-pipecat"
     },
     {
       "task": "how should we carve this monolith into smaller services",
@@ -374,8 +376,8 @@
         "strangler-fig"
       ],
       "style": "abstract",
-      "rank": 5,
-      "top1": "skill.anthropics__knowledge-work-plugins__tech-debt"
+      "rank": 2,
+      "top1": "skill.anthropics__knowledge-work-plugins__system-design"
     },
     {
       "task": "plan what gets tested and by whom before the release ships",
@@ -385,8 +387,8 @@
         "deploy-checklist"
       ],
       "style": "abstract",
-      "rank": 5,
-      "top1": "skill.pglejzer__timepicker-ui__release"
+      "rank": 6,
+      "top1": "skill.sickn33__antigravity-awesome-skills__android-dev"
     },
     {
       "task": "the nightly job that moves data between systems keeps failing silently",
@@ -398,7 +400,7 @@
       ],
       "style": "abstract",
       "rank": null,
-      "top1": "skill.gavdalf__total-recall__root"
+      "top1": "skill.crim-ca__weaver__job-results"
     },
     {
       "task": "stretch one blog post into a month of social media content",
@@ -409,7 +411,7 @@
         "social-media-manager"
       ],
       "style": "abstract",
-      "rank": 3,
+      "rank": 2,
       "top1": "skill.anthropics__knowledge-work-plugins__draft-content"
     },
     {
@@ -420,7 +422,7 @@
       ],
       "style": "abstract",
       "rank": null,
-      "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__buzz-outreach"
+      "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__pitch-launch"
     },
     {
       "task": "figure out what to charge for our SaaS tiers",
@@ -430,8 +432,8 @@
         "unit-economics-calculator"
       ],
       "style": "abstract",
-      "rank": 22,
-      "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__buzz-devrel"
+      "rank": null,
+      "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__keep-segment"
     },
     {
       "task": "are we even allowed to launch this feature in Europe",
@@ -440,7 +442,7 @@
         "legal-risk-assessment"
       ],
       "style": "abstract",
-      "rank": 25,
+      "rank": null,
       "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__pitch-launch"
     },
     {
@@ -451,8 +453,8 @@
         "weekly-prep-brief"
       ],
       "style": "abstract",
-      "rank": 8,
-      "top1": "skill.microsoft__fluidframework__ff-oce-dashboard"
+      "rank": 7,
+      "top1": "skill.anthropics__knowledge-work-plugins__meeting-sdk"
     },
     {
       "task": "find out everything public about this company before I pitch them",
@@ -461,7 +463,7 @@
         "market-research"
       ],
       "style": "abstract",
-      "rank": 16,
+      "rank": 7,
       "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__buzz-outreach"
     },
     {
@@ -472,16 +474,6 @@
       "style": "abstract",
       "rank": null,
       "top1": "skill.anthropics__knowledge-work-plugins__org-planning"
-    },
-    {
-      "task": "turn my expertise into a structured online class",
-      "expected": [
-        "course-builder",
-        "learning-design"
-      ],
-      "style": "abstract",
-      "rank": 3,
-      "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__hyperflow-amplify"
     },
     {
       "task": "get more listeners to discover my show",
@@ -505,25 +497,13 @@
       "top1": "skill.revfactory__harness-100__fullstack-webapp"
     },
     {
-      "task": "which of my design mockups breaks visual consistency",
-      "expected": [
-        "chief__design-review",
-        "design-critique",
-        "web-design-guidelines",
-        "design-system"
-      ],
-      "style": "abstract",
-      "rank": 6,
-      "top1": "skill.skillpanel__maister__product-design__0d076f30"
-    },
-    {
       "task": "our error messages confuse users, rewrite the little texts in the UI",
       "expected": [
         "ux-copy"
       ],
       "style": "abstract",
       "rank": null,
-      "top1": "skill.anthropics__knowledge-work-plugins__ticket-triage"
+      "top1": "skill.anthropics__knowledge-work-plugins__compose-outreach"
     },
     {
       "task": "map out how an attacker could compromise our new payment service",
@@ -534,8 +514,11 @@
         "vulnerability-scanner"
       ],
       "style": "abstract",
-      "rank": 2,
-      "top1": "skill.anthropics__knowledge-work-plugins__ticket-triage"
+      "rank": 12,
+      "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__pitch-message"
     }
-  ]
+  ],
+  "marmo_core_version": "0.5.0",
+  "marmo_core_commit": "a1a200d5",
+  "generated_at": "2026-09-19T05:03:34+00:00"
 }

@@ -3,49 +3,50 @@
   "retriever_config": {
     "semantic_weight": 0.9,
     "candidate_pool": 50,
-    "embed_model": "BAAI/bge-small-en-v1.5"
+    "embed_model": null
   },
+  "llm_config": null,
   "corpus_size": 1000,
   "scenarios": 120,
   "top_k": 5,
-  "load_seconds": 0.575,
-  "index_build_seconds": 114.266,
-  "warm_latency_ms_mean": 62.91,
-  "warm_latency_ms_p95": 75.8,
+  "load_seconds": 0.532,
+  "index_build_seconds": 140.361,
+  "warm_latency_ms_mean": 59.24,
+  "warm_latency_ms_p95": 87.99,
   "hit_at_1": 0.767,
   "hit_at_5": 0.867,
-  "mrr": 0.808,
-  "recall_at_20": 0.942,
-  "recall_at_50": 0.992,
+  "mrr": 0.81,
+  "recall_at_20": 0.967,
+  "recall_at_50": 0.983,
   "by_style": {
     "abstract": {
       "scenarios": 33,
-      "hit_at_1": 0.697,
+      "hit_at_1": 0.727,
       "hit_at_5": 0.818,
-      "mrr": 0.735,
-      "recall_at_20": 0.939,
+      "mrr": 0.773,
+      "recall_at_20": 0.97,
       "recall_at_50": 1.0
     },
     "direct": {
       "scenarios": 52,
-      "hit_at_1": 0.942,
-      "hit_at_5": 0.962,
-      "mrr": 0.952,
+      "hit_at_1": 0.923,
+      "hit_at_5": 0.981,
+      "mrr": 0.947,
       "recall_at_20": 0.981,
       "recall_at_50": 1.0
     },
     "paraphrase": {
       "scenarios": 35,
       "hit_at_1": 0.571,
-      "hit_at_5": 0.771,
-      "mrr": 0.663,
-      "recall_at_20": 0.886,
-      "recall_at_50": 0.971
+      "hit_at_5": 0.743,
+      "mrr": 0.64,
+      "recall_at_20": 0.943,
+      "recall_at_50": 0.943
     }
   },
-  "catalog_metadata_tokens": 221094,
-  "routed_top_k_tokens": 1299,
-  "context_token_savings": 0.9941,
+  "catalog_metadata_tokens": 223775,
+  "routed_top_k_tokens": 1288,
+  "context_token_savings": 0.9942,
   "misses": [
     {
       "task": "run a security audit to find vulnerabilities in the codebase",
@@ -55,8 +56,19 @@
         "007"
       ],
       "style": "direct",
-      "rank": 6,
-      "top1": "skill.utkusen__sast-skills__sast-analysis"
+      "rank": 2,
+      "top1": "skill.utkusen__sast-skills__sast-ssrf"
+    },
+    {
+      "task": "debug a failing system systematically by isolating the root cause",
+      "expected": [
+        "systematic-debugging",
+        "investigate",
+        "debugging-patterns"
+      ],
+      "style": "direct",
+      "rank": 2,
+      "top1": "skill.anthropics__knowledge-work-plugins__debug-zoom"
     },
     {
       "task": "write an email marketing campaign that converts",
@@ -66,7 +78,7 @@
         "email-copywriting"
       ],
       "style": "direct",
-      "rank": 2,
+      "rank": 4,
       "top1": "skill.anthropics__knowledge-work-plugins__campaign-plan"
     },
     {
@@ -75,8 +87,8 @@
         "agb-entwurf-kaltstart"
       ],
       "style": "direct",
-      "rank": 27,
-      "top1": "skill.klotzkette__claude-fuer-deutsches-recht__agb-bei-iso-vertraegen-international"
+      "rank": 30,
+      "top1": "skill.klotzkette__claude-fuer-deutsches-recht__agb-im-konzernverbund"
     },
     {
       "task": "my key results feel vague, make sure they are actually measurable",
@@ -84,7 +96,7 @@
         "okr-quality-checker"
       ],
       "style": "paraphrase",
-      "rank": 37,
+      "rank": null,
       "top1": "skill.anthropics__knowledge-work-plugins__performance-review"
     },
     {
@@ -96,20 +108,8 @@
         "maister__performance"
       ],
       "style": "paraphrase",
-      "rank": 38,
-      "top1": "skill.onlypfachi__chief__office-hours"
-    },
-    {
-      "task": "the build broke and I cannot tell why, help me narrow it down step by step",
-      "expected": [
-        "systematic-debugging",
-        "investigate",
-        "debugging-patterns",
-        "rca-methodology"
-      ],
-      "style": "paraphrase",
-      "rank": 2,
-      "top1": "skill.anthropics__knowledge-work-plugins__debug"
+      "rank": 16,
+      "top1": "skill.pglejzer__timepicker-ui__release"
     },
     {
       "task": "I want to write the checks before the code so I know when I am done",
@@ -118,8 +118,8 @@
         "tdd-workflow"
       ],
       "style": "paraphrase",
-      "rank": 7,
-      "top1": "skill.microsoft__fluidframework__using-skills"
+      "rank": 9,
+      "top1": "skill.microsoft__fluidframework__ci-readiness-check"
     },
     {
       "task": "decide which features to build first given reach and effort",
@@ -127,7 +127,7 @@
         "rice-prioritizer"
       ],
       "style": "paraphrase",
-      "rank": 2,
+      "rank": 3,
       "top1": "skill.belos-street__skill-kit__brainstorming"
     },
     {
@@ -136,8 +136,17 @@
         "clockify"
       ],
       "style": "paraphrase",
-      "rank": 5,
+      "rank": 2,
       "top1": "skill.onlypfachi__chief__office-hours"
+    },
+    {
+      "task": "make my newsletters land in the inbox instead of the spam folder",
+      "expected": [
+        "deliverability-optimization"
+      ],
+      "style": "paraphrase",
+      "rank": 2,
+      "top1": "skill.revfactory__harness-100__newsletter-engine"
     },
     {
       "task": "sketch the tables and relations for our new app's storage layer",
@@ -147,8 +156,8 @@
         "normalization-patterns"
       ],
       "style": "paraphrase",
-      "rank": 24,
-      "top1": "skill.fizznix__mini-context-graph__root"
+      "rank": 18,
+      "top1": "skill.digitalocean-labs__do-app-platform-skills__spaces"
     },
     {
       "task": "someone should try to poke holes in this proposal before we commit to it",
@@ -158,8 +167,8 @@
         "plan-eng-review"
       ],
       "style": "paraphrase",
-      "rank": 2,
-      "top1": "skill.belos-street__skill-kit__brainstorming"
+      "rank": 8,
+      "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__deal-proposal"
     },
     {
       "task": "turn our whitepaper into tweets, a newsletter issue, and a slide deck",
@@ -168,8 +177,8 @@
         "content-atomization"
       ],
       "style": "paraphrase",
-      "rank": 2,
-      "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__ink-distribute"
+      "rank": 4,
+      "top1": "skill.revfactory__harness-100__newsletter-engine"
     },
     {
       "task": "our customers keep leaving, figure out why and how to stop it",
@@ -178,8 +187,17 @@
         "surge-retention"
       ],
       "style": "paraphrase",
-      "rank": 7,
+      "rank": 6,
       "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__keep-segment"
+    },
+    {
+      "task": "how many vacation days am I allowed to take",
+      "expected": [
+        "policy-lookup"
+      ],
+      "style": "paraphrase",
+      "rank": 3,
+      "top1": "skill.wellapp-ai__well__month-end-close"
     },
     {
       "task": "check my X timeline and post an update to my account",
@@ -188,7 +206,7 @@
       ],
       "style": "paraphrase",
       "rank": null,
-      "top1": "skill.anthropics__knowledge-work-plugins__incident-response"
+      "top1": "skill.sickn33__antigravity-awesome-skills__adhx"
     },
     {
       "task": "did we already sign anything with this supplier",
@@ -205,7 +223,7 @@
         "abmahnung"
       ],
       "style": "paraphrase",
-      "rank": 16,
+      "rank": 15,
       "top1": "skill.anthropics__knowledge-work-plugins__legal-response"
     },
     {
@@ -216,18 +234,8 @@
         "remembr-dev__app-builder"
       ],
       "style": "paraphrase",
-      "rank": 13,
-      "top1": "skill.onlypfachi__chief__office-hours"
-    },
-    {
-      "task": "hunt for passwords and API keys accidentally committed to the repo",
-      "expected": [
-        "sast-hardcodedsecrets",
-        "vulnerability-scanner"
-      ],
-      "style": "paraphrase",
-      "rank": 2,
-      "top1": "skill.revfactory__harness-100__api-security-checklist"
+      "rank": 9,
+      "top1": "skill.digitalocean-labs__do-app-platform-skills__designer"
     },
     {
       "task": "people sign up, try it once, and never come back",
@@ -237,8 +245,8 @@
         "keep-churn"
       ],
       "style": "abstract",
-      "rank": 21,
-      "top1": "skill.thatrebeccarae__claude-marketing__copywriting-frameworks"
+      "rank": 9,
+      "top1": "skill.anthropics__knowledge-work-plugins__ticket-triage"
     },
     {
       "task": "this ancient codebase scares everyone, make it maintainable again without a rewrite",
@@ -249,8 +257,8 @@
         "apex-takeover"
       ],
       "style": "abstract",
-      "rank": 6,
-      "top1": "skill.gmickel__flow-next__flow-next-prime"
+      "rank": 2,
+      "top1": "skill.matthewbspeicher__remembr-dev__clean-code"
     },
     {
       "task": "the nightly job that moves data between systems keeps failing silently",
@@ -261,8 +269,8 @@
         "data-pipeline"
       ],
       "style": "abstract",
-      "rank": 34,
-      "top1": "skill.gmickel__flow-next__flow-next-audit"
+      "rank": 30,
+      "top1": "skill.digitalocean-labs__do-app-platform-skills__troubleshooting"
     },
     {
       "task": "stretch one blog post into a month of social media content",
@@ -273,7 +281,7 @@
         "social-media-manager"
       ],
       "style": "abstract",
-      "rank": 3,
+      "rank": 2,
       "top1": "skill.anthropics__knowledge-work-plugins__content-creation"
     },
     {
@@ -283,7 +291,7 @@
         "brand-identity"
       ],
       "style": "abstract",
-      "rank": 19,
+      "rank": 13,
       "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__pitch-launch"
     },
     {
@@ -293,7 +301,7 @@
         "legal-risk-assessment"
       ],
       "style": "abstract",
-      "rank": 3,
+      "rank": 9,
       "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__pitch-launch"
     },
     {
@@ -303,7 +311,7 @@
         "market-research"
       ],
       "style": "abstract",
-      "rank": 14,
+      "rank": 12,
       "top1": "skill.anthropics__knowledge-work-plugins__call-prep"
     },
     {
@@ -312,8 +320,8 @@
         "thumbnail-psychology"
       ],
       "style": "abstract",
-      "rank": 15,
-      "top1": "skill.peixl__ifq-design-skills__root"
+      "rank": 10,
+      "top1": "skill.onlypfachi__chief__design-review"
     },
     {
       "task": "get more listeners to discover my show",
@@ -321,17 +329,11 @@
         "podcast-growth"
       ],
       "style": "abstract",
-      "rank": 4,
+      "rank": 2,
       "top1": "skill.jeremylongshore__claude-code-plugins-plus-skills__buzz-outreach"
-    },
-    {
-      "task": "our error messages confuse users, rewrite the little texts in the UI",
-      "expected": [
-        "ux-copy"
-      ],
-      "style": "abstract",
-      "rank": 3,
-      "top1": "skill.emdash-cms__emdash__adversarial-reviewer"
     }
-  ]
+  ],
+  "marmo_core_version": "0.5.0",
+  "marmo_core_commit": "a1a200d5",
+  "generated_at": "2026-09-19T05:06:10+00:00"
 }

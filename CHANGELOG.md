@@ -7,6 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The text-relevance component is absolute instead of rank-normalized, so a
+  threshold on it means the same thing for every query. It used to be divided
+  by the best BM25 score *in that result set*, which made the top hit of every
+  query look like a strong match whether or not the catalog had anything to
+  offer: against the bundled 1,000-skill corpus the goal 「私は今日ラーメンを
+  食べたい気分です」 scored relevance 0.63 on a Step Functions visualizer
+  skill, and the kernel activated it. Relevance is now measured against a
+  document that names every query term once — 1.0 reads as "covers the whole
+  query", and that goal scores 0.15. The yardstick is a per-query constant, so
+  the only ranking it moves is between documents that beat the reference and
+  tie at the clamp: measured against the same code with the old divisor,
+  hit@5 and recall@20/@50 on the 120-scenario routing benchmark are identical
+  and hit@1 costs two scenarios (66.7% -> 65.0%, MRR 0.702 -> 0.694). A gate
+  that can distinguish a real match from the least-bad one is worth that.
+- Retrieval indexes a resource's declared metadata and an attached SKILL.md
+  body as two BM25F fields, with the body discounted (`BODY_FIELD_WEIGHT`).
+  Indexing the body at full weight let a long document win on words its
+  examples mention in passing: for "read a local text file safely" an
+  XXE-scanner skill (7,551 indexed tokens) scored 0.79 against 0.58 for the
+  file-reading Tool whose description is that sentence. The Tool now ranks
+  first of all 1,030 resources, and on the routing benchmark hit@1 rises
+  61.7% → 65.0% net of the two scenarios the clamp above costs (paraphrased
+  wording 31% → 46%, abstract 48% → 55%) with recall@20 84% → 88%. With a
+  model-backed hybrid retriever at the library's
+  default `semantic_weight`, hit@1 rises 67% → 70% (bge-small) and
+  68% → 73% (OpenAI embeddings).
+- Writing execution stats back to the registry no longer rebuilds the inverted
+  index or re-embeds the catalog. `ExecutionEvaluator.apply` rewrites `stats`
+  on every observed resource, and both caches were keyed on
+  `ResourceRegistry.revision`, so one feedback pass threw away work that did
+  not depend on it: at 1,030 resources, re-tokenizing the catalog (0.9s) and
+  re-embedding all 1,030 texts — a billed request per batch against a hosted
+  embeddings endpoint. Verified against the real OpenAI endpoint: a search,
+  a repeat search, and a stats write now cost 2 HTTP requests in total, where
+  they cost 5 before. The hierarchical router's clustering and centroids and
+  the capability graph are keyed the same way.
+- Keyword filtering reads the index instead of rebuilding every candidate's
+  full text. One keyword cost 22x the whole search at 1,000 resources
+  (3.3ms → 74.9ms); it now costs 17.4ms.
+- One goal issues at most two searches instead of one per starved kind. The
+  per-kind top-up runs as a single kind-filtered, per-kind-limited search,
+  which matters as soon as the retriever is embedding- or LLM-backed: each
+  search was a separate paid round trip on the same goal string.
+  `HybridRetriever` also caches query vectors (bounded by `query_cache_size`).
+- `RuleBasedSetSelector` honours `SelectionContext.min_relevance`. Every other
+  selector read the relevance floor; the one the kernel uses by default
+  ignored it, so the gate that keeps an unrelated resource out of the compiled
+  context did nothing in the default configuration.
+
+### Added
+
+- `Kernel(min_relevance=...)` passes an abstain floor to the selector. It
+  defaults to 0.0: relevance is absolute now, so a floor is finally meaningful,
+  but on the bundled corpus no single value rejects every off-topic goal
+  without also rejecting real matches (measured: gold hits reach down to 0.13,
+  the best off-topic hit reaches 0.52), so the number belongs to a deployment.
+  At 0.4 on the bundled catalog, "read a local text file safely" compiles the
+  one Tool it needs instead of 6,743 tokens of loosely related skills.
+- `ResourceRegistry.content_revision`, which moves only when something
+  retrieval reads changes, and `ResourceRegistry.count(kind)`, which answers
+  "does this kind exist" without sorting the catalog.
+- `LexicalRetriever.apply_limits` is public: the retrievers that wrap it
+  re-rank a widened pool and then have to apply the caller's limits.
+
+### Changed
+
+- The benchmark scripts' `--min-relevance` default moves 0.55 → 0.35. Same
+  operating point, new units: the old value was calibrated against the
+  rank-normalized component.
+
 ## [0.5.0] - 2026-09-17
 
 Everything under "Added" here was already on `main` but had never been

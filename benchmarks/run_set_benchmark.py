@@ -361,7 +361,12 @@ def main() -> None:
     )
     parser.add_argument("--pool", type=int, default=50, help="candidate pool size handed to selectors")
     parser.add_argument("--min-score", type=float, default=0.45, help="selector abstain threshold on composite candidate scores")
-    parser.add_argument("--min-relevance", type=float, default=0.55, help="greedy abstain threshold on the text-relevance component")
+    # 0.35 on the absolute relevance scale (1.0 = a document that names every
+    # query term once). The 0.55 this replaces was calibrated against the old
+    # rank-normalized component, where the best hit of every query scored ~1.0
+    # whether or not the catalog had anything to offer; same operating point,
+    # new units.
+    parser.add_argument("--min-relevance", type=float, default=0.35, help="greedy abstain threshold on the text-relevance component")
     parser.add_argument("--beam-width", type=int, default=5, help="beam width for beam search selector")
     parser.add_argument("--max-nodes", type=int, default=100_000, help="node budget for the branch-and-bound selector")
     parser.add_argument("--llm-selector", action="store_true", help="also run the LLM Set Selector (15.3 案C 第2層適用)")

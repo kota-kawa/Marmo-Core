@@ -6,12 +6,29 @@ module replaces it with an inverted index and BM25 ranking built entirely on
 the standard library. The composite score (permissions, trust, side effects,
 latency, cost, success history) is unchanged; only the text-relevance
 component is computed differently.
+
+Two properties of that component are load-bearing for everything downstream:
+
+- **It is absolute, not rank-normalized.** The score a resource gets does not
+  depend on what else the query happened to match, so a threshold means the
+  same thing for every query. Normalizing by the best score in the result set
+  made the top hit of *any* query look like a strong match, which left the set
+  selector's abstain gate (§15.6) with nothing to threshold on. The yardstick
+  is a per-query constant, so it would preserve the ranking exactly were it
+  not for the clamp at 1.0: documents that beat the reference tie there, and
+  on the 120-scenario benchmark that costs two scenarios at rank 1 (hit@1
+  66.7% -> 65.0%, MRR 0.702 -> 0.694) while hit@5 and recall@20/@50 are
+  unchanged. That is the price of a gate that can say no.
+- **It is field-weighted.** Metadata a resource declares about itself (id,
+  name, description, capabilities, tags) outranks the body of an attached
+  document, so a 7,000-token SKILL.md cannot beat a purpose-built Tool on
+  words its examples mention in passing.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections import Counter, defaultdict
+from collections import defaultdict
 from typing import Iterable
 from weakref import WeakKeyDictionary
 import math
@@ -79,6 +96,16 @@ _BM25_B = 0.75
 # the hybrid retriever, which swaps blended relevance into the same slot.
 RELEVANCE_WEIGHT = 0.45
 
+# How much a term occurrence in an attached document body (the text of a
+# SKILL.md) counts relative to the same term in the declared metadata head.
+# Bodies are one to three orders of magnitude longer than the head -- in the
+# bundled corpus, 667 tokens against 34 -- so counting both alike let a skill
+# win on words its examples merely mention, over a Tool whose name and
+# description are the task. Applied to the term frequency, the document
+# length, and the coverage fraction alike, so the field stays a discounted
+# member of the same BM25 model rather than a separate bolted-on score.
+BODY_FIELD_WEIGHT = 0.25
+
 
 class Retriever(ABC):
     """Retriever interface (F-RETR-01). Implementations are swappable."""
@@ -89,7 +116,14 @@ class Retriever(ABC):
 
 
 class _Bm25Index:
-    """Inverted index with BM25 statistics over one registry snapshot."""
+    """Inverted index with BM25F statistics over one registry snapshot.
+
+    Each resource is indexed as two fields: the metadata *head* it declares
+    about itself, and the *body* of an attached document (a Markdown skill's
+    SKILL.md). Body occurrences enter the term frequency and the document
+    length discounted by ``BODY_FIELD_WEIGHT``, which is what keeps long
+    documents from outranking resources whose declared purpose is the task.
+    """
 
     def __init__(self, definitions: list[ResourceDefinition]) -> None:
         self.definitions = definitions
@@ -97,17 +131,26 @@ class _Bm25Index:
         self.doc_index_by_identity = {
             definition.identity: doc_index for doc_index, definition in enumerate(definitions)
         }
-        self.postings: dict[str, list[tuple[int, int]]] = defaultdict(list)
-        self.doc_lengths: list[int] = []
+        self.postings: dict[str, list[tuple[int, float]]] = defaultdict(list)
+        self.doc_lengths: list[float] = []
         self.doc_token_sets: list[frozenset[str]] = []
+        self.head_token_sets: list[frozenset[str]] = []
         self.name_texts: list[str] = []
-        total_length = 0
+        self._normalized_texts: list[str] | None = None
+        total_length = 0.0
         for doc_index, definition in enumerate(definitions):
-            tokens = _tokens(_resource_search_text(definition))
-            counts = Counter(tokens)
-            length = len(tokens)
+            head_text, body_text = _resource_search_fields(definition)
+            head_tokens = _tokens(head_text)
+            body_tokens = _tokens(body_text) if body_text else []
+            counts: dict[str, float] = {}
+            for token in head_tokens:
+                counts[token] = counts.get(token, 0.0) + 1.0
+            for token in body_tokens:
+                counts[token] = counts.get(token, 0.0) + BODY_FIELD_WEIGHT
+            length = len(head_tokens) + BODY_FIELD_WEIGHT * len(body_tokens)
             total_length += length
             self.doc_lengths.append(length)
+            self.head_token_sets.append(frozenset(head_tokens))
             self.doc_token_sets.append(frozenset(counts))
             self.name_texts.append(
                 _normalize(
@@ -124,11 +167,71 @@ class _Bm25Index:
                 self.postings[token].append((doc_index, frequency))
         self.average_length = (total_length / self.doc_count) if self.doc_count else 0.0
 
+    def refresh(self, definitions: list[ResourceDefinition]) -> None:
+        """Adopt definition objects whose searchable text is unchanged.
+
+        ``ExecutionEvaluator.apply`` rewrites ``stats`` on every resource it
+        has observed. That leaves every indexed token identical but makes the
+        definitions held here stale, and the composite score reads ``stats``
+        off them. Swapping the list keeps the tokenization -- the part that
+        costs a second at 1,000 resources -- and keeps the scores current.
+        """
+
+        self.definitions = definitions
+        self._normalized_texts = None
+
+    def normalized_text(self, doc_index: int) -> str:
+        """Normalized full text of one document, tokenized once per index.
+
+        Only the keyword substring filter needs this, so it is built on first
+        use rather than for every index.
+        """
+
+        if self._normalized_texts is None:
+            self._normalized_texts = [
+                _normalize(_resource_search_text(definition)) for definition in self.definitions
+            ]
+        return self._normalized_texts[doc_index]
+
     def idf(self, token: str) -> float:
         document_frequency = len(self.postings.get(token, ()))
         if not document_frequency:
             return 0.0
-        return math.log(1.0 + (self.doc_count - document_frequency + 0.5) / (document_frequency + 0.5))
+        return self._idf(document_frequency)
+
+    def _idf(self, document_frequency: float) -> float:
+        return math.log(
+            1.0 + (self.doc_count - document_frequency + 0.5) / (document_frequency + 0.5)
+        )
+
+    def reference_score(self, query_tokens: Iterable[str]) -> float:
+        """BM25 of a document that names every query term once.
+
+        The yardstick the relevance component is measured against. At
+        ``frequency = 1`` and average length the BM25 term reduces to the
+        term's ``idf``, so the reference is the query's summed idf: it
+        depends on the query alone, never on the rest of the result set,
+        which is what lets one threshold mean the same thing for every query
+        — and what makes a coincidence on one term of a ten-term goal score
+        as the coincidence it is instead of as the best answer available.
+
+        A document that repeats the query's terms can exceed the reference,
+        so the ratio is clamped; relevance 1.0 reads as "covers the whole
+        query", not as "the best of whatever turned up".
+
+        The yardstick is only as informative as the catalog's vocabulary.
+        Terms the corpus has never seen add nothing to it, so a goal whose
+        words are almost all absent is measured against the handful that are
+        present, and a small catalog can still score an unrelated goal
+        highly. Charging absent terms a full idf instead was measured and
+        rejected: it ties the scale to catalog size and costs real set
+        selection quality (Set F1 0.58 → 0.48 on the 28-scenario set
+        benchmark) for scores that no longer transfer between catalogs. The
+        abstain floor is therefore a deployment setting, measured against
+        real resources, and not a library default.
+        """
+
+        return sum(self.idf(token) for token in set(query_tokens))
 
     def bm25_scores(self, query_tokens: Iterable[str]) -> dict[int, float]:
         """BM25 over documents containing at least one query token."""
@@ -151,12 +254,15 @@ class LexicalRetriever(Retriever):
     """Search resources using lightweight metadata, an inverted index, and BM25.
 
     The index is built once per registry snapshot (invalidated by the
-    registry revision counter), so repeated searches cost milliseconds even
-    at thousands of resources.
+    registry's *content* revision, so writing execution stats back does not
+    throw the tokenization away), and repeated searches cost milliseconds
+    even at thousands of resources.
     """
 
     def __init__(self) -> None:
-        self._index_cache: WeakKeyDictionary[ResourceRegistry, tuple[int, _Bm25Index]] = WeakKeyDictionary()
+        self._index_cache: WeakKeyDictionary[
+            ResourceRegistry, tuple[int, int, _Bm25Index]
+        ] = WeakKeyDictionary()
 
     def search(self, registry: ResourceRegistry, query: SearchQuery) -> list[SearchResult]:
         self._validate_query(query)
@@ -166,11 +272,11 @@ class LexicalRetriever(Retriever):
 
         if task_tokens:
             bm25 = index.bm25_scores(task_tokens)
-            max_bm25 = max(bm25.values(), default=0.0)
+            reference_bm25 = index.reference_score(task_tokens)
             candidate_indices: Iterable[int] = bm25.keys()
         else:
             bm25 = {}
-            max_bm25 = 0.0
+            reference_bm25 = 0.0
             candidate_indices = range(index.doc_count)
 
         task_token_set = set(task_tokens)
@@ -189,7 +295,7 @@ class LexicalRetriever(Retriever):
                 keyword_tokens=keyword_tokens,
                 normalized_task=normalized_task,
                 bm25_score=bm25.get(doc_index, 0.0),
-                max_bm25=max_bm25,
+                reference_bm25=reference_bm25,
             )
             if result.score >= query.min_score:
                 scored.append(result)
@@ -197,17 +303,31 @@ class LexicalRetriever(Retriever):
             key=lambda item: (item.score, item.resource.metadata.trust_level != "untrusted", item.resource.metadata.id),
             reverse=True,
         )
-        return self._apply_limits(scored, query)
+        return self.apply_limits(scored, query)
 
     # -- index management ------------------------------------------------------
 
     def _index_for(self, registry: ResourceRegistry) -> _Bm25Index:
+        """The cached index for this registry, rebuilt only when its text changed.
+
+        Two counters, because they answer different questions: the content
+        revision says whether the indexed *text* moved (rebuild), and the
+        plain revision says whether any resource object was replaced at all
+        (adopt the new objects, so the ``success`` component is not scored
+        off a stale copy). An execution-stats write bumps only the second.
+        """
+
         cached = self._index_cache.get(registry)
+        content_revision = registry.content_revision
         revision = registry.revision
-        if cached is not None and cached[0] == revision:
-            return cached[1]
+        if cached is not None and cached[0] == content_revision:
+            index = cached[2]
+            if cached[1] != revision:
+                index.refresh(registry.all())
+                self._index_cache[registry] = (content_revision, revision, index)
+            return index
         index = _Bm25Index(registry.all())
-        self._index_cache[registry] = (revision, index)
+        self._index_cache[registry] = (content_revision, revision, index)
         return index
 
     # -- validation and filtering ----------------------------------------------
@@ -250,7 +370,11 @@ class LexicalRetriever(Retriever):
                 keyword_parts = _tokens(keyword)
                 if keyword_parts and all(part in doc_tokens for part in keyword_parts):
                     continue
-                if _normalize(keyword) in _normalize(_resource_search_text(definition)):
+                # Substring fallback (a keyword inside a longer word, or one
+                # that tokenizes to nothing) reads the index's cached text:
+                # re-normalizing every candidate's full document here cost 22x
+                # the whole search at 1,000 resources.
+                if _normalize(keyword) in index.normalized_text(doc_index):
                     continue
                 return False
         tag_set = set(metadata.tags)
@@ -275,16 +399,17 @@ class LexicalRetriever(Retriever):
         keyword_tokens: set[str],
         normalized_task: str,
         bm25_score: float,
-        max_bm25: float,
+        reference_bm25: float,
     ) -> SearchResult:
         metadata = definition.metadata
         doc_tokens = index.doc_token_sets[doc_index]
 
         relevance = _relevance(
             bm25_score=bm25_score,
-            max_bm25=max_bm25,
+            reference_bm25=reference_bm25,
             task_token_set=task_token_set,
             doc_tokens=doc_tokens,
+            head_tokens=index.head_token_sets[doc_index],
             normalized_task=normalized_task,
             name_text=index.name_texts[doc_index],
         )
@@ -369,12 +494,19 @@ class LexicalRetriever(Retriever):
                     keyword_tokens=keyword_tokens,
                     normalized_task=normalized_task,
                     bm25_score=0.0,
-                    max_bm25=1.0,
+                    reference_bm25=0.0,
                 )
             )
         return results
 
-    def _apply_limits(self, results: list[SearchResult], query: SearchQuery) -> list[SearchResult]:
+    def apply_limits(self, results: list[SearchResult], query: SearchQuery) -> list[SearchResult]:
+        """Truncate ranked results to ``top_k`` under any per-kind limits.
+
+        Public because the retrievers that wrap this one (hybrid, re-rankers,
+        graph expansion) re-rank a widened pool and then have to apply the
+        caller's limits to the final order.
+        """
+
         if not query.per_kind_limits:
             return results[: query.top_k]
         counts: dict[str, int] = defaultdict(int)
@@ -394,16 +526,23 @@ class LexicalRetriever(Retriever):
 def _relevance(
     *,
     bm25_score: float,
-    max_bm25: float,
+    reference_bm25: float,
     task_token_set: set[str],
     doc_tokens: frozenset[str],
+    head_tokens: frozenset[str],
     normalized_task: str,
     name_text: str,
 ) -> float:
     if not task_token_set:
         return 0.0
-    coverage = _coverage(task_token_set, doc_tokens)
-    bm25_norm = (bm25_score / max_bm25) if max_bm25 > 0 else 0.0
+    coverage = _field_coverage(task_token_set, head_tokens, doc_tokens)
+    # Against a document that answers the query, not against the best score
+    # this query happened to produce: a query the catalog cannot serve has to
+    # be allowed to score low, or no threshold downstream means anything.
+    # Every candidate of one query is divided by the same constant, so the
+    # only ranking the change moves is between documents that beat the
+    # reference and tie at the clamp -- two scenarios of 120 at rank 1.
+    bm25_norm = min(1.0, bm25_score / reference_bm25) if reference_bm25 > 0 else 0.0
     # BM25 carries term rarity (a match on "okr" outranks matches on common
     # words); coverage keeps multi-facet queries honest.
     relevance = bm25_norm * (0.6 + 0.4 * coverage)
@@ -441,11 +580,19 @@ def _build_reasons(
         yield "high metadata relevance"
 
 
-def _resource_search_text(definition: ResourceDefinition) -> str:
-    text = definition.metadata.search_text()
+def _resource_search_fields(definition: ResourceDefinition) -> tuple[str, str]:
+    """The two indexed fields: declared metadata head, attached document body."""
+
+    head = definition.metadata.search_text()
+    body = ""
     if definition.extras.get("source_type") == "markdown_skill":
-        text += " " + str(definition.extras.get("content", ""))
-    return text
+        body = str(definition.extras.get("content", ""))
+    return head, body
+
+
+def _resource_search_text(definition: ResourceDefinition) -> str:
+    head, body = _resource_search_fields(definition)
+    return f"{head} {body}" if body else head
 
 
 def _permission_score(required: Iterable[str], granted: Iterable[str]) -> float:
@@ -457,6 +604,22 @@ def _permission_score(required: Iterable[str], granted: Iterable[str]) -> float:
     if not granted_set:
         return 0.25
     return covered / len(required_set)
+
+
+def _field_coverage(
+    needles: set[str], head_tokens: frozenset[str], doc_tokens: frozenset[str]
+) -> float:
+    """Query-term coverage, with body-only matches discounted like the term frequency."""
+
+    if not needles:
+        return 0.0
+    covered = 0.0
+    for token in needles:
+        if token in head_tokens:
+            covered += 1.0
+        elif token in doc_tokens:
+            covered += BODY_FIELD_WEIGHT
+    return covered / len(needles)
 
 
 def _coverage(needles: set[str], haystack: Iterable[str]) -> float:

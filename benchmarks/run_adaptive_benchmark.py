@@ -610,7 +610,9 @@ def main() -> None:
     parser.add_argument("--retriever", default="lexical", help="first-layer route used on cache misses")
     parser.add_argument("--pool", type=int, default=50)
     parser.add_argument("--min-score", type=float, default=0.45)
-    parser.add_argument("--min-relevance", type=float, default=0.55)
+    # Same operating point as the previous 0.55, in the units of the absolute
+    # relevance component (1.0 = names every query term once).
+    parser.add_argument("--min-relevance", type=float, default=0.35)
     parser.add_argument("--epochs", type=int, default=3, help="passes over the scenario set")
     parser.add_argument("--seed", type=int, default=7, help="traffic shuffle seed (shared by all configs)")
     parser.add_argument("--threshold", type=float, default=0.72, help="case similarity needed for a cache hit")

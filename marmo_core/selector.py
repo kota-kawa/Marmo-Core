@@ -77,11 +77,28 @@ class RuleBasedSetSelector(SetSelector):
     Keeps the v1 contract: it never abstains or escalates, and applies no
     dependency/conflict reasoning — that is exactly what 案H solvers are
     measured against.
+
+    It does honour both floors in ``SelectionContext``: ``min_score`` on the
+    composite score and ``min_relevance`` on the text-relevance component.
+    The relevance floor used to be read by every solver *except* this one,
+    which is the selector the Kernel uses by default — so the one gate that
+    can keep an unrelated resource out of the model's context did nothing in
+    the default configuration. Both default to 0.0: with the relevance
+    component now absolute a floor is finally meaningful, but on the bundled
+    1,000-skill corpus a value high enough to reject every off-topic goal
+    also rejects real matches, so the number belongs to the deployment, not
+    to the library.
     """
 
-    def __init__(self, default_limits: Mapping[str, int] | None = None, min_score: float = 0.0) -> None:
+    def __init__(
+        self,
+        default_limits: Mapping[str, int] | None = None,
+        min_score: float = 0.0,
+        min_relevance: float = 0.0,
+    ) -> None:
         self.default_limits = dict(default_limits or DEFAULT_SET_LIMITS)
         self.min_score = min_score
+        self.min_relevance = min_relevance
 
     def select(
         self,
@@ -96,6 +113,7 @@ class RuleBasedSetSelector(SetSelector):
         elif context is not None and context.per_kind_limits:
             effective_limits.update(context.per_kind_limits)
         min_score = max(self.min_score, context.min_score if context else 0.0)
+        min_relevance = max(self.min_relevance, context.min_relevance if context else 0.0)
         selected: list[SearchResult] = []
         counts: dict[str, int] = defaultdict(int)
         for result in results:
@@ -103,6 +121,8 @@ class RuleBasedSetSelector(SetSelector):
             if kind not in KINDS:
                 continue
             if result.score < min_score:
+                continue
+            if float(result.components.get("relevance", 1.0)) < min_relevance:
                 continue
             limit = effective_limits.get(kind, 0)
             if counts[kind] >= limit:
@@ -113,7 +133,7 @@ class RuleBasedSetSelector(SetSelector):
             parts = [f"{kind}={counts.get(kind, 0)}/{effective_limits.get(kind, 0)}" for kind in KINDS if effective_limits.get(kind, 0)]
             reason = "selected top-ranked resources per kind after active filters: " + ", ".join(parts)
         else:
-            reason = "no resource met the active filters and minimum score"
+            reason = "no resource met the active filters, minimum score, and minimum relevance"
         return SelectionResult(tuple(selected), reason)
 
 

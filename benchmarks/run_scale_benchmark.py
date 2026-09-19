@@ -258,7 +258,9 @@ def main() -> None:
     parser.add_argument("--route-k", type=int, default=3)
     parser.add_argument("--pool", type=int, default=50)
     parser.add_argument("--min-score", type=float, default=0.45)
-    parser.add_argument("--min-relevance", type=float, default=0.55)
+    # Same operating point as the previous 0.55, in the units of the absolute
+    # relevance component (1.0 = names every query term once).
+    parser.add_argument("--min-relevance", type=float, default=0.35)
     parser.add_argument("--output", default=None, help="default: results/scale-routing-<size>.json")
     args = parser.parse_args()
 
