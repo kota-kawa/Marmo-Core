@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-19
+
 ### Fixed
 
 - The text-relevance component is absolute instead of rank-normalized, so a
@@ -249,6 +251,7 @@ First release published to PyPI.
 - Typed distribution (`py.typed`) and an optional `benchmark` extra for the
   embedding and cross-encoder integration.
 
-[Unreleased]: https://github.com/kota-kawa/Marmo-Core/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/kota-kawa/Marmo-Core/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/kota-kawa/Marmo-Core/releases/tag/v0.6.0
 [0.5.0]: https://github.com/kota-kawa/Marmo-Core/releases/tag/v0.5.0
 [0.4.0]: https://github.com/kota-kawa/Marmo-Core/releases/tag/v0.4.0
