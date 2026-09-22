@@ -21,6 +21,30 @@ python -W error::ResourceWarning -m unittest discover -s tests
 unclosed file or socket in a test fails the build even when the assertions
 pass.
 
+## Branches and pull requests
+
+`main` is the released, stable branch and is never pushed to directly. Work on
+a branch named `<type>/<topic>` (`fix/`, `feat/`, `docs/`, `chore/`, `ci/`; new
+routing methods under evaluation live on `research/<method-name>`, see
+[AGENTS.md](AGENTS.md)) and open a pull request.
+
+- Commit subjects follow the existing history: `<type>: <English summary>`.
+  When a fix changes behaviour, say in the body what was wrong, what was
+  measured, and what the trade-off is.
+- Keep unrelated kinds of change (a bug fix and a refactor, a feature and a
+  reformat) in separate commits.
+- Pull request titles and descriptions include both Japanese and English, and
+  follow [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md):
+  what changed, related issues, the test commands you ran and their result,
+  and anything a reviewer has to decide (a changed default, exit code, score,
+  or public name).
+- A user-visible change gets a line under `## [Unreleased]` in
+  `CHANGELOG.md` in the same pull request. Version bumps are a separate
+  maintainer commit (see Releasing).
+
+The merge conditions and the required CI jobs are recorded in
+[.github/BRANCH_PROTECTION.md](.github/BRANCH_PROTECTION.md).
+
 ## Reproducing CI locally
 
 CI runs the test suite on every supported Python version, plus the static and
@@ -30,6 +54,8 @@ release checks below. Run these before opening a pull request:
 ruff check marmo_core tests scripts tools
 mypy marmo_core
 python scripts/release_check.py
+python scripts/check_doc_paths.py
+python scripts/check_env_documentation.py
 check-manifest
 python -m build
 python -m twine check dist/*
@@ -39,6 +65,13 @@ check-wheel-contents dist/*.whl
 If `check-manifest` reports a mismatch after you add a file, either add the
 matching rule to `MANIFEST.in` (to ship it in the sdist) or list the file under
 `[tool.check-manifest] ignore` in `pyproject.toml` (to keep it repository-only).
+
+`check_doc_paths.py` fails when a Markdown document names a repository path
+that no longer exists; fix the reference, or, for a path that is documented
+although it is intentionally untracked, add it to the script's allowlist with
+the reason. `check_env_documentation.py` fails when `.env.example` and the
+environment variables read by `marmo_core/` or `benchmarks/` disagree, so a new
+variable and its `.env.example` line land in the same change.
 
 A Docker job also builds the image and runs the suite inside it:
 
@@ -58,6 +91,21 @@ working directory for filesystem access. Validate a change with:
 ```bash
 marmo validate resources/memory resources/tools resources/agents
 ```
+
+## Documentation
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) is the internal design reference: layers,
+  the request path through `Kernel.run_goal`, contracts, and extension points.
+- [docs/knowledge/](docs/knowledge/README.md) holds the development
+  conventions, debugging procedures, compatibility contracts, and the lessons
+  recorded from this repository's history. Read
+  `docs/knowledge/development_conventions.md` before changing code.
+- [docs/decisions/](docs/decisions/README.md) records the architecture
+  decisions; add or update an ADR when you change one of them.
+- [AGENTS.md](AGENTS.md) lists every document with when to read it, and is the
+  rule set for coding agents working in this repository. When you add or remove
+  a document, update that list in the same commit; CI checks that documented
+  paths exist.
 
 ## Security-relevant changes
 

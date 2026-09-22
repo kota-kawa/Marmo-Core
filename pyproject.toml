@@ -57,7 +57,7 @@ marmo_core = ["py.typed"]
 [tool.check-manifest]
 # Contributor-only guidance and planning notes: tracked in the repository,
 # excluded from the sdist.
-ignore = ["AGENTS.md", "要件定義書１.md", "改善策.md"]
+ignore = ["AGENTS.md", "ARCHITECTURE.md", "要件定義書１.md", "改善策.md"]
 
 [tool.ruff]
 target-version = "py310"
