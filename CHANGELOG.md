@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Two dependency-free repository checks run in CI next to `release_check.py`:
+  `scripts/check_doc_paths.py` fails when the documentation names a
+  repository path that no longer exists, and
+  `scripts/check_env_documentation.py` fails when `.env.example` and the
+  environment variables the library or the benchmarks read disagree.
+  `.env.example` now documents `MARMO_NOTIFICATION_<DESTINATION>_URL`, the
+  webhook variable the bundled `send-notification` sample reads.
+
 ## [0.6.0] - 2026-09-19
 
 ### Fixed

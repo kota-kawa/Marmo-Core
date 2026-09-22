@@ -235,3 +235,15 @@ both side-effect-free resources and read operations requires
 See [Built-in Connectors](docs/connectors.md) and
 [Local Resource Packages](docs/local-resource-packages.md) for complete usage
 examples.
+
+## Documentation
+
+- [Built-in Connectors](docs/connectors.md) and
+  [Local Resource Packages](docs/local-resource-packages.md): user guides.
+- [Threat model](docs/threat-model.md): the trust boundaries the kernel
+  enforces and what it does not promise.
+- [Benchmarks](benchmarks/README.md): how the routing claims are measured, and
+  the committed results.
+- [ARCHITECTURE.md](ARCHITECTURE.md), [CONTRIBUTING.md](CONTRIBUTING.md), and
+  [docs/knowledge/](docs/knowledge/README.md): internal design, development
+  workflow, and conventions for contributors.
