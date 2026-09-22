@@ -23,7 +23,7 @@ python3 benchmarks/run_benchmark.py --query-transform hyde   # HyDE クエリ変
 python3 benchmarks/run_benchmark.py --llm-rerank             # LLM 再ランク(案C 最小。要 OPENAI_API_KEY)
 ```
 
-結果は `benchmarks/results/` に JSON で保存されます。`hybrid-model` の `--semantic-weight 0.9` は 0.3〜0.95 のスイープで最良だった設定です(下表)。HyDE / 再ランクの LLM 応答は `benchmarks/cache/` にコミット済みで、同一シナリオの再実行はキャッシュ命中により LLM を呼ばず決定的に再現されます。
+結果は `benchmarks/results/` に JSON で保存されます。`hybrid-model` の `--semantic-weight 0.9` は 0.3〜0.95 のスイープで最良だった設定です(下表)。HyDE / 再ランクの LLM 応答は初回実行時に `benchmarks/cache/` へ保存され（このディレクトリは git 管理外）、同じ環境での再実行はキャッシュ命中により LLM を呼ばず決定的に再現されます。
 
 ## シナリオ設計
 
@@ -111,7 +111,7 @@ python3 benchmarks/run_set_benchmark.py --llm-selector --llm-model gpt-4o   # LL
 python3 benchmarks/run_set_benchmark.py --retriever graph-hybrid-model --distractors resources/skills   # 案E グラフ拡張
 ```
 
-**比較対象**: `topk`(種別ごと Top-1、v1 の RuleBasedSetSelector = 制約推論なしの基準線)、`greedy`(案H ソルバー第1弾 `GreedyConstrainedSetSelector`: 依存閉包単位の効用合計 Σu で貪欲選択、競合・権限・予算制約を充足)、`beam`(案H ソルバー第2弾 `BeamSearchSetSelector`)、`bnb`(案H の厳密解ソルバー `BranchAndBoundSetSelector`: 依存閉包単位の include/exclude を許容上界付き分枝限定法で全探索し、Σu の**厳密最適解**を返す。近似ソルバーとの差 = 近似ギャップの測定用)、`llm`(`--llm-selector` 指定時。案C の第2層適用 `LLMSetSelector`: 候補メタデータ・依存・競合・権限・予算を 1 回の LLM 呼び出しに提示し、集合または abstain/escalate を JSON で返させる。**返答は制約修復せず生のまま評価** — LLM が制約を守れるか自体が測定対象)。全 Selector が `SelectionResult = selected | abstain | escalate` を返します。LLM 応答は `benchmarks/cache/set-selector-*.json` にコミットされ、再実行はキャッシュ命中により決定的です(temperature=0)。
+**比較対象**: `topk`(種別ごと Top-1、v1 の RuleBasedSetSelector = 制約推論なしの基準線)、`greedy`(案H ソルバー第1弾 `GreedyConstrainedSetSelector`: 依存閉包単位の効用合計 Σu で貪欲選択、競合・権限・予算制約を充足)、`beam`(案H ソルバー第2弾 `BeamSearchSetSelector`)、`bnb`(案H の厳密解ソルバー `BranchAndBoundSetSelector`: 依存閉包単位の include/exclude を許容上界付き分枝限定法で全探索し、Σu の**厳密最適解**を返す。近似ソルバーとの差 = 近似ギャップの測定用)、`llm`(`--llm-selector` 指定時。案C の第2層適用 `LLMSetSelector`: 候補メタデータ・依存・競合・権限・予算を 1 回の LLM 呼び出しに提示し、集合または abstain/escalate を JSON で返させる。**返答は制約修復せず生のまま評価** — LLM が制約を守れるか自体が測定対象)。全 Selector が `SelectionResult = selected | abstain | escalate` を返します。LLM 応答は `benchmarks/cache/set-selector-*.json` に保存され(git 管理外)、同じ環境での再実行はキャッシュ命中により決定的です(temperature=0)。
 
 ### 結果(min_relevance=0.55、2026-07-17 再計測。lexical 列は 2026-09-19 に絶対関連度で再測定)
 
@@ -343,4 +343,4 @@ python3 benchmarks/run_adaptive_benchmark.py --feedback --epochs 5   # 実績メ
 
 ## 注意
 
-`resources/skills` は出典を `SOURCES.md` に記録した外部リポジトリのコピーで、ベンチマーク・検証専用です。再配布ライセンスの整理が完了するまで、このコーパスを成果物として再配布しないでください。この方針のため、`.gitignore` で git 管理から外し、`MANIFEST.in` でも sdist から除外しています。
+`resources/skills` は出典を `resources/skills/SOURCES.md` に記録した外部リポジトリのコピーで、ベンチマーク・検証専用です。再配布ライセンスの整理が完了するまで、このコーパスを成果物として再配布しないでください。この方針のため、`.gitignore` で git 管理から外し、`MANIFEST.in` でも sdist から除外しています。
