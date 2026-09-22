@@ -41,6 +41,8 @@ jobs:
       - run: ruff check marmo_core tests scripts tools
       - run: mypy marmo_core
       - run: python scripts/release_check.py
+      - run: python scripts/check_doc_paths.py
+      - run: python scripts/check_env_documentation.py
       - run: check-manifest
       - run: python -m build
       - run: python -m twine check dist/*

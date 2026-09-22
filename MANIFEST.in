@@ -20,6 +20,6 @@ include benchmarks/*.md
 include benchmarks/*.py
 include benchmarks/corpus/set_corpus.json
 recursive-include benchmarks/results *.json
-include scripts/release_check.py
+include scripts/*.py
 recursive-include tests *.json *.jsonl *.py *.txt
 recursive-include tools *.py
