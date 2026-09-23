@@ -39,7 +39,8 @@ CI（`.github/workflows/ci.yml`）は Python 3.10〜3.14 でテストを回し�
 
 ## 実装規約
 
-- **実行時依存を増やさない。** 依存は `python-dotenv` のみ。HTTP は `urllib`、YAML 風の
+- **実行時依存は最小限に保ち、増やす前にユーザーの確認を取る。** 現在の依存は `python-dotenv` のみ
+  （`docs/decisions/0007-minimal-runtime-dependencies-with-user-approval.md`）。HTTP は `urllib`、YAML 風の
   フロントマターは自前パーサ、永続化は JSONL と `sqlite3`。外部モデル（fastembed など）は
   `benchmark` extra に隔離し、コアは `EmbeddingProvider` / `CrossEncoderProvider` の
   ABC だけを持つ。

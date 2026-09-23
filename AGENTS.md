@@ -113,12 +113,12 @@ Marmo-Core は、Object Routing を実装する公開 Python ライブラリで�
 - 実験上の有効性または必要性が確認されている。
 - unit test がある。
 - 既存 API を不必要に壊さない（`docs/knowledge/contracts-and-compatibility.md`）。
-- 一般利用できる実装になっている。実行時依存を増やさない。
+- 一般利用できる実装になっている。実行時依存を不必要に増やさない（増やす場合はユーザーの確認を取っている）。
 - 必要なドキュメント（`CHANGELOG.md`、該当する docs、`ARCHITECTURE.md`）が更新されている。
 
 ## 依存関係・互換性・凍結物
 
-- 実行時依存は `python-dotenv` の 1 つだけである。新しい実行時依存を追加する前に、その必要性と既存の依存や標準ライブラリで代替できないことを確認し、issue で合意する。ベンチマークや開発だけに要るものは `benchmark` / `dev` extra に置く。追加した場合は理由と影響を PR に書く。
+- 実行時依存は最小限に保つ（現在は `python-dotenv` の 1 つ）。新しい実行時依存を追加する前に、必要性、標準ライブラリや既存の依存で代替したときのコスト、インストールサイズ・推移的依存・ライセンスへの影響をユーザーに示し、確認を取る。確認なしに `pyproject.toml` の `dependencies` を変更しない。ベンチマークや開発だけに要るものは `benchmark` / `dev` extra に置く。追加した場合は理由と影響を PR に書く（`docs/decisions/0007-minimal-runtime-dependencies-with-user-approval.md`）。
 - `tests/fixtures/compat/v0.3.0/` は互換性契約の凍結物である。書き換えず、新しい契約を凍結するときは新しいバージョンのディレクトリを追加する。
 - `benchmarks/results/*.json` はコミットされた測定結果である。実装を変えずに数値だけを変更しない。再測定したら同じ PR で実装差分と一緒に更新し、`benchmarks/README.md` の数値も揃える。
 - CI ワークフローの `concurrency` は同じ ref の実行中ジョブを打ち切る。`main` に連続してマージすると中間コミットの CI が完了しないことがあるので、リリースタグを打つ前に `main` の最新コミットの CI が緑であることを確認する。
