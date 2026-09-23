@@ -2,7 +2,7 @@
 
 # Marmo-Core
 
-![Marmo Core: a sleeping marimo beside the title and tagline](assets/readme-banner.png)
+![Marmo Core: a sleeping marimo beside the title and tagline](https://raw.githubusercontent.com/kota-kawa/Marmo-Core/main/assets/readme-banner.png)
 
 [![PyPI](https://img.shields.io/pypi/v/marmo-core.svg)](https://pypi.org/project/marmo-core/)
 [![Python versions](https://img.shields.io/pypi/pyversions/marmo-core.svg)](https://pypi.org/project/marmo-core/)
