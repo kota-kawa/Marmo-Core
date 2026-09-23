@@ -1,43 +1,52 @@
+> 一番下に日本語版もあります
+
 # Marmo-Core
+
+![Marmo Core: a sleeping marimo beside the title and tagline](https://raw.githubusercontent.com/kota-kawa/Marmo-Core/main/assets/readme-banner.png)
 
 [![PyPI](https://img.shields.io/pypi/v/marmo-core.svg)](https://pypi.org/project/marmo-core/)
 [![Python versions](https://img.shields.io/pypi/pyversions/marmo-core.svg)](https://pypi.org/project/marmo-core/)
 [![CI](https://github.com/kota-kawa/Marmo-Core/actions/workflows/ci.yml/badge.svg)](https://github.com/kota-kawa/Marmo-Core/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-Marmo-Core is a lightweight Python kernel for registering, retrieving,
-selecting, and safely executing AI-agent resources.
+Marmo-Core is a Python library and CLI for finding resources that fit an AI agent's goal and running them through permission and policy checks. It combines resource registration, search, selection, execution, human approval, and audit records in one kernel. Start offline with a deterministic mock model, then connect an OpenAI-compatible or Anthropic model.
 
-## Requirements
+## What it manages
 
-- Python 3.10 or newer
+| Resource | Purpose |
+| --- | --- |
+| Memory | Information added to the agent's context. |
+| Skill | Instructions the agent can use for a task. |
+| Tool | A callable operation with a declared input schema and permissions. |
+| Agent | A task delegated to another execution boundary. |
 
-Install the published package with:
+For each goal, the kernel searches a registry, selects resources, checks policy before activation and execution, calls the model, and records the outcome. Tools and Agents can be denied or paused for human approval. The [threat model](docs/threat-model.md) describes the security boundaries and their limits.
+
+## Install
+
+Requires **Python 3.10 or newer**.
 
 ```bash
 python -m pip install marmo-core
 ```
 
-For local development, install the checkout with:
+The `marmo` CLI and Python API are installed together. No API key is needed for the offline examples below.
 
-```bash
-python -m pip install -e '.[dev]'
-```
+## Try it offline
 
-## Quickstart (Python)
+### Python: run one Tool
 
-Register a tool, let the kernel pick it for a goal, gate it through the
-policy layer, and execute it. This runs offline with the deterministic mock
-model; swap in `OpenAICompatibleLLMProvider()` or `AnthropicLLMProvider()`
-to use a real one.
+This complete example registers an addition Tool, grants its declared permission, and runs a goal with the mock model. The model's arguments are fixed so the result is reproducible.
 
 ```python
 from marmo_core import (
     Kernel, MockLLMProvider, PolicyContext, ResourceDefinition, ResourceRegistry,
 )
 
+
 def add_numbers(a: float, b: float) -> dict:
     return {"sum": a + b}
+
 
 registry = ResourceRegistry()
 registry.add(ResourceDefinition.from_mapping({
@@ -58,38 +67,23 @@ kernel = Kernel(
     tool_implementations={"tool.math.add": add_numbers},
 )
 result = kernel.run_goal("Add 2 and 3 with the calculator tool")
-print(result.status, result.output)   # completed Task complete. Tool tool.math.add returned: {"sum": 5}
+print(result.status, result.output)
 ```
 
-`examples/hello_world.py` is the same program with the audit trail printed;
-the other files in `examples/` cover delegation, human approval, planning, and
-recovery.
+The status is `completed`, and the Tool result contains `{"sum": 5}`. For a runnable file that also prints and verifies the audit trail, see [`examples/hello_world.py`](examples/hello_world.py).
 
-## Quickstart (CLI)
+### CLI: inspect and run a bundled example
 
-Validate and inspect the bundled resource examples with:
+The resource files in these commands live in this repository. Clone it first if you installed only the PyPI package:
 
 ```bash
+git clone https://github.com/kota-kawa/Marmo-Core.git
+cd Marmo-Core
 marmo validate examples/resources
 marmo search examples/resources --task "read a local text file safely"
 ```
 
-The `resources` directory also includes ten standalone samples for each of
-Memory, Tool, and Agent. Every Tool and Agent sample resolves an executable
-standard-library implementation through its `python:` ref, so no manual
-binding is needed. Filesystem samples are confined to the current working
-directory. External samples still require the declared permissions and human
-approval; notification webhooks are configured through
-`MARMO_NOTIFICATION_<DESTINATION>_URL` rather than model-visible arguments.
-The `format-code` sample invokes Ruff and therefore requires the `.[dev]`
-extra.
-
-```bash
-marmo validate resources/memory resources/tools resources/agents
-marmo list resources/memory resources/tools resources/agents
-```
-
-Run the offline JSON validation Tool end to end with the mock LLM:
+Run the bundled JSON validation Tool without a model account or manual Python binding:
 
 ```bash
 marmo run resources/tools/validate-json.json \
@@ -98,22 +92,24 @@ marmo run resources/tools/validate-json.json \
   --strict --format json
 ```
 
-Agent samples are also directly executable:
+`--tool-args` supplies calls to the mock model; it does not ask a model to choose arguments. The repository also includes ten samples each of Memory, Tool, and Agent resources under `resources/`. The Tool and Agent samples have executable handlers.
+
+## Use a real model
+
+Create a `.env` file in your working directory, or set the same variables in your shell. In a source checkout, start from the template:
 
 ```bash
-marmo run resources/agents/security-reviewer.json \
-  --task "review webhook security" \
-  --tool-args '{"agent.marmo.samples.security-reviewer":{"goal":"Review webhook security","context":"external upload"}}' \
-  --format json
+cp .env.example .env
 ```
 
-## Run with a real model
+| Provider | Required environment variables |
+| --- | --- |
+| OpenAI-compatible | `OPENAI_API_KEY`, `OPENAI_MODEL` |
+| Anthropic | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `ANTHROPIC_MAX_TOKENS` |
 
-`marmo run` uses the mock model by default, which replays the arguments given
-in `--tool-args`. Pass `--llm openai` or `--llm anthropic` to let a real model
-choose and call the tools; the provider reads its key, model, and endpoint
-from the environment or `.env` (see the next section) and `--tool-args` is
-ignored.
+The model name and maximum token setting can instead be passed to the corresponding Python provider constructor. `OPENAI_BASE_URL` selects another OpenAI-compatible endpoint; leave it empty for `api.openai.com`. `OPENAI_REASONING_EFFORT` is optional and provider-specific. See [`.env.example`](.env.example) for the full configuration and examples. OS environment variables take precedence over `.env` values.
+
+From the repository checkout, ask an OpenAI-compatible model to select file Tools:
 
 ```bash
 marmo run resources/tools \
@@ -123,127 +119,187 @@ marmo run resources/tools \
   --allow-side-effect none --allow-side-effect read
 ```
 
-Resources are matched to the goal by lexical retrieval over their English
-metadata. For goals written in another language, add `--retriever hyde`: the
-model first restates the goal in the registry's vocabulary, then retrieval
-runs on that restatement.
+Use `--llm anthropic` for Anthropic. With a real model, `--tool-args` is ignored: the model chooses the Tool and its arguments. The default lexical retriever matches resources against their English metadata. For a goal in another language, add `--retriever hyde`; it uses the selected real model to restate the goal in that vocabulary before retrieval.
 
-```bash
-marmo run resources/tools \
-  --llm openai --retriever hyde \
-  --task "カレントディレクトリのテキストファイルを一覧して、それぞれの内容を教えてください" \
-  --granted-permission fs.read \
-  --allow-side-effect none --allow-side-effect read
-```
-
-If retrieval matches nothing, the model answers without tools and the result's
-`detail` says so; with `--strict` that is a failure rather than a silent
-success. The same applies when the registry holds Tools or Agents but none of
-them matched the goal. Every kind gets its own share of the candidate pool, so
-a large Skill catalog cannot crowd the Tools out of a run. Provider errors are
-reported with the HTTP status and the API's own message (for example an
-unsupported parameter or an invalid model name), and end the task as `failed`
-with its audit trail intact.
-
-Arguments that do not match a tool's `input_schema` are handed back to the
-model, which may call again up to `--max-input-repairs` times (default 2). One
-tool result is capped at `--max-tool-output-tokens` estimated tokens (default
-8000) before it reaches the model, with the truncation stated in the text, so
-a large file read cannot overflow the request.
-
-In Python, the same setup is:
+The equivalent Python setup is:
 
 ```python
 from marmo_core import HydeRetriever, Kernel, LexicalRetriever, OpenAICompatibleLLMProvider, load_registry
 
-llm = OpenAICompatibleLLMProvider()          # OPENAI_MODEL / OPENAI_API_KEY / OPENAI_BASE_URL from .env
+llm = OpenAICompatibleLLMProvider()
 kernel = Kernel(load_registry(["resources/tools"]), llm, retriever=HydeRetriever(llm, LexicalRetriever()))
 ```
 
-## API and model configuration
+## Execution notes
 
-Create a `.env` file and set the relevant key when using an OpenAI-compatible
-LLM, Anthropic LLM, or embedding provider. Model names and model-specific
-runtime settings are also read from `.env` rather than being hard-coded by
-the providers. In a source checkout, `.env.example` can be copied as a
-starting point:
+- `--granted-permission` and `--allow-side-effect` control separate checks. The latter is a repeatable exact allowlist: permitting both no side effect and reads requires both values as shown above.
+- `marmo run` uses the mock model by default. A skipped resource can be recoverable; use `--strict` in automation to fail when a resource is skipped, a Tool named in `--tool-args` is not evaluated, or retrieval finds no usable resource.
+- A Tool argument that misses its `input_schema` can be returned to a real model for correction. `--max-input-repairs` defaults to 2. Tool output sent to the model is capped at an estimated 8,000 tokens by default (`--max-tool-output-tokens`).
+- CLI commands discover `resources`, `skills`, or `examples/resources` in the current directory when no path is given. For a connector-only run, use `--no-default-resources`.
+- Bundled filesystem examples operate within the current working directory. External examples require their declared permissions and human approval. The notification example reads `MARMO_NOTIFICATION_<DESTINATION>_URL` from the environment, and the `format-code` example requires the `.[dev]` extra for Ruff.
+
+Run `marmo --help` or `marmo run --help` for all CLI options.
+
+## Learn more and contribute
+
+| Guide | Contents |
+| --- | --- |
+| [Built-in Connectors](docs/connectors.md) | Connector setup and usage. |
+| [Local Resource Packages](docs/local-resource-packages.md) | Packaging and loading local resources. |
+| [Benchmarks](benchmarks/README.md) | Routing evaluation and committed results. |
+| [Architecture](ARCHITECTURE.md) | Kernel flow and extension points. |
+| [Contributing](CONTRIBUTING.md) | Development setup, checks, and pull requests. |
+| [Changelog](CHANGELOG.md) | Released and upcoming changes. |
+
+For a bug report or feature request, use [GitHub Issues](https://github.com/kota-kawa/Marmo-Core/issues). Marmo-Core is distributed under the [Apache License 2.0](LICENSE).
+
+<details>
+<summary>日本語版 (クリックして展開)</summary>
+
+## Marmo-Core とは
+
+Marmo-Core は、AI エージェントの目標に合うリソースを探し、権限とポリシーを確認して実行するための Python ライブラリと CLI です。リソースの登録、検索、選択、実行、人による承認、監査記録を一つのカーネルにまとめます。まずは決定的なモックモデルでオフライン実行を試し、その後 OpenAI 互換または Anthropic のモデルに接続できます。
+
+### 扱うリソース
+
+| 種類 | 役割 |
+| --- | --- |
+| Memory | エージェントの文脈に加える情報。 |
+| Skill | タスクで利用する手順や指示。 |
+| Tool | 入力スキーマと必要な権限を宣言した呼び出し可能な処理。 |
+| Agent | 別の実行境界で委任するタスク。 |
+
+カーネルは目標ごとに登録済みリソースを検索・選択し、有効化と実行の前にポリシーを確認します。Tool と Agent は拒否されたり、人の承認待ちになったりします。保護の対象と限界は[脅威モデル](docs/threat-model.md)を参照してください。
+
+### インストール
+
+**Python 3.10 以降**が必要です。
+
+```bash
+python -m pip install marmo-core
+```
+
+Python API と `marmo` CLI が一緒にインストールされます。以下のオフライン例に API キーは不要です。
+
+### オフラインで試す
+
+#### Python: Tool を一つ実行する
+
+次の例は加算 Tool を登録し、宣言された権限を付与して、モックモデルで目標を実行します。モデルに渡す引数を固定しているため、結果を再現できます。
+
+```python
+from marmo_core import (
+    Kernel, MockLLMProvider, PolicyContext, ResourceDefinition, ResourceRegistry,
+)
+
+
+def add_numbers(a: float, b: float) -> dict:
+    return {"sum": a + b}
+
+
+registry = ResourceRegistry()
+registry.add(ResourceDefinition.from_mapping({
+    "id": "tool.math.add", "kind": "tool", "name": "Add Numbers", "version": "1.0.0",
+    "description": "Add two numbers and return their sum.",
+    "capabilities": ["arithmetic"], "input_summary": "Two numbers a and b.",
+    "output_summary": "Object with the sum.", "required_permissions": ["math.add"],
+    "cost_estimate": 0.0, "latency_class": "fast", "side_effect": "none",
+    "trust_level": "core", "ref": "tool://math/add", "tags": ["math"],
+    "input_schema": {"type": "object", "required": ["a", "b"],
+                     "properties": {"a": {"type": "number"}, "b": {"type": "number"}}},
+}))
+
+kernel = Kernel(
+    registry,
+    MockLLMProvider(tool_arguments={"tool.math.add": {"a": 2, "b": 3}}),
+    policy_context=PolicyContext(granted_permissions=("math.add",)),
+    tool_implementations={"tool.math.add": add_numbers},
+)
+result = kernel.run_goal("Add 2 and 3 with the calculator tool")
+print(result.status, result.output)
+```
+
+状態は `completed` となり、Tool の結果に `{"sum": 5}` が含まれます。監査記録の表示と検証も行う実行ファイルは [`examples/hello_world.py`](examples/hello_world.py) にあります。
+
+#### CLI: 同梱サンプルを調べて実行する
+
+次のコマンドで使うリソース定義ファイルはこのリポジトリ内にあります。PyPI パッケージだけをインストールした場合は、先にリポジトリを取得してください。
+
+```bash
+git clone https://github.com/kota-kawa/Marmo-Core.git
+cd Marmo-Core
+marmo validate examples/resources
+marmo search examples/resources --task "read a local text file safely"
+```
+
+モデルのアカウントや Python 側の手動設定なしで、同梱の JSON 検証 Tool を実行できます。
+
+```bash
+marmo run resources/tools/validate-json.json \
+  --task "validate JSON input" \
+  --tool-args '{"tool.marmo.samples.validate-json":{"value":{"name":"Marmo"},"schema":{"type":"object","required":["name"],"properties":{"name":{"type":"string"}}}}}' \
+  --strict --format json
+```
+
+`--tool-args` はモックモデルに呼び出し引数を渡します。モデルに引数を考えさせるものではありません。`resources/` には Memory、Tool、Agent のサンプルが各 10 件あります。Tool と Agent のサンプルには実行できるハンドラがあります。
+
+### 実モデルを使う
+
+作業ディレクトリに `.env` を作るか、同じ変数をシェルで設定します。ソースを取得した場合はテンプレートから始められます。
 
 ```bash
 cp .env.example .env
 ```
 
-```dotenv
-OPENAI_API_KEY=your_key_here
-ANTHROPIC_API_KEY=your_key_here
-OPENAI_MODEL=gpt-5.6-terra
-OPENAI_REASONING_EFFORT=
-OPENAI_BASE_URL=
-ANTHROPIC_MODEL=claude-sonnet-5
-ANTHROPIC_MAX_TOKENS=16384
-OPENAI_EMBEDDING_MODEL=text-embedding-3-small
-```
+| プロバイダー | 必要な環境変数 |
+| --- | --- |
+| OpenAI 互換 | `OPENAI_API_KEY`、`OPENAI_MODEL` |
+| Anthropic | `ANTHROPIC_API_KEY`、`ANTHROPIC_MODEL`、`ANTHROPIC_MAX_TOKENS` |
 
-`OPENAI_MODEL`, `ANTHROPIC_MODEL`, and `OPENAI_EMBEDDING_MODEL` are required
-when the corresponding provider is constructed without an explicit `model`
-argument. `OPENAI_BASE_URL` points `OpenAICompatibleLLMProvider` at any
-OpenAI-compatible endpoint; for Groq, set it to
-`https://api.groq.com/openai/v1` with `OPENAI_MODEL=openai/gpt-oss-120b` and
-the Groq key in `OPENAI_API_KEY`. Leave it empty for `api.openai.com`, where
-the provider sends `max_completion_tokens` (current OpenAI models reject
-`max_tokens`); other servers get `max_tokens`, and the provider switches once
-if the server reports the chosen parameter as unsupported. Tool names are
-encoded on the wire because resource ids such as `tool.files.read-text`
-contain dots that the OpenAI and Anthropic tool grammars reject; the kernel
-and audit log keep seeing the real resource ids. `OPENAI_BASE_URL` also selects the endpoint for
-`OpenAICompatibleEmbeddingProvider`, so an on-prem or Groq setup never sends
-its key to `api.openai.com`. `ANTHROPIC_MAX_TOKENS` is required unless
-`max_tokens` is passed explicitly. `OPENAI_REASONING_EFFORT` is optional,
-applies when the OpenAI model is resolved from the environment, and is
-provider-specific: OpenAI accepts `none`, while Groq's gpt-oss accepts only
-`low`, `medium`, or `high`. Leave it empty to omit the parameter. The package
-loads `.env` without overriding values already present in the operating-system
-environment. `.env` is excluded from Git.
+対応する Python プロバイダーのコンストラクタに、モデル名や最大トークン数を明示的に渡すこともできます。OpenAI 互換の別の接続先には `OPENAI_BASE_URL` を設定します。空なら `api.openai.com` が使われます。`OPENAI_REASONING_EFFORT` は任意で、利用可能な値はプロバイダーによって異なります。設定全体と例は [`.env.example`](.env.example) を参照してください。OS の環境変数は `.env` より優先されます。
 
-The benchmark-only embedding and cross-encoder integration is optional:
+リポジトリを取得したディレクトリから、OpenAI 互換モデルにファイル操作 Tool を選ばせる例です。
 
 ```bash
-python -m pip install '.[benchmark]'
+marmo run resources/tools \
+  --llm openai \
+  --task "List the text files in the current directory, then read each one and tell me what they say" \
+  --granted-permission fs.read \
+  --allow-side-effect none --allow-side-effect read
 ```
 
-Run the test suite with:
+Anthropic では `--llm anthropic` を使います。実モデルを選んだ場合、`--tool-args` は無視され、Tool と引数はモデルが選びます。既定の語彙検索はリソースの英語メタデータに照合します。日本語などで目標を書く場合は `--retriever hyde` を付けると、指定した実モデルが検索前に目標をその語彙へ言い換えます。
 
-```bash
-python -W error::ResourceWarning -m unittest discover -s tests
+Python で同等の検索設定を組み立てる例です。
+
+```python
+from marmo_core import HydeRetriever, Kernel, LexicalRetriever, OpenAICompatibleLLMProvider, load_registry
+
+llm = OpenAICompatibleLLMProvider()
+kernel = Kernel(load_registry(["resources/tools"]), llm, retriever=HydeRetriever(llm, LexicalRetriever()))
 ```
 
-## Strict CLI runs
+### 実行時の注意
 
-The kernel normally allows a task to recover after a resource is denied or
-cannot be activated. For automation and release checks, pass `--strict` so a
-skipped resource or a tool named in `--tool-args` that was not evaluated makes
-the command exit non-zero.
+- `--granted-permission` と `--allow-side-effect` は別々の条件です。後者は値を厳密に照合する繰り返し指定可能な許可リストで、副作用なしと読み取りの両方を許すには、上の例のように両方を指定します。
+- `marmo run` の既定はモックモデルです。リソースのスキップ後も処理が続く場合があります。自動化では `--strict` を使うと、スキップ、`--tool-args` に指定した Tool の未評価、利用できるリソースとの不一致を失敗として扱えます。
+- Tool の引数が `input_schema` に合わない場合、実モデルに修正を求められます。`--max-input-repairs` の既定は 2 回です。モデルに渡す Tool の出力は、既定で推定 8,000 トークンを上限とします（`--max-tool-output-tokens`）。
+- パスを省略した CLI コマンドは、カレントディレクトリの `resources`、`skills`、`examples/resources` を自動検出します。コネクタだけを使う場合は `--no-default-resources` を指定します。
+- 同梱のファイル操作サンプルはカレントディレクトリ内を対象にします。外部へ作用するサンプルには、宣言された権限と人の承認が必要です。通知サンプルは環境変数 `MARMO_NOTIFICATION_<DESTINATION>_URL` を読み、`format-code` サンプルには Ruff を含む `.[dev]` が必要です。
 
-CLI commands auto-discover `resources`, `skills`, or `examples/resources` from
-the current directory when no resource path is provided. Connector-only runs
-should pass `--no-default-resources` to make their behavior independent of the
-working directory.
+CLI の全オプションは `marmo --help` または `marmo run --help` で確認できます。
 
-`--allow-side-effect` is an exact, repeatable allowlist. For example, allowing
-both side-effect-free resources and read operations requires
-`--allow-side-effect none --allow-side-effect read`.
+### 詳しい資料と貢献
 
-See [Built-in Connectors](docs/connectors.md) and
-[Local Resource Packages](docs/local-resource-packages.md) for complete usage
-examples.
+| 資料 | 内容 |
+| --- | --- |
+| [組み込みコネクタ](docs/connectors.md) | コネクタの設定と使い方。 |
+| [ローカルリソースパッケージ](docs/local-resource-packages.md) | ローカルリソースの梱包と読み込み。 |
+| [ベンチマーク](benchmarks/README.md) | ルーティングの評価と測定結果。 |
+| [アーキテクチャ](ARCHITECTURE.md) | カーネルの処理経路と拡張点。 |
+| [貢献ガイド](CONTRIBUTING.md) | 開発環境、チェック、PR の手順。 |
+| [変更履歴](CHANGELOG.md) | 公開済み・今後の変更。 |
 
-## Documentation
+不具合や機能の要望は [GitHub Issues](https://github.com/kota-kawa/Marmo-Core/issues) に報告してください。Marmo-Core は [Apache License 2.0](LICENSE) で配布しています。
 
-- [Built-in Connectors](docs/connectors.md) and
-  [Local Resource Packages](docs/local-resource-packages.md): user guides.
-- [Threat model](docs/threat-model.md): the trust boundaries the kernel
-  enforces and what it does not promise.
-- [Benchmarks](benchmarks/README.md): how the routing claims are measured, and
-  the committed results.
-- [ARCHITECTURE.md](ARCHITECTURE.md), [CONTRIBUTING.md](CONTRIBUTING.md), and
-  [docs/knowledge/](docs/knowledge/README.md): internal design, development
-  workflow, and conventions for contributors.
+</details>
