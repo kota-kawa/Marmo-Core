@@ -99,7 +99,8 @@ CI（`.github/workflows/ci.yml`）は Python 3.10〜3.14 でテストを回し�
 
 ## サブエージェントの指定
 
-- **モデルと effort**: Claude Code では Sonnet 5 の high（`model: "sonnet5"`、`effort: "high"`）、
+- **モデルと effort（全用途）**: レビュー・調査・実装など、どの役割でサブエージェントを
+  起動するときも、Claude Code では Sonnet 5 の high（`model: "sonnet5"`、`effort: "high"`）、
   Codex では GPT-6 Luna の max（`model: "gpt-6-luna"`、`reasoning_effort: "max"`）を指定する。
 - **レビュー用サブエージェント**: `Agent` ツールの `general-purpose`（読み取り専用にしたい
   場合は `Explore`）。渡すものは、スコープ（何を変えるべき変更か）、差分（`git diff main...HEAD`
