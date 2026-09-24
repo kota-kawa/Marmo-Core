@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- README now links to the Marmo Core website for the library overview, concepts,
+  and usage guide.
 - A held-out benchmark of bundled resources now reports real Tool execution
   success, artifact-checked single-step task completion, Layer 2 set quality,
   Layer 3 cache reuse, and adversarial metadata outcomes. A benchmark-only
