@@ -34,6 +34,7 @@ Issues = "https://github.com/kota-kawa/Marmo-Core/issues"
 
 [project.optional-dependencies]
 benchmark = ["fastembed>=0.8.0"]
+benchmark-ann = ["usearch>=2.26,<3"]
 dev = [
   "build>=1.2",
   "check-manifest>=0.51",

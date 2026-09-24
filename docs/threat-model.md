@@ -54,7 +54,7 @@ controls must continue to verify these guarantees.
 | Destructive operations | argument-aware deny/escalate rules, exact-operation approval, dry-run, compensation through the same gates | Novel command encodings may evade lexical rules |
 | Excess privilege | declared permissions, deny-by-default trust policy, activation and execution gates, Agent delegated-permission subset check | A malicious in-process handler can misuse permissions explicitly granted to it |
 | Weak execution isolation | L0-L3 declaration, minimum-level gate, built-in L1/L2 Connector restrictions, L3 unavailable by default | DNS rebinding and filesystem TOCTOU remain deployment concerns; L1 is not a filesystem sandbox |
-| Malicious resource package | trust levels, explicit permissions, local validation | Package signatures and distribution registry remain pending |
+| Malicious resource package | trust levels, explicit permissions, local validation | Package signatures and distribution registry remain pending; a package that forges its trust, permissions, side-effect, and isolation declarations can pass metadata-based routing and gates. The benchmark in `benchmarks/README.md` measures activation candidates but does not execute the forged Tool |
 | State/audit leakage or tampering | `SecretRef` persistence checks, redaction, hash-chained audit log | Hash chaining detects changes but does not provide remote attestation |
 
 ## Release review

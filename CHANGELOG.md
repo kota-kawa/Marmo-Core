@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A held-out benchmark of bundled resources now reports real Tool execution
+  success, artifact-checked single-step task completion, Layer 2 set quality,
+  Layer 3 cache reuse, and adversarial metadata outcomes. A benchmark-only
+  flat ANN comparison measures 100k routing against the hierarchical path.
 - Two dependency-free repository checks run in CI next to `release_check.py`:
   `scripts/check_doc_paths.py` fails when the documentation names a
   repository path that no longer exists, and
