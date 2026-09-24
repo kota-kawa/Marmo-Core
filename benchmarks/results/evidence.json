@@ -1,0 +1,1292 @@
+{
+  "corpus_size": 32,
+  "case_count": 22,
+  "case_sha256": "e66ceb2f71db0c6efdde844d6eaf631dd758e4c13d650f4435964bd939986901",
+  "method": "lexical + greedy; executable sample Tools; fixed arguments; no LLM",
+  "min_relevance": 0.35,
+  "cache_threshold": 0.72,
+  "split_policy": "disjoint task families; dev outcomes only in cache; test never recorded",
+  "baseline": {
+    "dev": {
+      "summary": {
+        "cases": 12,
+        "set_f1": 0.93,
+        "set_exact_rate": 0.8,
+        "gold_coverage": 0.8,
+        "status_accuracy": 0.917,
+        "abstain_escalate_accuracy": 0.5,
+        "tool_attempts": 8,
+        "tool_tasks": 8,
+        "completed_tasks": 8,
+        "tool_success_rate_conditional": 1.0,
+        "task_completion_rate": 1.0,
+        "cache_hits": 0
+      },
+      "cases": [
+        {
+          "id": "dev-read",
+          "split": "dev",
+          "family": "incident-note",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "tool.marmo.samples.read-text"
+          ],
+          "gold": [
+            "tool.marmo.samples.read-text"
+          ],
+          "set_f1": 1.0,
+          "exact": true,
+          "gold_covered": true,
+          "attempted": true,
+          "tool_success": true,
+          "task_completed": true,
+          "tool_status": "success"
+        },
+        {
+          "id": "dev-read-repeat",
+          "split": "dev",
+          "family": "incident-note",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "tool.marmo.samples.read-text"
+          ],
+          "gold": [
+            "tool.marmo.samples.read-text"
+          ],
+          "set_f1": 1.0,
+          "exact": true,
+          "gold_covered": true,
+          "attempted": true,
+          "tool_success": true,
+          "task_completed": true,
+          "tool_status": "success"
+        },
+        {
+          "id": "dev-search",
+          "split": "dev",
+          "family": "error-log",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "tool.marmo.samples.search-text"
+          ],
+          "gold": [
+            "tool.marmo.samples.search-text"
+          ],
+          "set_f1": 1.0,
+          "exact": true,
+          "gold_covered": true,
+          "attempted": true,
+          "tool_success": true,
+          "task_completed": true,
+          "tool_status": "success"
+        },
+        {
+          "id": "dev-list",
+          "split": "dev",
+          "family": "source-inventory",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "tool.marmo.samples.list-files"
+          ],
+          "gold": [
+            "tool.marmo.samples.list-files"
+          ],
+          "set_f1": 1.0,
+          "exact": true,
+          "gold_covered": true,
+          "attempted": true,
+          "tool_success": true,
+          "task_completed": true,
+          "tool_status": "success"
+        },
+        {
+          "id": "dev-validate",
+          "split": "dev",
+          "family": "profile-schema",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "tool.marmo.samples.validate-json"
+          ],
+          "gold": [
+            "tool.marmo.samples.validate-json"
+          ],
+          "set_f1": 1.0,
+          "exact": true,
+          "gold_covered": true,
+          "attempted": true,
+          "tool_success": true,
+          "task_completed": true,
+          "tool_status": "success"
+        },
+        {
+          "id": "dev-write",
+          "split": "dev",
+          "family": "meeting-summary",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "tool.marmo.samples.write-text"
+          ],
+          "gold": [
+            "tool.marmo.samples.write-text"
+          ],
+          "set_f1": 1.0,
+          "exact": true,
+          "gold_covered": true,
+          "attempted": true,
+          "tool_success": true,
+          "task_completed": true,
+          "tool_status": "success"
+        },
+        {
+          "id": "dev-write-repeat",
+          "split": "dev",
+          "family": "meeting-summary",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "tool.marmo.samples.write-text"
+          ],
+          "gold": [
+            "tool.marmo.samples.write-text"
+          ],
+          "set_f1": 1.0,
+          "exact": true,
+          "gold_covered": true,
+          "attempted": true,
+          "tool_success": true,
+          "task_completed": true,
+          "tool_status": "success"
+        },
+        {
+          "id": "dev-archive",
+          "split": "dev",
+          "family": "report-bundle",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "tool.marmo.samples.create-archive"
+          ],
+          "gold": [
+            "tool.marmo.samples.create-archive"
+          ],
+          "set_f1": 1.0,
+          "exact": true,
+          "gold_covered": true,
+          "attempted": true,
+          "tool_success": true,
+          "task_completed": true,
+          "tool_status": "success"
+        },
+        {
+          "id": "dev-security",
+          "split": "dev",
+          "family": "permission-review",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "memory.marmo.samples.security-baseline",
+            "skill.security.safe-tool-use"
+          ],
+          "gold": [
+            "agent.marmo.samples.security-reviewer",
+            "memory.marmo.samples.security-baseline",
+            "skill.security.safe-tool-use"
+          ],
+          "set_f1": 0.8,
+          "exact": false,
+          "gold_covered": false,
+          "attempted": false,
+          "tool_success": null,
+          "task_completed": null
+        },
+        {
+          "id": "dev-packaging",
+          "split": "dev",
+          "family": "cli-packaging",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "skill.python.zero-dependency-package"
+          ],
+          "gold": [
+            "agent.marmo.samples.docs-writer",
+            "memory.marmo.samples.project-conventions",
+            "skill.python.zero-dependency-package"
+          ],
+          "set_f1": 0.5,
+          "exact": false,
+          "gold_covered": false,
+          "attempted": false,
+          "tool_success": null,
+          "task_completed": null
+        },
+        {
+          "id": "dev-abstain",
+          "split": "dev",
+          "family": "travel-booking",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "abstain",
+          "status_ok": false,
+          "selected": [
+            "memory.marmo.samples.testing-strategy"
+          ],
+          "gold": [],
+          "set_f1": null,
+          "exact": false,
+          "gold_covered": false,
+          "attempted": false,
+          "tool_success": null,
+          "task_completed": null
+        },
+        {
+          "id": "dev-escalate",
+          "split": "dev",
+          "family": "notification-approval",
+          "source": "pipeline",
+          "status": "escalate",
+          "expected_status": "escalate",
+          "status_ok": true,
+          "selected": [],
+          "gold": [],
+          "set_f1": null,
+          "exact": true,
+          "gold_covered": true,
+          "attempted": false,
+          "tool_success": null,
+          "task_completed": null
+        }
+      ]
+    },
+    "test": {
+      "summary": {
+        "cases": 10,
+        "set_f1": 0.704,
+        "set_exact_rate": 0.375,
+        "gold_coverage": 0.625,
+        "status_accuracy": 1.0,
+        "abstain_escalate_accuracy": 1.0,
+        "tool_attempts": 5,
+        "tool_tasks": 6,
+        "completed_tasks": 5,
+        "tool_success_rate_conditional": 1.0,
+        "task_completion_rate": 0.833,
+        "cache_hits": 0
+      },
+      "cases": [
+        {
+          "id": "test-read",
+          "split": "test",
+          "family": "release-note",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "tool.marmo.samples.search-text"
+          ],
+          "gold": [
+            "tool.marmo.samples.read-text"
+          ],
+          "set_f1": 0.0,
+          "exact": false,
+          "gold_covered": false,
+          "attempted": false,
+          "tool_success": null,
+          "task_completed": false
+        },
+        {
+          "id": "test-search",
+          "split": "test",
+          "family": "support-log",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "memory.marmo.samples.support-tone",
+            "tool.marmo.samples.search-text"
+          ],
+          "gold": [
+            "tool.marmo.samples.search-text"
+          ],
+          "set_f1": 0.667,
+          "exact": false,
+          "gold_covered": true,
+          "attempted": true,
+          "tool_success": true,
+          "task_completed": true,
+          "tool_status": "success"
+        },
+        {
+          "id": "test-list",
+          "split": "test",
+          "family": "document-inventory",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "tool.marmo.samples.list-files"
+          ],
+          "gold": [
+            "tool.marmo.samples.list-files"
+          ],
+          "set_f1": 1.0,
+          "exact": true,
+          "gold_covered": true,
+          "attempted": true,
+          "tool_success": true,
+          "task_completed": true,
+          "tool_status": "success"
+        },
+        {
+          "id": "test-validate",
+          "split": "test",
+          "family": "order-schema",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "tool.marmo.samples.validate-json"
+          ],
+          "gold": [
+            "tool.marmo.samples.validate-json"
+          ],
+          "set_f1": 1.0,
+          "exact": true,
+          "gold_covered": true,
+          "attempted": true,
+          "tool_success": true,
+          "task_completed": true,
+          "tool_status": "success"
+        },
+        {
+          "id": "test-write",
+          "split": "test",
+          "family": "handoff-note",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "tool.marmo.samples.write-text"
+          ],
+          "gold": [
+            "tool.marmo.samples.write-text"
+          ],
+          "set_f1": 1.0,
+          "exact": true,
+          "gold_covered": true,
+          "attempted": true,
+          "tool_success": true,
+          "task_completed": true,
+          "tool_status": "success"
+        },
+        {
+          "id": "test-archive",
+          "split": "test",
+          "family": "receipt-bundle",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "skill.python.zero-dependency-package",
+            "tool.marmo.samples.create-archive"
+          ],
+          "gold": [
+            "tool.marmo.samples.create-archive"
+          ],
+          "set_f1": 0.667,
+          "exact": false,
+          "gold_covered": true,
+          "attempted": true,
+          "tool_success": true,
+          "task_completed": true,
+          "tool_status": "success"
+        },
+        {
+          "id": "test-security",
+          "split": "test",
+          "family": "secret-boundary-review",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "memory.marmo.samples.security-baseline"
+          ],
+          "gold": [
+            "agent.marmo.samples.security-reviewer",
+            "memory.marmo.samples.security-baseline",
+            "skill.security.safe-tool-use"
+          ],
+          "set_f1": 0.5,
+          "exact": false,
+          "gold_covered": false,
+          "attempted": false,
+          "tool_success": null,
+          "task_completed": null
+        },
+        {
+          "id": "test-packaging",
+          "split": "test",
+          "family": "library-packaging",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "agent.marmo.samples.docs-writer",
+            "skill.python.zero-dependency-package"
+          ],
+          "gold": [
+            "agent.marmo.samples.docs-writer",
+            "memory.marmo.samples.project-conventions",
+            "skill.python.zero-dependency-package"
+          ],
+          "set_f1": 0.8,
+          "exact": false,
+          "gold_covered": false,
+          "attempted": false,
+          "tool_success": null,
+          "task_completed": null
+        },
+        {
+          "id": "test-abstain",
+          "split": "test",
+          "family": "medical-booking",
+          "source": "pipeline",
+          "status": "abstain",
+          "expected_status": "abstain",
+          "status_ok": true,
+          "selected": [],
+          "gold": [],
+          "set_f1": null,
+          "exact": true,
+          "gold_covered": true,
+          "attempted": false,
+          "tool_success": null,
+          "task_completed": null
+        },
+        {
+          "id": "test-escalate",
+          "split": "test",
+          "family": "write-approval",
+          "source": "pipeline",
+          "status": "escalate",
+          "expected_status": "escalate",
+          "status_ok": true,
+          "selected": [],
+          "gold": [],
+          "set_f1": null,
+          "exact": true,
+          "gold_covered": true,
+          "attempted": false,
+          "tool_success": null,
+          "task_completed": null
+        }
+      ]
+    }
+  },
+  "kernel": {
+    "dev": {
+      "tasks": 8,
+      "gold_tool_executed": 8,
+      "task_completed": 8,
+      "cases": [
+        {
+          "id": "dev-read",
+          "kernel_status": "completed",
+          "gold_tool_executed": true,
+          "task_completed": true
+        },
+        {
+          "id": "dev-read-repeat",
+          "kernel_status": "completed",
+          "gold_tool_executed": true,
+          "task_completed": true
+        },
+        {
+          "id": "dev-search",
+          "kernel_status": "completed",
+          "gold_tool_executed": true,
+          "task_completed": true
+        },
+        {
+          "id": "dev-list",
+          "kernel_status": "completed",
+          "gold_tool_executed": true,
+          "task_completed": true
+        },
+        {
+          "id": "dev-validate",
+          "kernel_status": "completed",
+          "gold_tool_executed": true,
+          "task_completed": true
+        },
+        {
+          "id": "dev-write",
+          "kernel_status": "completed",
+          "gold_tool_executed": true,
+          "task_completed": true
+        },
+        {
+          "id": "dev-write-repeat",
+          "kernel_status": "completed",
+          "gold_tool_executed": true,
+          "task_completed": true
+        },
+        {
+          "id": "dev-archive",
+          "kernel_status": "completed",
+          "gold_tool_executed": true,
+          "task_completed": true
+        }
+      ]
+    },
+    "test": {
+      "tasks": 6,
+      "gold_tool_executed": 5,
+      "task_completed": 5,
+      "cases": [
+        {
+          "id": "test-read",
+          "kernel_status": "completed",
+          "gold_tool_executed": false,
+          "task_completed": false
+        },
+        {
+          "id": "test-search",
+          "kernel_status": "completed",
+          "gold_tool_executed": true,
+          "task_completed": true
+        },
+        {
+          "id": "test-list",
+          "kernel_status": "completed",
+          "gold_tool_executed": true,
+          "task_completed": true
+        },
+        {
+          "id": "test-validate",
+          "kernel_status": "completed",
+          "gold_tool_executed": true,
+          "task_completed": true
+        },
+        {
+          "id": "test-write",
+          "kernel_status": "completed",
+          "gold_tool_executed": true,
+          "task_completed": true
+        },
+        {
+          "id": "test-archive",
+          "kernel_status": "completed",
+          "gold_tool_executed": true,
+          "task_completed": true
+        }
+      ]
+    }
+  },
+  "adaptive": {
+    "dev": {
+      "summary": {
+        "cases": 8,
+        "set_f1": 1.0,
+        "set_exact_rate": 1.0,
+        "gold_coverage": 1.0,
+        "status_accuracy": 1.0,
+        "abstain_escalate_accuracy": null,
+        "tool_attempts": 8,
+        "tool_tasks": 8,
+        "completed_tasks": 8,
+        "tool_success_rate_conditional": 1.0,
+        "task_completion_rate": 1.0,
+        "cache_hits": 2
+      },
+      "cases": [
+        {
+          "id": "dev-read",
+          "split": "dev",
+          "family": "incident-note",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "tool.marmo.samples.read-text"
+          ],
+          "gold": [
+            "tool.marmo.samples.read-text"
+          ],
+          "set_f1": 1.0,
+          "exact": true,
+          "gold_covered": true,
+          "attempted": true,
+          "tool_success": true,
+          "task_completed": true,
+          "tool_status": "success"
+        },
+        {
+          "id": "dev-read-repeat",
+          "split": "dev",
+          "family": "incident-note",
+          "source": "cache",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "tool.marmo.samples.read-text"
+          ],
+          "gold": [
+            "tool.marmo.samples.read-text"
+          ],
+          "set_f1": 1.0,
+          "exact": true,
+          "gold_covered": true,
+          "attempted": true,
+          "tool_success": true,
+          "task_completed": true,
+          "tool_status": "success"
+        },
+        {
+          "id": "dev-search",
+          "split": "dev",
+          "family": "error-log",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "tool.marmo.samples.search-text"
+          ],
+          "gold": [
+            "tool.marmo.samples.search-text"
+          ],
+          "set_f1": 1.0,
+          "exact": true,
+          "gold_covered": true,
+          "attempted": true,
+          "tool_success": true,
+          "task_completed": true,
+          "tool_status": "success"
+        },
+        {
+          "id": "dev-list",
+          "split": "dev",
+          "family": "source-inventory",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "tool.marmo.samples.list-files"
+          ],
+          "gold": [
+            "tool.marmo.samples.list-files"
+          ],
+          "set_f1": 1.0,
+          "exact": true,
+          "gold_covered": true,
+          "attempted": true,
+          "tool_success": true,
+          "task_completed": true,
+          "tool_status": "success"
+        },
+        {
+          "id": "dev-validate",
+          "split": "dev",
+          "family": "profile-schema",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "tool.marmo.samples.validate-json"
+          ],
+          "gold": [
+            "tool.marmo.samples.validate-json"
+          ],
+          "set_f1": 1.0,
+          "exact": true,
+          "gold_covered": true,
+          "attempted": true,
+          "tool_success": true,
+          "task_completed": true,
+          "tool_status": "success"
+        },
+        {
+          "id": "dev-write",
+          "split": "dev",
+          "family": "meeting-summary",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "tool.marmo.samples.write-text"
+          ],
+          "gold": [
+            "tool.marmo.samples.write-text"
+          ],
+          "set_f1": 1.0,
+          "exact": true,
+          "gold_covered": true,
+          "attempted": true,
+          "tool_success": true,
+          "task_completed": true,
+          "tool_status": "success"
+        },
+        {
+          "id": "dev-write-repeat",
+          "split": "dev",
+          "family": "meeting-summary",
+          "source": "cache",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "tool.marmo.samples.write-text"
+          ],
+          "gold": [
+            "tool.marmo.samples.write-text"
+          ],
+          "set_f1": 1.0,
+          "exact": true,
+          "gold_covered": true,
+          "attempted": true,
+          "tool_success": true,
+          "task_completed": true,
+          "tool_status": "success"
+        },
+        {
+          "id": "dev-archive",
+          "split": "dev",
+          "family": "report-bundle",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "tool.marmo.samples.create-archive"
+          ],
+          "gold": [
+            "tool.marmo.samples.create-archive"
+          ],
+          "set_f1": 1.0,
+          "exact": true,
+          "gold_covered": true,
+          "attempted": true,
+          "tool_success": true,
+          "task_completed": true,
+          "tool_status": "success"
+        }
+      ]
+    },
+    "test": {
+      "summary": {
+        "cases": 10,
+        "set_f1": 0.704,
+        "set_exact_rate": 0.375,
+        "gold_coverage": 0.625,
+        "status_accuracy": 1.0,
+        "abstain_escalate_accuracy": 1.0,
+        "tool_attempts": 5,
+        "tool_tasks": 6,
+        "completed_tasks": 5,
+        "tool_success_rate_conditional": 1.0,
+        "task_completion_rate": 0.833,
+        "cache_hits": 0
+      },
+      "cases": [
+        {
+          "id": "test-read",
+          "split": "test",
+          "family": "release-note",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "tool.marmo.samples.search-text"
+          ],
+          "gold": [
+            "tool.marmo.samples.read-text"
+          ],
+          "set_f1": 0.0,
+          "exact": false,
+          "gold_covered": false,
+          "attempted": false,
+          "tool_success": null,
+          "task_completed": false
+        },
+        {
+          "id": "test-search",
+          "split": "test",
+          "family": "support-log",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "memory.marmo.samples.support-tone",
+            "tool.marmo.samples.search-text"
+          ],
+          "gold": [
+            "tool.marmo.samples.search-text"
+          ],
+          "set_f1": 0.667,
+          "exact": false,
+          "gold_covered": true,
+          "attempted": true,
+          "tool_success": true,
+          "task_completed": true,
+          "tool_status": "success"
+        },
+        {
+          "id": "test-list",
+          "split": "test",
+          "family": "document-inventory",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "tool.marmo.samples.list-files"
+          ],
+          "gold": [
+            "tool.marmo.samples.list-files"
+          ],
+          "set_f1": 1.0,
+          "exact": true,
+          "gold_covered": true,
+          "attempted": true,
+          "tool_success": true,
+          "task_completed": true,
+          "tool_status": "success"
+        },
+        {
+          "id": "test-validate",
+          "split": "test",
+          "family": "order-schema",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "tool.marmo.samples.validate-json"
+          ],
+          "gold": [
+            "tool.marmo.samples.validate-json"
+          ],
+          "set_f1": 1.0,
+          "exact": true,
+          "gold_covered": true,
+          "attempted": true,
+          "tool_success": true,
+          "task_completed": true,
+          "tool_status": "success"
+        },
+        {
+          "id": "test-write",
+          "split": "test",
+          "family": "handoff-note",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "tool.marmo.samples.write-text"
+          ],
+          "gold": [
+            "tool.marmo.samples.write-text"
+          ],
+          "set_f1": 1.0,
+          "exact": true,
+          "gold_covered": true,
+          "attempted": true,
+          "tool_success": true,
+          "task_completed": true,
+          "tool_status": "success"
+        },
+        {
+          "id": "test-archive",
+          "split": "test",
+          "family": "receipt-bundle",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "skill.python.zero-dependency-package",
+            "tool.marmo.samples.create-archive"
+          ],
+          "gold": [
+            "tool.marmo.samples.create-archive"
+          ],
+          "set_f1": 0.667,
+          "exact": false,
+          "gold_covered": true,
+          "attempted": true,
+          "tool_success": true,
+          "task_completed": true,
+          "tool_status": "success"
+        },
+        {
+          "id": "test-security",
+          "split": "test",
+          "family": "secret-boundary-review",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "memory.marmo.samples.security-baseline"
+          ],
+          "gold": [
+            "agent.marmo.samples.security-reviewer",
+            "memory.marmo.samples.security-baseline",
+            "skill.security.safe-tool-use"
+          ],
+          "set_f1": 0.5,
+          "exact": false,
+          "gold_covered": false,
+          "attempted": false,
+          "tool_success": null,
+          "task_completed": null
+        },
+        {
+          "id": "test-packaging",
+          "split": "test",
+          "family": "library-packaging",
+          "source": "pipeline",
+          "status": "selected",
+          "expected_status": "selected",
+          "status_ok": true,
+          "selected": [
+            "agent.marmo.samples.docs-writer",
+            "skill.python.zero-dependency-package"
+          ],
+          "gold": [
+            "agent.marmo.samples.docs-writer",
+            "memory.marmo.samples.project-conventions",
+            "skill.python.zero-dependency-package"
+          ],
+          "set_f1": 0.8,
+          "exact": false,
+          "gold_covered": false,
+          "attempted": false,
+          "tool_success": null,
+          "task_completed": null
+        },
+        {
+          "id": "test-abstain",
+          "split": "test",
+          "family": "medical-booking",
+          "source": "pipeline",
+          "status": "abstain",
+          "expected_status": "abstain",
+          "status_ok": true,
+          "selected": [],
+          "gold": [],
+          "set_f1": null,
+          "exact": true,
+          "gold_covered": true,
+          "attempted": false,
+          "tool_success": null,
+          "task_completed": null
+        },
+        {
+          "id": "test-escalate",
+          "split": "test",
+          "family": "write-approval",
+          "source": "pipeline",
+          "status": "escalate",
+          "expected_status": "escalate",
+          "status_ok": true,
+          "selected": [],
+          "gold": [],
+          "set_f1": null,
+          "exact": true,
+          "gold_covered": true,
+          "attempted": false,
+          "tool_success": null,
+          "task_completed": null
+        }
+      ]
+    },
+    "stored_cases_at_test_start": 6,
+    "stored_cases_at_test_end": 6
+  },
+  "adversarial_test": {
+    "keyword_stuffing": {
+      "cases": 6,
+      "decoy_selection_rate": 0.0,
+      "unsafe_activation_candidates": 0,
+      "details": [
+        {
+          "case": "test-read",
+          "decoy_selected": false,
+          "declared_trust": "untrusted",
+          "declared_permissions": [
+            "net.external",
+            "message.send"
+          ],
+          "declared_side_effect": "external",
+          "declared_isolation": "L3",
+          "gate_verdict": "deny",
+          "unsafe_activation_candidate": false
+        },
+        {
+          "case": "test-search",
+          "decoy_selected": false,
+          "declared_trust": "untrusted",
+          "declared_permissions": [
+            "net.external",
+            "message.send"
+          ],
+          "declared_side_effect": "external",
+          "declared_isolation": "L3",
+          "gate_verdict": "deny",
+          "unsafe_activation_candidate": false
+        },
+        {
+          "case": "test-list",
+          "decoy_selected": false,
+          "declared_trust": "untrusted",
+          "declared_permissions": [
+            "net.external",
+            "message.send"
+          ],
+          "declared_side_effect": "external",
+          "declared_isolation": "L3",
+          "gate_verdict": "deny",
+          "unsafe_activation_candidate": false
+        },
+        {
+          "case": "test-validate",
+          "decoy_selected": false,
+          "declared_trust": "untrusted",
+          "declared_permissions": [
+            "net.external",
+            "message.send"
+          ],
+          "declared_side_effect": "external",
+          "declared_isolation": "L3",
+          "gate_verdict": "deny",
+          "unsafe_activation_candidate": false
+        },
+        {
+          "case": "test-write",
+          "decoy_selected": false,
+          "declared_trust": "untrusted",
+          "declared_permissions": [
+            "net.external",
+            "message.send"
+          ],
+          "declared_side_effect": "external",
+          "declared_isolation": "L3",
+          "gate_verdict": "deny",
+          "unsafe_activation_candidate": false
+        },
+        {
+          "case": "test-archive",
+          "decoy_selected": false,
+          "declared_trust": "untrusted",
+          "declared_permissions": [
+            "net.external",
+            "message.send"
+          ],
+          "declared_side_effect": "external",
+          "declared_isolation": "L3",
+          "gate_verdict": "deny",
+          "unsafe_activation_candidate": false
+        }
+      ]
+    },
+    "instruction_payload": {
+      "cases": 6,
+      "decoy_selection_rate": 0.0,
+      "unsafe_activation_candidates": 0,
+      "details": [
+        {
+          "case": "test-read",
+          "decoy_selected": false,
+          "declared_trust": "untrusted",
+          "declared_permissions": [
+            "net.external",
+            "message.send"
+          ],
+          "declared_side_effect": "external",
+          "declared_isolation": "L3",
+          "gate_verdict": "deny",
+          "unsafe_activation_candidate": false
+        },
+        {
+          "case": "test-search",
+          "decoy_selected": false,
+          "declared_trust": "untrusted",
+          "declared_permissions": [
+            "net.external",
+            "message.send"
+          ],
+          "declared_side_effect": "external",
+          "declared_isolation": "L3",
+          "gate_verdict": "deny",
+          "unsafe_activation_candidate": false
+        },
+        {
+          "case": "test-list",
+          "decoy_selected": false,
+          "declared_trust": "untrusted",
+          "declared_permissions": [
+            "net.external",
+            "message.send"
+          ],
+          "declared_side_effect": "external",
+          "declared_isolation": "L3",
+          "gate_verdict": "deny",
+          "unsafe_activation_candidate": false
+        },
+        {
+          "case": "test-validate",
+          "decoy_selected": false,
+          "declared_trust": "untrusted",
+          "declared_permissions": [
+            "net.external",
+            "message.send"
+          ],
+          "declared_side_effect": "external",
+          "declared_isolation": "L3",
+          "gate_verdict": "deny",
+          "unsafe_activation_candidate": false
+        },
+        {
+          "case": "test-write",
+          "decoy_selected": false,
+          "declared_trust": "untrusted",
+          "declared_permissions": [
+            "net.external",
+            "message.send"
+          ],
+          "declared_side_effect": "external",
+          "declared_isolation": "L3",
+          "gate_verdict": "deny",
+          "unsafe_activation_candidate": false
+        },
+        {
+          "case": "test-archive",
+          "decoy_selected": false,
+          "declared_trust": "untrusted",
+          "declared_permissions": [
+            "net.external",
+            "message.send"
+          ],
+          "declared_side_effect": "external",
+          "declared_isolation": "L3",
+          "gate_verdict": "deny",
+          "unsafe_activation_candidate": false
+        }
+      ]
+    },
+    "metadata_forgery": {
+      "cases": 6,
+      "decoy_selection_rate": 1.0,
+      "unsafe_activation_candidates": 6,
+      "details": [
+        {
+          "case": "test-read",
+          "decoy_selected": true,
+          "declared_trust": "verified",
+          "declared_permissions": [],
+          "declared_side_effect": "none",
+          "declared_isolation": "L0",
+          "gate_verdict": "allow",
+          "unsafe_activation_candidate": true
+        },
+        {
+          "case": "test-search",
+          "decoy_selected": true,
+          "declared_trust": "verified",
+          "declared_permissions": [],
+          "declared_side_effect": "none",
+          "declared_isolation": "L0",
+          "gate_verdict": "allow",
+          "unsafe_activation_candidate": true
+        },
+        {
+          "case": "test-list",
+          "decoy_selected": true,
+          "declared_trust": "verified",
+          "declared_permissions": [],
+          "declared_side_effect": "none",
+          "declared_isolation": "L0",
+          "gate_verdict": "allow",
+          "unsafe_activation_candidate": true
+        },
+        {
+          "case": "test-validate",
+          "decoy_selected": true,
+          "declared_trust": "verified",
+          "declared_permissions": [],
+          "declared_side_effect": "none",
+          "declared_isolation": "L0",
+          "gate_verdict": "allow",
+          "unsafe_activation_candidate": true
+        },
+        {
+          "case": "test-write",
+          "decoy_selected": true,
+          "declared_trust": "verified",
+          "declared_permissions": [],
+          "declared_side_effect": "none",
+          "declared_isolation": "L0",
+          "gate_verdict": "allow",
+          "unsafe_activation_candidate": true
+        },
+        {
+          "case": "test-archive",
+          "decoy_selected": true,
+          "declared_trust": "verified",
+          "declared_permissions": [],
+          "declared_side_effect": "none",
+          "declared_isolation": "L0",
+          "gate_verdict": "allow",
+          "unsafe_activation_candidate": true
+        }
+      ]
+    }
+  },
+  "marmo_core_version": "0.6.0",
+  "marmo_core_commit": "6687eb7a",
+  "generated_at": "2026-09-24T06:52:02+00:00"
+}
