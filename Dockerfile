@@ -9,6 +9,7 @@ RUN python3 -m pip install --no-cache-dir .
 
 COPY examples ./examples
 COPY resources ./resources
+COPY benchmarks/run_evidence_benchmark.py benchmarks/_provenance.py benchmarks/evidence_cases.json ./benchmarks/
 COPY scripts ./scripts
 COPY tests ./tests
 

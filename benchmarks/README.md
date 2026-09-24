@@ -341,6 +341,49 @@ python3 benchmarks/run_adaptive_benchmark.py --feedback --epochs 5   # 実績メ
 - **フィードバックループは閉じており、効果は小さいが実在する**: `ExecutionEvaluator` の書き戻しで TSR 0.571 → 0.600、Set F1 0.582 → 0.607。改善は**エポック1で頭打ち**(以降不変)で、内訳を見ると direct は 0.875 のまま、**paraphrase だけが 0.167 → 0.233** と動いています。合成スコアにおける `success` の重みが 0.05 しかないため、拮抗した候補の順位しか入れ替わらないためです。B&B の結論(ボトルネックは探索ではなく効用関数 u(i, q))に照らすと、これは**案D が触るべき場所が正しい**ことの確認であり、同時に**固定重み 0.05 の一成分では足りない**ことの確認でもあります。
 - **限界**: TSR はシミュレーションであり、実バックエンドの失敗(タイムアウト・スキーマ不一致・外部 API エラー)は含みません。またトラフィックは 28 シナリオの反復で、実運用のロングテール分布ではありません。案F のヒット率は**タスクの反復率に完全に依存**するため、ここでの 45〜60% を運用値として読むことはできません。
 
+## 独立 test・実行結果・敵対的メタデータ
+
+上の 120 件と 28 件の既存評価は、設定探索にも使った探索的な結果です。`run_evidence_benchmark.py` は別の小規模な評価を追加します。`evidence_cases.json` の各タスクには `dev` / `test` と固有のタスク系列 `family` を付け、同じ系列が両方へ入らないことを検査します。dev の実行結果だけを `CaseBasedRouter` に記録し、test は固定したまま一度評価します。コーパスは同梱の Memory / Tool / Agent と、`examples/resources/core_resources.json` にある 2 つの Skill です。gold 集合は個々のタスクに対して明示しています。
+
+```bash
+python3 benchmarks/run_evidence_benchmark.py
+```
+
+Tool タスクでは、選択された Tool だけを通常の activation / execution gate を通して**同梱の実ハンドラ**で実行します。加えて `Kernel.run_goal` も固定した Tool 呼び出し応答で動かし、公開 API の経路から作成物を確認します。各ケースに新しい一時ワークスペースを作り、書き込み Tool はその対象 ID だけを事前承認します。Tool の `status=success` と、ファイル内容・ZIP の収録物・戻り値を別々に検査します。`tool_success_rate_conditional` の分母は実際に呼んだ Tool、`task_completion_rate` の分母は Tool が必要な全タスクです。後者では、正しい Tool が選ばれず実行しなかったケースを失敗に含めます。LLM の Tool 選択・引数生成・最終回答は固定応答なので、この値は単一ステップの Tool タスク達成率であり、実モデルを使ったエージェント全体の完了率や HITL の承認品質ではありません。
+
+| 固定 test (10 件、うち Tool タスク 6 件) | baseline | dev 実行から学習した cache |
+|---|---:|---:|
+| Set F1 / Exact | 0.704 / 37.5% | 0.704 / 37.5% |
+| abstain / escalate 精度 (各1件) | 2/2 | 2/2 |
+| Tool 成功率 (実行した 5 件) | 5/5 | 5/5 |
+| タスク達成率 (Tool タスク 6 件) | 5/6 | 5/6 |
+| `Kernel.run_goal` 経由のタスク達成 | 5/6 | — |
+| cache hit | — | 0/10 |
+
+dev の同系列再訪では 8 Tool タスク中 2 件が cache に命中し、実行成果物も正しく得られました。一方、固定 test の別系列では 0/10 件で、一般化は確認できません。既定の語彙類似度閾値 0.72 では別系列に命中しないため、合成の反復トラフィックで得たヒット率を実運用値として扱えません。ケース数が小さく、gold は第三者による独立アノテーションではなくこのリポジトリで作ったものなので、信頼区間や一般化性能の主張には使いません。
+
+同じ固定 test の 6 Tool タスクに、通知 Tool の説明を各タスクの語で埋める敵対的メタデータを混入させます。`keyword_stuffing` と `instruction_payload` は `trust_level=untrusted` のまま、`metadata_forgery` は信頼・権限・副作用・隔離レベルの宣言まで偽装します。前二者は 6 件とも選ばれず、activation gate の判定も deny でした。後者では 6/6 件で偽装 Tool が選択され、activation gate も通過可能でした。**実ハンドラの危険な実行は行っていません**。これはメタデータ宣言自体の真正性をコア単体では確認できないことを示す攻撃候補の測定で、実際の被害件数ではありません。詳細は `benchmarks/results/evidence.json` の `adversarial_test` を参照してください。
+
+## 100k の flat ANN 比較
+
+`run_ann_scale_benchmark.py` は、同じ 100,063 件・34 シナリオ・埋め込み・BM25 候補・混合重み 0.9・候補枠 50・greedy Selector で、flat ANN (USearch、cosine/HNSW) と namespace 階層型を比較します。ANN はベンチマーク専用の `benchmark-ann` extra に置き、実行時依存には加えません。
+
+```bash
+python -m pip install -e '.[benchmark-ann]'
+python3 benchmarks/run_ann_scale_benchmark.py --size 100000 --embedding hash
+python -m pip install -e '.[benchmark]'
+python3 benchmarks/run_ann_scale_benchmark.py --size 100000 --embedding model
+```
+
+`hash` は高速にスケール経路を確認するための**非意味的な対照**です。意味検索の優劣は `model` の測定で判断します。索引構築時間には埋め込み計算を含め、ウォーム検索時間と分けて記録します。既存の `scale-routing-100000.json` は `min_relevance=0.55`、現行の既定値は 0.35 なので、新しい結果と数値を直接引き算しません。
+
+| 100k / hash-64 | gold recall@50 | Set F1 | p50 / p95 |
+|---|---:|---:|---:|
+| flat ANN | 0.362 | 0.249 | 34.8 / 210.2 ms |
+| hier-namespace | 0.254 | 0.143 | 79.5 / 121.4 ms |
+
+この条件では flat ANN が両指標で上回りました。従来の「flat 全件コサイン走査との比較」だけから、100k で階層型が最良と結論づけることはできません。
+
 ## 注意
 
 `resources/skills` は出典を `resources/skills/SOURCES.md` に記録した外部リポジトリのコピーで、ベンチマーク・検証専用です。再配布ライセンスの整理が完了するまで、このコーパスを成果物として再配布しないでください。この方針のため、`.gitignore` で git 管理から外し、`MANIFEST.in` でも sdist から除外しています。
