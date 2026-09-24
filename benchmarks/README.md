@@ -379,10 +379,17 @@ python3 benchmarks/run_ann_scale_benchmark.py --size 100000 --embedding model
 
 | 100k / hash-64 | gold recall@50 | Set F1 | p50 / p95 |
 |---|---:|---:|---:|
-| flat ANN | 0.362 | 0.249 | 34.8 / 210.2 ms |
-| hier-namespace | 0.254 | 0.143 | 79.5 / 121.4 ms |
+| flat ANN | 0.354 | 0.249 | 55.3 / 401.1 ms |
+| hier-namespace | 0.254 | 0.143 | 140.6 / 419.3 ms |
 
-この条件では flat ANN が両指標で上回りました。従来の「flat 全件コサイン走査との比較」だけから、100k で階層型が最良と結論づけることはできません。
+| 100k / BAAI/bge-small-en-v1.5 | gold recall@50 | Set F1 | p50 / p95 |
+|---|---:|---:|---:|
+| flat ANN | 0.475 | 0.471 | 45.7 / 260.7 ms |
+| hier-namespace | **0.554** | **0.558** | 73.0 / **105.3 ms** |
+
+hash 対照では flat ANN が両品質指標で上回り、p50 / p95 も階層型より短くなりました。実埋め込みでは階層型が recall を 0.079、Set F1 を 0.087 改善し、p95 も 155.4ms 短くなりました。flat ANN は p50 が 27.2ms 短いため、実埋め込みでも中央値レイテンシでは有利です。hash は非意味的な対照なので、意味検索の結論は BGE の行を使います。34 シナリオの限定された評価であり、他の埋め込みモデルやカタログ分布への一般化は未確認です。
+
+BGE を使った flat ANN の初回 index 構築は、埋め込み計算込みで 2,953.6 秒(約49.2分)、index 自体は 286,262,656 bytes(約273 MiB)でした。これは本測定機での cold build で、ウォーム検索レイテンシとは分けています。全値は同一実行の [`ann-scale-model-100000.json`](results/ann-scale-model-100000.json) に記録しています。
 
 ## 注意
 
