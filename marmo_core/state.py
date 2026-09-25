@@ -55,6 +55,7 @@ EVENT_KINDS = (
     "step",
     "plan",
     "frame",
+    "budget",
     "paused",
     "resumed",
     "checkpoint",

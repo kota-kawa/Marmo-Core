@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import redirect_stderr, redirect_stdout
+from decimal import Decimal
 from io import BytesIO, StringIO
 from pathlib import Path
 from unittest import mock
@@ -14,9 +15,15 @@ import urllib.error
 
 from marmo_core import (
     AnthropicLLMProvider,
+    BudgetedLLMProvider,
+    BudgetLedger,
+    BudgetExceededError,
     ChatMessage,
     ContextCompiler,
     Kernel,
+    LLMProvider,
+    LLMResponse,
+    ModelPrice,
     LLMToolSpec,
     MockLLMProvider,
     OpenAICompatibleEmbeddingProvider,
@@ -25,8 +32,10 @@ from marmo_core import (
     ProviderHTTPError,
     ResourceDefinition,
     ResourceRegistry,
+    TaskBudget,
     ToolCall,
     ToolNameCodec,
+    InMemoryStateStore,
 )
 from marmo_core.cli import main
 from marmo_core.compiler import NO_TOOLS_SYSTEM_PROMPT
@@ -100,6 +109,28 @@ class ToolNameCodecTests(unittest.TestCase):
 
 
 class ProviderToolNameTests(unittest.TestCase):
+    def test_budget_charges_reservation_when_openai_omits_usage(self) -> None:
+        policy = TaskBudget(
+            amount=Decimal("0.01"),
+            currency="USD",
+            resource_cost_unit="USD",
+            model_price=ModelPrice(Decimal("1"), Decimal("1"), 1000, 1000),
+        )
+        for usage in (None, {"prompt_tokens": None, "completion_tokens": None}):
+            with self.subTest(usage=usage):
+                response = {"choices": [{"finish_reason": "stop", "message": {"content": "Done"}}]}
+                if usage is not None:
+                    response["usage"] = usage
+                provider = OpenAICompatibleLLMProvider(
+                    model="m", api_key="k", transport=lambda *args: response
+                )
+                kernel = Kernel(ResourceRegistry(), provider, task_budget=policy)
+
+                result = kernel.run_goal("Say done")
+
+                self.assertEqual(result.status, "completed", result.detail)
+                self.assertEqual(kernel.budget_status(result.task_id)["spent"], "0.002")
+
     def test_openai_encodes_tool_names_and_decodes_calls(self) -> None:
         seen: list[dict] = []
 
@@ -153,6 +184,143 @@ class ProviderToolNameTests(unittest.TestCase):
         self.assertRegex(wire_name, r"^[a-zA-Z0-9_-]{1,64}$")
         self.assertEqual(seen[0]["messages"][1]["content"][0]["name"], wire_name)
         self.assertEqual(response.tool_calls[0].name, "connector.file.read_text")
+
+
+class BudgetWireLimitTests(unittest.TestCase):
+    @staticmethod
+    def _policy(*, input_tokens: int = 4000, output_tokens: int = 7) -> TaskBudget:
+        return TaskBudget(
+            amount=Decimal("1"),
+            currency="USD",
+            resource_cost_unit="USD",
+            model_price=ModelPrice(Decimal("1"), Decimal("1"), input_tokens, output_tokens),
+        )
+
+    def test_budget_output_ceiling_is_sent_to_openai_and_anthropic(self) -> None:
+        cases = (
+            (
+                OpenAICompatibleLLMProvider(
+                    model="m",
+                    api_key="k",
+                    max_tokens=4096,
+                    transport=lambda *args: {
+                        "choices": [{"finish_reason": "stop", "message": {"content": "ok"}}],
+                        "usage": {"prompt_tokens": 4, "completion_tokens": 2},
+                    },
+                ),
+                "max_completion_tokens",
+            ),
+            (
+                AnthropicLLMProvider(
+                    model="m",
+                    api_key="k",
+                    max_tokens=64,
+                    transport=lambda *args: {
+                        "content": [{"type": "text", "text": "ok"}],
+                        "stop_reason": "end_turn",
+                        "usage": {"input_tokens": 4, "output_tokens": 2},
+                    },
+                ),
+                "max_tokens",
+            ),
+        )
+        for provider, parameter in cases:
+            with self.subTest(provider=type(provider).__name__):
+                payloads: list[dict] = []
+                original_transport = provider.transport
+
+                def capture(url, payload, headers, timeout):
+                    payloads.append(payload)
+                    return original_transport(url, payload, headers, timeout)
+
+                provider.transport = capture
+                kernel = Kernel(ResourceRegistry(), provider, task_budget=self._policy())
+
+                result = kernel.run_goal("Say okay")
+
+                self.assertEqual(result.status, "completed", result.detail)
+                self.assertEqual(payloads[0][parameter], 7)
+                self.assertEqual(kernel.budget_status(result.task_id)["reserved"], "0")
+
+    def test_openai_parameter_fallback_preserves_budget_output_ceiling(self) -> None:
+        payloads: list[dict] = []
+        body = json.dumps(
+            {
+                "error": {
+                    "message": "Unsupported parameter: 'max_tokens' is not supported. Use 'max_completion_tokens'.",
+                    "param": "max_tokens",
+                }
+            }
+        )
+
+        def transport(url, payload, headers, timeout):
+            payloads.append(payload)
+            if "max_tokens" in payload:
+                raise ProviderHTTPError(message="HTTP 400", status=400, body=body, url=url)
+            return {
+                "choices": [{"finish_reason": "stop", "message": {"content": "ok"}}],
+                "usage": {"prompt_tokens": 4, "completion_tokens": 2},
+            }
+
+        provider = OpenAICompatibleLLMProvider(
+            model="m", api_key="k", base_url="https://example.test/v1", max_tokens=4096, transport=transport
+        )
+        kernel = Kernel(ResourceRegistry(), provider, task_budget=self._policy())
+
+        result = kernel.run_goal("Say okay")
+
+        self.assertEqual(result.status, "completed", result.detail)
+        self.assertEqual(
+            [(payload.get("max_tokens"), payload.get("max_completion_tokens")) for payload in payloads],
+            [(7, None), (None, 7)],
+        )
+
+    def test_input_estimate_counts_serialized_tool_schema(self) -> None:
+        store = InMemoryStateStore()
+        task_id = store.create("call a tool").task_id
+        policy = self._policy(input_tokens=20)
+        ledger = BudgetLedger(store, policy)
+        ledger.attach(task_id)
+        calls = 0
+
+        def transport(*args):
+            nonlocal calls
+            calls += 1
+            return {"choices": []}
+
+        provider = OpenAICompatibleLLMProvider(model="m", api_key="k", transport=transport)
+        wrapped = BudgetedLLMProvider(provider, ledger)
+        tools = [
+            LLMToolSpec(
+                name="tool.large-schema",
+                description="",
+                input_schema={"type": "object", "properties": {"value": {"description": "x" * 600}}},
+            )
+        ]
+
+        with ledger.bind(task_id), self.assertRaises(BudgetExceededError):
+            wrapped.complete([ChatMessage(role="user", content="x")], tools)
+
+        self.assertEqual(calls, 0)
+        self.assertEqual(ledger.status(task_id)["reserved"], "0")
+
+    def test_legacy_provider_is_rejected_before_reservation(self) -> None:
+        class LegacyProvider(LLMProvider):
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def complete(self, messages, tools=()):
+                self.calls += 1
+                return LLMResponse(content="ok")
+
+        provider = LegacyProvider()
+        kernel = Kernel(ResourceRegistry(), provider, task_budget=self._policy())
+
+        result = kernel.run_goal("Say okay")
+
+        self.assertEqual(result.status, "failed")
+        self.assertEqual(provider.calls, 0)
+        self.assertEqual(kernel.budget_status(result.task_id)["reserved"], "0")
 
 
 class OpenAIParameterTests(unittest.TestCase):

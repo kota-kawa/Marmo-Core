@@ -29,25 +29,37 @@ from __future__ import annotations
 
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
+from copy import copy
 from dataclasses import dataclass, replace as dataclass_replace
-from typing import Any, Callable, Iterable, Mapping, Sequence
+from decimal import Decimal
+from typing import Any, Callable, Iterable, Mapping, Sequence, cast
 import uuid
 
 from .activator import BoundAgent, BoundTool, InjectedMemory, LoadedSkill, ResourceActivator
 from .agent_runtime import AgentResult, AgentRuntime
 from .audit import AuditLog
+from .budget import BudgetExceededError, BudgetLedger, BudgetedLLMProvider, TaskBudget
 from .compiler import AgentInterface, ContextCompiler
 from .connectors import Connector, connector_tools
 from .errors import ProviderError, ResourceNotFoundError, SecretResolutionError, ToolInputError
 from .hitl import HitlBroker, HitlError, HitlRequest, HitlResponse, PendingHitlBroker
 from .llm import ChatMessage, LLMProvider, ToolCall, characters_for_tokens
+from .llm_routing import HydeRetriever, LLMRerankRetriever, LLMSetSelector
 from .models import ResourceDefinition, ResourceMetadata, SearchQuery, SearchResult
-from .planner import Plan, PlanStep, Planner, resources_by_id, validate_plan
+from .planner import LLMPlanner, Plan, PlanStep, Planner, RuleBasedPlanner, resources_by_id, validate_plan
 from .policy import PolicyContext, PolicyGateway, PolicyRejectedError
 from .recovery import Failure, RecoveryDecision, RecoveryManager, compensation_for, needs_compensation
 from .registry import ResourceRegistry
 from .retriever import LexicalRetriever, Retriever
-from .selector import DEFAULT_SET_LIMITS, RuleBasedSetSelector, SelectionContext, SetSelector
+from .selector import (
+    DEFAULT_SET_LIMITS,
+    BeamSearchSetSelector,
+    BranchAndBoundSetSelector,
+    GreedyConstrainedSetSelector,
+    RuleBasedSetSelector,
+    SelectionContext,
+    SetSelector,
+)
 from .safety import redact_sensitive_arguments
 from .security import PromptInjectionInspector, label_untrusted_content
 from .secrets import SecretResolver, ensure_secret_refs, serialize_secret_refs
@@ -209,6 +221,7 @@ class Kernel:
         timeout_seconds: float = 30.0,
         timeout_mode: str = "thread",
         context_token_budget: int | None = None,
+        task_budget: TaskBudget | None = None,
         secret_resolver: SecretResolver | None = None,
         prompt_injection_inspector: PromptInjectionInspector | None = None,
     ) -> None:
@@ -240,11 +253,16 @@ class Kernel:
         registry.extend(connector_definitions_to_add)
 
         self.registry = registry
-        self.llm = llm
+        self.state_store = state_store or InMemoryStateStore()
+        self.budget_ledger = BudgetLedger(self.state_store, task_budget) if task_budget else None
+        self.llm = BudgetedLLMProvider(llm, self.budget_ledger) if self.budget_ledger else llm
         self.policy_context = policy_context or PolicyContext()
         self.gateway = gateway
         self.retriever = retriever or LexicalRetriever()
         self.selector = selector or RuleBasedSetSelector()
+        if self.budget_ledger is not None:
+            self.retriever = self._budgeted_retriever(self.retriever, llm)
+            self.selector = self._budgeted_selector(self.selector, llm)
         if activator is None:
             self.activator = ResourceActivator(
                 gateway,
@@ -268,10 +286,11 @@ class Kernel:
         )
         self.compiler = compiler or ContextCompiler()
         self.audit_log = audit_log or AuditLog()
-        self.state_store = state_store or InMemoryStateStore()
         self.hitl = hitl or PendingHitlBroker()
         self.recovery = recovery or RecoveryManager()
         self.planner = planner
+        if self.budget_ledger is not None:
+            self.planner = self._budgeted_planner(self.planner, llm)
         self.session_id = session_id
         self.top_k = top_k
         self.set_limits = dict(set_limits) if set_limits else None
@@ -299,15 +318,65 @@ class Kernel:
         self.prompt_injection_inspector = prompt_injection_inspector or PromptInjectionInspector()
         self._results: dict[str, TaskResult] = {}
 
+    def _budgeted_retriever(self, retriever: Retriever, original_llm: LLMProvider) -> Retriever:
+        if type(retriever) is LexicalRetriever:
+            return retriever
+        if type(retriever) in (HydeRetriever, LLMRerankRetriever):
+            original = cast(HydeRetriever | LLMRerankRetriever, retriever)
+            if original.llm is not original_llm:
+                raise ValueError("budgeted retriever must use the Kernel's LLM provider")
+            clone = copy(original)
+            clone.llm = self.llm
+            clone.inner = self._budgeted_retriever(original.inner, original_llm)
+            return clone
+        if not getattr(retriever, "budget_aware", False):
+            raise ValueError("budgeted tasks require a budget-aware retriever")
+        return retriever
+
+    def _budgeted_selector(self, selector: SetSelector, original_llm: LLMProvider) -> SetSelector:
+        if type(selector) is LLMSetSelector:
+            if selector.llm is not original_llm:
+                raise ValueError("budgeted selector must use the Kernel's LLM provider")
+            clone = copy(selector)
+            clone.llm = self.llm
+            return clone
+        if type(selector) not in (
+            RuleBasedSetSelector,
+            GreedyConstrainedSetSelector,
+            BeamSearchSetSelector,
+            BranchAndBoundSetSelector,
+        ) and not getattr(selector, "budget_aware", False):
+            raise ValueError("budgeted tasks require a budget-aware selector")
+        return selector
+
+    def _budgeted_planner(
+        self, planner: Planner | None, original_llm: LLMProvider
+    ) -> Planner | None:
+        if planner is None or type(planner) is RuleBasedPlanner:
+            return planner
+        if type(planner) is LLMPlanner:
+            if planner.llm is not original_llm:
+                raise ValueError("budgeted planner must use the Kernel's LLM provider")
+            clone = copy(planner)
+            clone.llm = self.llm
+            return clone
+        if not getattr(planner, "budget_aware", False):
+            raise ValueError("budgeted tasks require a budget-aware planner")
+        return planner
+
     # -- lifecycle -----------------------------------------------------------
 
     def submit(self, goal: str) -> str:
-        return self.state_store.create(goal, session_id=self.session_id).task_id
+        task_id = self.state_store.create(goal, session_id=self.session_id).task_id
+        if self.budget_ledger is not None:
+            self.budget_ledger.attach(task_id)
+        return task_id
 
     def run(self, task_id: str) -> TaskResult:
         state = self.state_store.load(task_id)
         if state.terminal:
             return self._results.get(task_id) or self._result_from_state(state)
+        self._verify_task_budget(task_id)
         return self._drive(state)
 
     def run_goal(self, goal: str) -> TaskResult:
@@ -319,6 +388,7 @@ class Kernel:
         state = self.state_store.load(task_id)
         if state.terminal:
             return self._results.get(task_id) or self._result_from_state(state)
+        self._verify_task_budget(task_id)
         if hitl_response is not None:
             if state.pending is None:
                 raise HitlError(
@@ -343,6 +413,39 @@ class Kernel:
 
     def get_state(self, task_id: str) -> dict[str, Any]:
         return self.state_store.load(task_id).to_dict()
+
+    def budget_status(self, task_id: str) -> dict[str, str] | None:
+        """Return charged, reserved, and remaining cost for a budgeted task."""
+
+        return self.budget_ledger.status(task_id) if self.budget_ledger else None
+
+    def _verify_task_budget(self, task_id: str) -> None:
+        if self.budget_ledger is not None:
+            self.budget_ledger.verify(task_id)
+        elif any(
+            event.kind == "budget" and event.payload.get("action") == "configure"
+            for event in self.state_store.events(task_id)
+        ):
+            raise ValueError("task was submitted with a budget; resume with the same task_budget")
+
+    def _reserve_resource(self, task_id: str, metadata: ResourceMetadata) -> str | None:
+        if self.budget_ledger is None:
+            return None
+        return self.budget_ledger.reserve(task_id, metadata.identity, metadata.cost_estimate)
+
+    def _settle_resource(self, task_id: str, reservation_id: str | None, cost: float) -> None:
+        if self.budget_ledger is not None and reservation_id is not None:
+            self.budget_ledger.settle(task_id, reservation_id, cost)
+
+    def _check_budget_overrun(self, task_id: str) -> None:
+        if self.budget_ledger is None:
+            return
+        status = self.budget_ledger.status(task_id)
+        if Decimal(status["spent"]) > self.budget_ledger.policy.amount:
+            raise BudgetExceededError(
+                f"task spent {status['spent']} {status['currency']}, "
+                f"above budget {status['amount']}; no further operation was dispatched"
+            )
 
     def rollback(self, task_id: str, target: int | str) -> dict[str, Any]:
         """Return a task's state to a checkpoint (F-RECOV-04).
@@ -384,7 +487,28 @@ class Kernel:
                 if isinstance(outcome, TaskResult):
                     return outcome
                 state = outcome
-            result = self._execute(state)
+            try:
+                if self.budget_ledger is None:
+                    result = self._execute(state)
+                else:
+                    with self.budget_ledger.bind(state.task_id):
+                        result = self._execute(state)
+            except BudgetExceededError as exc:
+                current = self.state_store.load(state.task_id)
+                trace_id = current.trace_id or uuid.uuid4().hex
+                self.audit_log.append("budget", {"event": "exceeded", "detail": str(exc)}, trace_id=trace_id)
+                return self._finish(
+                    current,
+                    trace_id,
+                    "failed",
+                    detail=str(exc),
+                    tool_results=[
+                        ToolResult.from_dict(item) for item in current.step_results if "tool_id" in item
+                    ],
+                    agent_results=[
+                        AgentResult.from_dict(item) for item in current.step_results if "agent_id" in item
+                    ],
+                )
             if not result.paused:
                 return result
             state = self.state_store.load(state.task_id)
@@ -587,8 +711,24 @@ class Kernel:
             granted_permissions=tuple(context.granted_permissions),
             per_kind_limits=dict(self.set_limits) if self.set_limits else {},
             min_relevance=self.min_relevance,
+            budget_cost=(
+                float(self.budget_ledger.status(task_id)["remaining"])
+                if self.budget_ledger is not None
+                else None
+            ),
         )
         selected = self.selector.select(results, context=selection_context)
+        if self.budget_ledger is not None:
+            selected_cost = sum(
+                (Decimal(str(item.resource.metadata.cost_estimate)) for item in selected.results),
+                Decimal(0),
+            )
+            remaining = Decimal(self.budget_ledger.status(task_id)["remaining"])
+            if selected_cost > remaining:
+                raise BudgetExceededError(
+                    f"selected resources cost {selected_cost} {self.budget_ledger.policy.currency}; "
+                    f"only {remaining} remains in the task budget"
+                )
         audit(
             "retrieve",
             {
@@ -1071,9 +1211,11 @@ class Kernel:
         # its first result. After that a schema failure is a real failure.
         results_before = len(run.tool_results)
         while True:
+            reservation_id = self._reserve_resource(run.task_id, tool.metadata)
             try:
                 result = self.tool_runtime.execute(tool, arguments, run.context)
             except PolicyRejectedError as exc:
+                self._settle_resource(run.task_id, reservation_id, 0.0)
                 if exc.decision is not None:
                     audit("policy", exc.decision.to_dict())
                 if exc.decision is not None and exc.decision.escalated:
@@ -1113,6 +1255,7 @@ class Kernel:
                     )
                 )
             except ToolInputError as exc:
+                self._settle_resource(run.task_id, reservation_id, 0.0)
                 # A SecretRef that cannot be materialized is not a mistake the
                 # model can correct, and the resolver names the backing
                 # variable -- neither belongs in the conversation.
@@ -1137,6 +1280,12 @@ class Kernel:
             audit("execute", result.to_dict())
             self.state_store.append(run.task_id, "step", {"result": result.to_dict()})
             run.tool_results.append(result)
+            self._settle_resource(
+                run.task_id,
+                reservation_id,
+                0.0 if result.status == "dry_run" else tool.metadata.cost_estimate,
+            )
+            self._check_budget_overrun(run.task_id)
             if result.succeeded:
                 self.recovery.circuit_breaker.record_success(tool.metadata.identity)
                 return _CallOutcome(result=result, tool=tool)
@@ -1268,6 +1417,7 @@ class Kernel:
         self.state_store.checkpoint(run.task_id, f"before:{call_id}")
         entry = run.recovery_state.setdefault(call_id, {"attempts": 0, "tried": []})
         while True:
+            reservation_id = self._reserve_resource(run.task_id, agent.metadata)
             try:
                 result = self.agent_runtime.execute(
                     agent,
@@ -1278,6 +1428,7 @@ class Kernel:
                     delegated_permissions=agent.metadata.required_permissions,
                 )
             except PolicyRejectedError as exc:
+                self._settle_resource(run.task_id, reservation_id, 0.0)
                 if exc.decision is not None:
                     audit("policy", exc.decision.to_dict())
                 if exc.decision is not None and exc.decision.escalated:
@@ -1313,6 +1464,7 @@ class Kernel:
                     )
                 )
             except ToolInputError as exc:
+                self._settle_resource(run.task_id, reservation_id, 0.0)
                 failure = Failure(
                     kind="validation",
                     message=str(exc),
@@ -1338,6 +1490,8 @@ class Kernel:
             audit("delegate", result.to_dict())
             self.state_store.append(run.task_id, "step", {"result": result.to_dict()})
             run.agent_results.append(result)
+            self._settle_resource(run.task_id, reservation_id, result.cost)
+            self._check_budget_overrun(run.task_id)
             if result.succeeded:
                 self.recovery.circuit_breaker.record_success(agent.metadata.identity)
                 return _CallOutcome(result=result, agent=agent)
@@ -1689,6 +1843,8 @@ class Kernel:
             response = self.llm.complete(messages, ())
             output = response.content
             run.audit("llm", {"round": "plan-summary", "content_chars": len(output), "usage": response.usage})
+        except BudgetExceededError:
+            raise
         except Exception as exc:  # noqa: BLE001 - the work is done; only the wording is missing
             run.audit("llm", {"round": "plan-summary", "error": f"{type(exc).__name__}: {exc}"})
         if not output:
@@ -1849,7 +2005,7 @@ class Kernel:
         if extra:
             detail += f"; {extra}"
         if self.compensate_on_failure:
-            performed = self._compensate(run.tool_results, run.context, run.audit)
+            performed = self._compensate(run.task_id, run.tool_results, run.context, run.audit)
             if performed:
                 undone = [item["step"] for item in performed if item["status"] == "compensated"]
                 unresolved = [item["step"] for item in performed if item["status"] != "compensated"]
@@ -1864,6 +2020,7 @@ class Kernel:
 
     def _compensate(
         self,
+        task_id: str,
         tool_results: Sequence[ToolResult],
         context: PolicyContext,
         audit: Callable[[str, Mapping[str, Any]], None],
@@ -1899,11 +2056,23 @@ class Kernel:
                 audit("compensate", {"step": result.tool_id, "status": "unavailable", "reason": reason})
                 continue
             try:
+                reservation_id = self._reserve_resource(task_id, undo.metadata)
+            except BudgetExceededError as exc:
+                performed.append({"step": result.tool_id, "status": "budget_blocked"})
+                audit("compensate", {"step": result.tool_id, "status": "budget_blocked", "reason": str(exc)})
+                continue
+            try:
                 undo_result = self.tool_runtime.execute(undo, result.arguments, context)
             except (PolicyRejectedError, ToolInputError) as exc:
+                self._settle_resource(task_id, reservation_id, 0.0)
                 performed.append({"step": result.tool_id, "status": "blocked"})
                 audit("compensate", {"step": result.tool_id, "status": "blocked", "reason": str(exc)})
                 continue
+            self._settle_resource(
+                task_id,
+                reservation_id,
+                0.0 if undo_result.status == "dry_run" else undo.metadata.cost_estimate,
+            )
             status = "compensated" if undo_result.succeeded else "failed"
             performed.append({"step": result.tool_id, "status": status})
             audit(

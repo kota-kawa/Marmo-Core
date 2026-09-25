@@ -40,6 +40,7 @@ import logging
 import re
 
 from .llm import ChatMessage, LLMProvider
+from .budget import BudgetExceededError
 from .models import SearchQuery, SearchResult, SelectionResult
 from .registry import ResourceRegistry
 from .retriever import Retriever
@@ -130,6 +131,8 @@ class HydeRetriever(_LLMFailureTracker, Retriever):
                     ]
                 )
                 cached = response.content.strip()
+            except BudgetExceededError:
+                raise
             except Exception as error:
                 self._record_failure("HyDE query rewrite", error)
                 cached = ""
@@ -198,6 +201,8 @@ class LLMRerankRetriever(_LLMFailureTracker, Retriever):
                     ]
                 )
                 cached = response.content
+            except BudgetExceededError:
+                raise
             except Exception as error:
                 self._record_failure("candidate rerank", error)
                 cached = ""
@@ -331,6 +336,8 @@ class LLMSetSelector(_LLMFailureTracker, SetSelector):
                     ]
                 )
                 cached = response.content
+            except BudgetExceededError:
+                raise
             except Exception as error:
                 self._record_failure("set selection", error)
                 cached = ""

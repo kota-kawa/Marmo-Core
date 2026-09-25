@@ -24,6 +24,7 @@ from .activator import (
 )
 from .agent_runtime import AgentResponse, AgentResult, AgentRuntime
 from .audit import AuditLog, AuditRecord
+from .budget import BudgetExceededError, BudgetLedger, BudgetedLLMProvider, ModelPrice, TaskBudget
 from .compiler import AgentInterface, CompiledContext, CompiledSelectionContext, ContextCompiler
 from .connectors import (
     Connector,
@@ -199,6 +200,9 @@ __all__ = [
     "AnthropicLLMProvider",
     "AuditLog",
     "AuditRecord",
+    "BudgetExceededError",
+    "BudgetLedger",
+    "BudgetedLLMProvider",
     "AutoApproveHitlBroker",
     "BeamSearchSetSelector",
     "BoundTool",
@@ -274,6 +278,7 @@ __all__ = [
     "MANIFEST_FILENAME",
     "MappingSecretResolver",
     "MockLLMProvider",
+    "ModelPrice",
     "NamespaceGrouping",
     "OpenAICompatibleEmbeddingProvider",
     "OpenAICompatibleLLMProvider",
@@ -330,6 +335,7 @@ __all__ = [
     "StateStore",
     "TaskNotFoundError",
     "TaskResult",
+    "TaskBudget",
     "TaskState",
     "ToolCall",
     "ToolInputError",

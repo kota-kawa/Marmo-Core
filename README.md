@@ -130,6 +130,30 @@ llm = OpenAICompatibleLLMProvider()
 kernel = Kernel(load_registry(["resources/tools"]), llm, retriever=HydeRetriever(llm, LexicalRetriever()))
 ```
 
+To set one cost ceiling for a Python task, pass an explicit currency and model price. Resource `cost_estimate` values must use the same currency:
+
+```python
+from decimal import Decimal
+from marmo_core import Kernel, ModelPrice, OpenAICompatibleLLMProvider, TaskBudget, load_registry
+
+budget = TaskBudget(
+    amount=Decimal("1.00"),
+    currency="USD",
+    resource_cost_unit="USD",
+    model_price=ModelPrice(
+        input_per_million=Decimal("0.50"),
+        output_per_million=Decimal("2.00"),
+        max_input_tokens=4000,
+        max_output_tokens=1000,
+    ),
+)
+kernel = Kernel(load_registry(["resources/tools"]), OpenAICompatibleLLMProvider(), task_budget=budget)
+result = kernel.run_goal("Summarize the report")
+print(kernel.budget_status(result.task_id))
+```
+
+The budget covers calls made through the Kernel and declared Resource estimates. Include any paid service a Tool or Agent calls in its estimate. Each model request receives the configured output-token ceiling, and the input-token ceiling is checked against an estimate of the serialized messages and tool schemas. Reported usage above either ceiling is recorded and stops further work; input estimation and provider usage reporting can still make actual charges exceed the reservation. A custom `LLMProvider` must implement `complete_bounded()` and set `supports_output_token_limit` to `True` to be used with a task budget. Resume with the same `TaskBudget` and state store.
+
 ## Execution notes
 
 - `--granted-permission` and `--allow-side-effect` control separate checks. The latter is a repeatable exact allowlist: permitting both no side effect and reads requires both values as shown above.
@@ -280,6 +304,30 @@ from marmo_core import HydeRetriever, Kernel, LexicalRetriever, OpenAICompatible
 llm = OpenAICompatibleLLMProvider()
 kernel = Kernel(load_registry(["resources/tools"]), llm, retriever=HydeRetriever(llm, LexicalRetriever()))
 ```
+
+Python からタスク全体の費用上限を指定するには、通貨とモデル単価を明示します。Resource の `cost_estimate` も同じ通貨で記載します。
+
+```python
+from decimal import Decimal
+from marmo_core import Kernel, ModelPrice, OpenAICompatibleLLMProvider, TaskBudget, load_registry
+
+budget = TaskBudget(
+    amount=Decimal("1.00"),
+    currency="USD",
+    resource_cost_unit="USD",
+    model_price=ModelPrice(
+        input_per_million=Decimal("0.50"),
+        output_per_million=Decimal("2.00"),
+        max_input_tokens=4000,
+        max_output_tokens=1000,
+    ),
+)
+kernel = Kernel(load_registry(["resources/tools"]), OpenAICompatibleLLMProvider(), task_budget=budget)
+result = kernel.run_goal("Summarize the report")
+print(kernel.budget_status(result.task_id))
+```
+
+予算の対象は Kernel を通る呼び出しと Resource の宣言済み見積りです。Tool や Agent が有料サービスを使う場合、その費用を見積りに含めてください。各モデルリクエストには出力 token 上限を指定し、入力 token 上限はメッセージと Tool schema を含むシリアライズ済み入力の推定値で事前確認します。いずれかの上限を超える使用量が報告された場合は実額を記録して以後の処理を停止します。入力推定やプロバイダの使用量報告の誤差により、実際の費用が予約額を超える可能性は残ります。カスタム `LLMProvider` を予算付きで使うには `complete_bounded()` を実装し、`supports_output_token_limit` を `True` にしてください。再開時は同じ `TaskBudget` と state store を使います。
 
 ### 実行時の注意
 
