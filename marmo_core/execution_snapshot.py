@@ -8,6 +8,7 @@ import json
 import math
 
 from .errors import MarmoError, ResourceNotFoundError
+from .activator import InjectedMemory, LoadedSkill
 from .compiler import CompiledContext
 from .models import ResourceDefinition, SearchResult, SelectionResult
 from .registry import ResourceRegistry
@@ -31,6 +32,7 @@ def capture_selection(
         "candidate_count": candidate_count,
         "callable_candidates": callable_candidates,
         "catalog_nonempty": catalog_nonempty,
+        "activation_fingerprints": {},
         "selected": [
             {
                 "identity": result.resource.identity,
@@ -88,6 +90,12 @@ def restore_selection(
         raise SnapshotMismatchError("saved execution snapshot has an invalid candidate count")
     if type(snapshot.get("callable_candidates")) is not bool or type(snapshot.get("catalog_nonempty")) is not bool:
         raise SnapshotMismatchError("saved execution snapshot has invalid routing flags")
+    activation_fingerprints = snapshot.get("activation_fingerprints", {})
+    if not isinstance(activation_fingerprints, Mapping) or any(
+        not isinstance(identity, str) or not isinstance(fingerprint, str)
+        for identity, fingerprint in activation_fingerprints.items()
+    ):
+        raise SnapshotMismatchError("saved execution snapshot has invalid activation fingerprints")
     return (
         SelectionResult(tuple(selected), reason, status=status),
         candidate_count,
@@ -119,6 +127,19 @@ def compiled_fingerprint(compiled: CompiledContext) -> str:
         "trimmed_resource_ids": list(compiled.trimmed_resource_ids),
         "token_budget": compiled.token_budget,
         "agent_ids": list(compiled.agent_ids),
+    }
+    encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def activated_context_fingerprint(activated: InjectedMemory | LoadedSkill) -> str:
+    """Fingerprint loaded text as soon as policy allows it to be read."""
+
+    content = activated.content if isinstance(activated, InjectedMemory) else activated.instructions
+    payload = {
+        "identity": activated.metadata.identity,
+        "kind": activated.metadata.kind,
+        "content": content,
     }
     encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()

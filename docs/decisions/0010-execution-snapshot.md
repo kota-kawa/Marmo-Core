@@ -17,14 +17,19 @@ Resource が選ばれる可能性があった。承認済みの操作と実際�
   selection が escalate した場合は、Resource set 未確定なので権限付与後に選択する。
 - activation 後に compiled context の fingerprint も保存し、選択 Resource または context が
   変わった場合は task を失敗で終端する。
+- memory / skill の本文は policy が activation を許可した直後に hash を追記する。後続の
+  activation gate で一時停止して再開する際、本文が変わっていれば task を失敗で終端する。
+- snapshot がない既存 task でも、activation / execution を通過した履歴があれば現行カタログで
+  再選択せず失敗で終端する。selection 段階での pause は set 未確定のため再選択を許す。
 - Resource の実績統計 `stats` は fingerprint から除き、運用統計の更新で task が無効に
   ならないようにする。
 
 ## 影響
 
-カタログが変わった状態で一時停止 task を再開すると、選択 Resource の変更が実行を止める。
-元のカタログと同じ選択・コンパイル結果で再開する必要がある。選択済みの実行可能関数の
-内部コードや外部サービスの状態までは Snapshot に保存しない。
+カタログや、読み込み済み memory / skill の本文が変わった状態で一時停止 task を再開すると、
+変更が実行を止める。元のカタログと同じ選択・コンパイル結果で再開する必要がある。選択済みの実行可能関数の
+内部コードや外部サービスの状態までは Snapshot に保存しない。snapshot 導入前に activation /
+execution で一時停止した task は対象を復元できず、拒否される。
 
 ## 代替案
 

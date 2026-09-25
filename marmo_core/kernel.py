@@ -44,6 +44,7 @@ from .connectors import Connector, connector_tools
 from .errors import ProviderError, ResourceNotFoundError, SecretResolutionError, ToolInputError
 from .execution_snapshot import (
     SnapshotMismatchError,
+    activated_context_fingerprint,
     capture_selection,
     compiled_fingerprint,
     restore_selection,
@@ -705,6 +706,10 @@ class Kernel:
         task_id = state.task_id
         goal = state.goal
         trace_id = state.trace_id or uuid.uuid4().hex
+        if not state.snapshot and self._requires_saved_snapshot(task_id):
+            raise SnapshotMismatchError(
+                "cannot safely resume this task because its earlier execution snapshot was not saved"
+            )
         context = self._effective_context(state)
         state = self.state_store.append(task_id, "status", {"status": "running", "trace_id": trace_id})
 
@@ -822,8 +827,29 @@ class Kernel:
                 audit("recover", {"failure": failure.to_dict(), "action": "skip"})
                 continue
             audit("activate", {"resource": metadata.identity, "status": "activated", "kind": metadata.kind})
-            self.state_store.append(task_id, "activated", {"resource": metadata.identity})
             activated = activation.activated
+            if isinstance(activated, (InjectedMemory, LoadedSkill)):
+                fingerprints = dict(state.snapshot.get("activation_fingerprints", {}))
+                fingerprint = activated_context_fingerprint(activated)
+                previous = fingerprints.get(metadata.identity)
+                if previous is not None and previous != fingerprint:
+                    raise SnapshotMismatchError(
+                        f"activated context {metadata.identity} changed; resume with the original resource content"
+                    )
+                if previous is None:
+                    already_activated = any(
+                        event.kind == "activated" and event.payload.get("resource") == metadata.identity
+                        for event in self.state_store.events(task_id)
+                    )
+                    if already_activated:
+                        raise SnapshotMismatchError(
+                            f"cannot verify the saved content for {metadata.identity}; "
+                            "resume with the original resource content"
+                        )
+                    fingerprints[metadata.identity] = fingerprint
+                    snapshot = {**state.snapshot, "activation_fingerprints": fingerprints}
+                    state = self.state_store.append(task_id, "snapshot", {"snapshot": snapshot})
+            self.state_store.append(task_id, "activated", {"resource": metadata.identity})
             if isinstance(activated, InjectedMemory):
                 memories.append(activated)
             elif isinstance(activated, LoadedSkill):
@@ -2275,6 +2301,22 @@ class Kernel:
             trace_id=trace_id,
             hitl_request=request.to_dict(),
         )
+
+    def _requires_saved_snapshot(self, task_id: str) -> bool:
+        """Fail closed for pre-snapshot tasks that already crossed activation."""
+
+        events = self.state_store.events(task_id)
+        if any(event.kind == "activated" for event in events):
+            return True
+        resumed_sequences = [event.seq for event in events if event.kind == "resumed"]
+        for event in events:
+            if event.kind != "paused":
+                continue
+            request = event.payload.get("request")
+            stage = request.get("stage") if isinstance(request, Mapping) else None
+            if stage != "selection" and any(sequence > event.seq for sequence in resumed_sequences):
+                return True
+        return False
 
     def _finish(
         self,

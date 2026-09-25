@@ -51,4 +51,6 @@ Marmo-Core は SemVer に従い、同一メジャー内で次の表面を壊さ�
   予約額全額を課金扱いする。provider 呼び出しが例外になった場合も使用量不明として予約額全額を
   課金扱いする。
 - Unreleased: `snapshot` event に選択結果を保存し、再開時の再検索・再選択を避ける。
-  選択 Resource またはコンパイル済み実行 context の fingerprint が異なれば task を失敗させる。
+  選択 Resource、activation 済み memory / skill 本文、またはコンパイル済み実行 context の
+  fingerprint が異なれば task を失敗させる。snapshot 導入前の activation / execution pause は
+  安全に復元できないため失敗させる。

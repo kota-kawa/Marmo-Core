@@ -6,7 +6,9 @@ import unittest
 
 from marmo_core import (
     HitlResponse,
+    HitlRequest,
     HitlPolicy,
+    InMemoryStateStore,
     JsonFileStateStore,
     Kernel,
     MockLLMProvider,
@@ -206,5 +208,112 @@ class ExecutionSnapshotTests(unittest.TestCase):
             result = kernel.resume(paused.task_id, HitlResponse(kind="approve"))
 
             self.assertEqual(result.status, "failed")
-            self.assertIn("compiled execution context changed", result.detail)
+            self.assertIn("activated context memory.test.context", result.detail)
             self.assertEqual(executed, [])
+
+    def test_activation_pause_pins_already_loaded_file_content(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            memory_file = root / "memory.txt"
+            memory_file.write_text("Original context", encoding="utf-8")
+            memory = ResourceDefinition.from_mapping(
+                {
+                    "id": "memory.test.context",
+                    "kind": "memory",
+                    "name": "Context",
+                    "version": "1.0.0",
+                    "description": "Reference context",
+                    "capabilities": ["context"],
+                    "input_summary": "context",
+                    "output_summary": "context",
+                    "required_permissions": [],
+                    "cost_estimate": 0.0,
+                    "latency_class": "fast",
+                    "side_effect": "none",
+                    "trust_level": "core",
+                    "ref": "file:memory.txt",
+                    "tags": ["test"],
+                },
+                source=str(root / "memory.json"),
+            )
+            tool = _external_tool()
+
+            class FixedRetriever(Retriever):
+                def search(self, registry, query):
+                    return [
+                        SearchResult(memory, 1.0, (), {"relevance": 1.0}),
+                        SearchResult(tool, 0.9, (), {"relevance": 0.9}),
+                    ]
+
+            class FixedSelector(SetSelector):
+                @property
+                def default_limits(self):
+                    return {"memory": 1, "skill": 1, "tool": 1, "agent": 1}
+
+                def select(self, results, *, context=None):
+                    return SelectionResult(tuple(results), "fixed test selection")
+
+            registry = ResourceRegistry()
+            registry.add(memory)
+            registry.add(tool)
+            executed: list[str] = []
+            kernel = Kernel(
+                registry,
+                MockLLMProvider(tool_arguments={"tool.test.add": {"a": 2, "b": 3}}),
+                retriever=FixedRetriever(),
+                selector=FixedSelector(),
+                tool_implementations={"tool.test.add": lambda a, b: executed.append("ran")},
+                policy_context=PolicyContext(),
+                hitl=PendingHitlBroker(),
+            )
+
+            paused = kernel.run_goal("Use the context and calculator")
+
+            self.assertTrue(paused.paused, paused.detail)
+            self.assertEqual(paused.hitl.stage, "activation")
+            snapshot = kernel.get_state(paused.task_id)["snapshot"]
+            self.assertIn("memory.test.context@1.0.0", snapshot["activation_fingerprints"])
+            memory_file.write_text("Changed while waiting for approval", encoding="utf-8")
+
+            result = kernel.resume(paused.task_id, HitlResponse(kind="approve"))
+
+            self.assertEqual(result.status, "failed")
+            self.assertIn("activated context memory.test.context", result.detail)
+            self.assertEqual(executed, [])
+
+    def test_legacy_activation_resume_without_snapshot_fails_closed(self) -> None:
+        store = InMemoryStateStore()
+        state = store.create("Add two numbers with the calculator")
+        request = HitlRequest.create(
+            task_id=state.task_id,
+            stage="activation",
+            operation="activate tool.test.add@1.0.0",
+            impact="side_effect=external",
+            resource="tool.test.add@1.0.0",
+        )
+        store.append(
+            state.task_id,
+            "paused",
+            {"request": request.to_dict(), "detail": "legacy activation approval"},
+        )
+        store.append(state.task_id, "resumed", {"approvals": ["tool.test.add@1.0.0"]})
+
+        registry = ResourceRegistry()
+        registry.add(_external_tool())
+        retriever = CountingRetriever()
+        retriever.fail = True
+        selector = CountingSelector()
+        selector.fail = True
+        kernel = self._kernel(
+            registry,
+            retriever,
+            selector,
+            state_store=store,
+        )
+
+        result = kernel.run(state.task_id)
+
+        self.assertEqual(result.status, "failed")
+        self.assertIn("earlier execution snapshot was not saved", result.detail)
+        self.assertEqual(retriever.calls, 0)
+        self.assertEqual(selector.calls, 0)

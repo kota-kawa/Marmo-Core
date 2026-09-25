@@ -41,6 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   this mode. The existing thread mode remains the default for compatibility;
   it only limits how long the caller waits.
 
+- Resuming a paused task restores its saved resource selection. Changes to a
+  selected resource, loaded memory or skill text, or compiled context now fail
+  the task instead of silently changing its execution snapshot. Legacy paused
+  tasks that passed activation or execution without a saved snapshot fail closed.
+
 - A held-out benchmark of bundled resources now reports real Tool execution
   success, artifact-checked single-step task completion, Layer 2 set quality,
   Layer 3 cache reuse, and adversarial metadata outcomes. A benchmark-only
