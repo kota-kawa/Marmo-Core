@@ -66,7 +66,7 @@ class BoundAgent:
     definition: ResourceDefinition
     input_schema: dict[str, Any]
     output_schema: dict[str, Any]
-    handler: Callable[..., Any]
+    handler: Callable[..., Any] | None
     delegation_interface: str = "tool_wrap"
 
     @property
@@ -184,19 +184,20 @@ class ResourceActivator:
         card = definition.extras.get("agent_card")
         card = card if isinstance(card, Mapping) else {}
         interface = card.get("delegation_interface", definition.extras.get("delegation_interface", "tool_wrap"))
-        if interface != "tool_wrap":
+        if interface not in ("tool_wrap", "structured_task"):
             raise ActivationError(
-                f"{definition.identity}: delegation_interface {interface!r} is not available in v2; "
-                "use 'tool_wrap' (structured_task is planned for v3)"
+                f"{definition.identity}: no execution backend is available for delegation_interface={interface!r}"
             )
-        handler = self.agent_implementations.get(metadata.id)
-        if handler is None:
-            handler = _resolve_python_ref(definition)
-        if handler is None:
-            raise ActivationError(
-                f"{definition.identity}: no executable implementation; register one with "
-                f'agent_implementations={{"{metadata.id}": callable}} or use a python:module:function ref'
-            )
+        handler: Callable[..., Any] | None = None
+        if interface == "tool_wrap":
+            handler = self.agent_implementations.get(metadata.id)
+            if handler is None:
+                handler = _resolve_python_ref(definition)
+            if handler is None:
+                raise ActivationError(
+                    f"{definition.identity}: no executable implementation; register one with "
+                    f'agent_implementations={{"{metadata.id}": callable}} or use a python:module:function ref'
+                )
         input_schema = card.get("input_schema", definition.extras.get("input_schema"))
         output_schema = card.get("output_schema", definition.extras.get("output_schema"))
         if not isinstance(input_schema, Mapping):
@@ -206,6 +207,20 @@ class ResourceActivator:
                 "properties": {"goal": {"type": "string"}},
                 "additionalProperties": False,
             }
+        if interface == "structured_task":
+            properties = input_schema.get("properties")
+            required = input_schema.get("required", ())
+            goal_schema = properties.get("goal") if isinstance(properties, Mapping) else None
+            if (
+                input_schema.get("type") != "object"
+                or "goal" not in required
+                or not isinstance(goal_schema, Mapping)
+                or goal_schema.get("type") != "string"
+            ):
+                raise ActivationError(
+                    f"{definition.identity}: structured_task requires an object input_schema "
+                    "with required string property 'goal'"
+                )
         return BoundAgent(
             definition=definition,
             input_schema=dict(input_schema),

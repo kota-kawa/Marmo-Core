@@ -22,7 +22,14 @@ from .activator import (
     LoadedSkill,
     ResourceActivator,
 )
-from .agent_runtime import AgentResponse, AgentResult, AgentRuntime
+from .agent_runtime import (
+    AgentExecutionBackend,
+    AgentExecutionPendingError,
+    AgentResponse,
+    AgentResult,
+    AgentRuntime,
+    ToolWrappedAgentBackend,
+)
 from .audit import AuditLog, AuditRecord
 from .budget import BudgetExceededError, BudgetLedger, BudgetedLLMProvider, ModelPrice, TaskBudget
 from .compiler import AgentInterface, CompiledContext, CompiledSelectionContext, ContextCompiler
@@ -193,6 +200,8 @@ from .tool_runtime import ToolResult, ToolRuntime, validate_arguments
 __all__ = [
     "Activation",
     "ActivationError",
+    "AgentExecutionBackend",
+    "AgentExecutionPendingError",
     "AgentResponse",
     "AgentResult",
     "AgentRuntime",
@@ -342,6 +351,7 @@ __all__ = [
     "ToolNameCodec",
     "ToolResult",
     "ToolRuntime",
+    "ToolWrappedAgentBackend",
     "ValidationIssue",
     "VersionRange",
     "build_package_lock",

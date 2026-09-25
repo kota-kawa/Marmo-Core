@@ -9,6 +9,7 @@ Marmo-Core は SemVer に従い、同一メジャー内で次の表面を壊さ�
 |---|---|---|---|
 | 公開 API | `marmo_core/__init__.py` の `__all__` | `test_v030_public_api_remains_available`（`fixtures/compat/v0.3.0/public_api.txt` の全名前が残ること） | 追加は自由。削除・改名は次のメジャーまで非推奨期間を置き、CHANGELOG に書く |
 | リソース定義 | `ResourceDefinition` / `ResourceMetadata`（`models.py`）。フラット形式と `{"metadata": ...}` 形式 | `test_v030_resource_defaults_new_optional_metadata` | 新フィールドは任意かつ既定値付きで追加する。必須フィールドを増やさない |
+| Agent 実行 | `AgentRuntime`、`AgentExecutionBackend`、Agent Card の `delegation_interface` / `input_schema`、`metadata.dependencies` | `tests/test_agent_runtime.py` | 追加 backend は `AgentResult` を返し、同じ Agent identity・depth・権限縮小を保つ。`structured_task` は `goal` を必須とし、依存閉包内だけで実行する |
 | 状態ファイル | `<task_id>.jsonl`、`schema_version: 1`、`EVENT_KINDS` | `test_v030_jsonl_state_loads_and_accepts_new_events` | 新しい event kind は追加してよい。既存 kind の payload の意味を変えない。形式を変えるなら `schema_version` を上げて旧版を読めるようにする |
 | 監査ログ | `AuditRecord` のフィールドとハッシュ計算 | `test_policy_audit.py`、`test_safety.py` | ハッシュ対象や正規化を変えると過去ログの `verify()` が失敗する。変える場合は版を付けて両方検証する |
 | CLI | サブコマンド、フラグ、終了コード（0 / 1 / 2）、`--strict` の失敗条件 | `test_cli_release.py`、`test_v1.py` | フラグの削除・意味変更、終了コードの変更は CHANGELOG の Changed に明記する（0.5.0 でプロバイダ失敗の終了コードを 2→1 に変えた前例） |
@@ -45,8 +46,6 @@ Marmo-Core は SemVer に従い、同一メジャー内で次の表面を壊さ�
   `timeout_mode="process"` は追加の選択肢で、既定は互換性のため `thread` のまま。
 - Unreleased: `budget` event に設定・予約・精算を追加。予算を付けた task は同じ設定で
   再開する必要がある。予算なしの従来 task の形式と挙動は変えない。
-  provider 応答に token usage が無い場合や provider 呼び出しが例外になった場合は予約額全額を
-  課金扱いする。
   provider 応答に token usage が無い場合は空の usage として表し、予算付き task は
   予約額全額を課金扱いする。provider 呼び出しが例外になった場合も使用量不明として予約額全額を
   課金扱いする。
@@ -54,3 +53,7 @@ Marmo-Core は SemVer に従い、同一メジャー内で次の表面を壊さ�
   選択 Resource、activation 済み memory / skill 本文、またはコンパイル済み実行 context の
   fingerprint が異なれば task を失敗させる。snapshot 導入前の activation / execution pause は
   安全に復元できないため失敗させる。
+- Unreleased: `AgentResult.child_task_id` は省略可能な追加フィールドで、旧 Agent Result の読み込みは変えない。
+  `structured_task` の子 task は同じ State Store に別 task として保存し、親 task は子 ToolResult を
+  `step` event に記録する。Agent Card の structured input には required string `goal` を追加し、
+  `metadata.dependencies` が子の実行 Resource 集合を決める。

@@ -1,21 +1,16 @@
-"""Synchronous, guarded Agent delegation (F-AGENT-01/04/06, F-SEC-08).
-
-The v2 interface deliberately treats an Agent as a wrapped tool.  The actual
-call therefore passes through ``ToolRuntime`` and inherits its mandatory
-policy gates, argument validation, secret handling, dry-run, and timeout.
-This module adds the Agent-specific invariants around that boundary: delegated
-permissions can only shrink, delegation depth is bounded, and estimated total
-cost is checked before work begins.
-"""
+"""Guarded Agent delegation and pluggable execution backends."""
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
+import math
 from typing import Any, Mapping, Sequence
 
 from .activator import BoundAgent, BoundTool
-from .errors import ToolInputError
-from .policy import PolicyContext
+from .errors import MarmoError, ToolInputError
+from .hitl import HitlRequest
+from .policy import PolicyContext, PolicyRejectedError
 from .tool_runtime import ToolResult, ToolRuntime
 
 
@@ -42,6 +37,7 @@ class AgentResult:
     delegation_depth: int = 1
     delegated_permissions: tuple[str, ...] = ()
     safety_findings: tuple[dict[str, str], ...] = ()
+    child_task_id: str = ""
 
     @property
     def succeeded(self) -> bool:
@@ -71,6 +67,7 @@ class AgentResult:
             delegation_depth=int(data.get("delegation_depth", 1)),
             delegated_permissions=tuple(str(item) for item in permissions),
             safety_findings=tuple(dict(item) for item in findings if isinstance(item, Mapping)),
+            child_task_id=str(data.get("child_task_id", "")),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -86,71 +83,74 @@ class AgentResult:
             "delegation_depth": self.delegation_depth,
             "delegated_permissions": list(self.delegated_permissions),
             "safety_findings": [dict(item) for item in self.safety_findings],
+            "child_task_id": self.child_task_id,
         }
 
 
-class AgentRuntime:
-    """Execute a tool-wrapped Agent while enforcing delegation limits."""
+class AgentExecutionBackend(ABC):
+    """Pluggable execution strategy for one activated Agent resource."""
+
+    @abstractmethod
+    def execute(
+        self,
+        agent: BoundAgent,
+        arguments: Mapping[str, Any],
+        context: PolicyContext | None,
+        *,
+        depth: int,
+        cumulative_cost: float,
+        delegated_permissions: tuple[str, ...],
+        task_id: str,
+        invocation_id: str,
+    ) -> AgentResult:
+        """Run the Agent within the supplied task and delegation boundary."""
+
+
+class AgentExecutionPendingError(MarmoError):
+    """A nested Agent task is paused for a parent task's human approval."""
 
     def __init__(
         self,
-        tool_runtime: ToolRuntime,
+        child_task_id: str,
+        request: HitlRequest,
         *,
-        max_depth: int = 1,
-        max_total_cost: float | None = None,
+        tool_results: Sequence[ToolResult] = (),
     ) -> None:
-        if max_depth < 1:
-            raise ValueError("max_depth must be at least 1")
-        if max_total_cost is not None and max_total_cost < 0:
-            raise ValueError("max_total_cost must be non-negative or None")
+        super().__init__(f"delegated task {child_task_id} is waiting for human approval")
+        self.child_task_id = child_task_id
+        self.request = request
+        self.tool_results = tuple(tool_results)
+
+
+class ToolWrappedAgentBackend(AgentExecutionBackend):
+    """Run a local Agent handler through the guarded ToolRuntime boundary."""
+
+    def __init__(self, tool_runtime: ToolRuntime) -> None:
         self.tool_runtime = tool_runtime
-        self.max_depth = max_depth
-        self.max_total_cost = max_total_cost
 
     def execute(
         self,
         agent: BoundAgent,
         arguments: Mapping[str, Any],
-        context: PolicyContext | None = None,
+        context: PolicyContext | None,
         *,
-        depth: int = 1,
-        cumulative_cost: float = 0.0,
-        delegated_permissions: Sequence[str] | None = None,
+        depth: int,
+        cumulative_cost: float,
+        delegated_permissions: tuple[str, ...],
+        task_id: str = "",
+        invocation_id: str = "",
     ) -> AgentResult:
-        if agent.delegation_interface != "tool_wrap":
-            raise ToolInputError(
-                f"{agent.metadata.identity}: only delegation_interface='tool_wrap' is supported in v2"
-            )
-        if depth < 1 or depth > self.max_depth:
-            raise ToolInputError(
-                f"delegation depth {depth} exceeds max_depth={self.max_depth}; "
-                "flatten the delegation chain or raise the explicit limit"
-            )
-        parent_permissions = set(context.granted_permissions if context else ())
-        requested_permissions = tuple(
-            dict.fromkeys(delegated_permissions or agent.metadata.required_permissions)
-        )
-        excess = set(requested_permissions) - parent_permissions
-        if excess:
-            raise ToolInputError(
-                f"delegated permissions must be a subset of the delegator's permissions; "
-                f"not granted: {', '.join(sorted(excess))}"
-            )
-        estimate = agent.metadata.cost_estimate
-        if self.max_total_cost is not None and cumulative_cost + estimate > self.max_total_cost:
-            raise ToolInputError(
-                f"agent cost estimate would exceed max_total_cost={self.max_total_cost:g}: "
-                f"{cumulative_cost:g} + {estimate:g}"
-            )
+        if agent.handler is None:
+            raise ToolInputError(f"{agent.metadata.identity}: tool_wrap Agent has no handler")
+        handler = agent.handler
 
-        # ToolRuntime owns the mandatory execution boundary. The wrapper only
-        # unwraps AgentResponse so arbitrary handler objects never reach state.
         def wrapped(**kwargs: Any) -> Any:
-            value = agent.handler(**kwargs)
+            value = handler(**kwargs)
             if isinstance(value, AgentResponse):
                 if (
                     not isinstance(value.cost, (int, float))
                     or isinstance(value.cost, bool)
+                    or not math.isfinite(value.cost)
                     or value.cost < 0
                 ):
                     raise ValueError("AgentResponse.cost must be a non-negative number")
@@ -167,20 +167,133 @@ class AgentRuntime:
             output_schema=agent.output_schema,
             handler=(agent.handler if self.tool_runtime.timeout_mode == "process" else wrapped),
         )
-        delegated_context = replace(context, granted_permissions=requested_permissions) if context else None
+        delegated_context = replace(context, granted_permissions=delegated_permissions) if context else None
         result = self.tool_runtime.execute(wrapped_tool, arguments, delegated_context)
         output = result.output
-        actual_cost = 0.0 if result.status == "dry_run" else estimate
+        actual_cost = 0.0 if result.status == "dry_run" else agent.metadata.cost_estimate
         if isinstance(output, Mapping) and output.get("__marmo_agent_response__") is True:
-            actual_cost = float(output.get("cost", estimate))
+            actual_cost = float(output.get("cost", agent.metadata.cost_estimate))
             output = output.get("output")
         return _agent_result(
             result,
             output=output,
             cost=actual_cost,
             depth=depth,
-            delegated_permissions=requested_permissions,
+            delegated_permissions=delegated_permissions,
         )
+
+
+class AgentRuntime:
+    """Dispatch activated Agents through a registered guarded backend."""
+
+    def __init__(
+        self,
+        tool_runtime: ToolRuntime,
+        *,
+        max_depth: int = 1,
+        max_total_cost: float | None = None,
+        backends: Mapping[str, AgentExecutionBackend] | None = None,
+    ) -> None:
+        if max_depth < 1:
+            raise ValueError("max_depth must be at least 1")
+        if max_total_cost is not None and (
+            not math.isfinite(max_total_cost) or max_total_cost < 0
+        ):
+            raise ValueError("max_total_cost must be non-negative or None")
+        self.tool_runtime = tool_runtime
+        self.max_depth = max_depth
+        self.max_total_cost = max_total_cost
+        self.backends: dict[str, AgentExecutionBackend] = {"tool_wrap": ToolWrappedAgentBackend(tool_runtime)}
+        for interface, backend in (backends or {}).items():
+            self.register_backend(interface, backend)
+
+    def register_backend(self, delegation_interface: str, backend: AgentExecutionBackend) -> None:
+        if not delegation_interface:
+            raise ValueError("delegation_interface must not be empty")
+        if not isinstance(backend, AgentExecutionBackend):
+            raise TypeError("backend must implement AgentExecutionBackend")
+        self.backends[delegation_interface] = backend
+
+    def execute(
+        self,
+        agent: BoundAgent,
+        arguments: Mapping[str, Any],
+        context: PolicyContext | None = None,
+        *,
+        depth: int = 1,
+        cumulative_cost: float = 0.0,
+        delegated_permissions: Sequence[str] | None = None,
+        task_id: str = "",
+        invocation_id: str = "",
+    ) -> AgentResult:
+        if depth < 1 or depth > self.max_depth:
+            raise ToolInputError(
+                f"delegation depth {depth} exceeds max_depth={self.max_depth}; "
+                "flatten the delegation chain or raise the explicit limit"
+            )
+        parent_permissions = set(context.granted_permissions if context else ())
+        requested_permissions = tuple(dict.fromkeys(
+            agent.metadata.required_permissions if delegated_permissions is None else delegated_permissions
+        ))
+        excess = set(requested_permissions) - parent_permissions
+        if excess:
+            raise ToolInputError(
+                f"delegated permissions must be a subset of the delegator's permissions; "
+                f"not granted: {', '.join(sorted(excess))}"
+            )
+        if not math.isfinite(cumulative_cost) or cumulative_cost < 0:
+            raise ToolInputError("cumulative agent cost must be finite and non-negative")
+        estimate = agent.metadata.cost_estimate
+        if self.max_total_cost is not None and cumulative_cost + estimate > self.max_total_cost:
+            raise ToolInputError(
+                f"agent cost estimate would exceed max_total_cost={self.max_total_cost:g}: "
+                f"{cumulative_cost:g} + {estimate:g}"
+            )
+
+        delegated_context = (
+            replace(context, granted_permissions=requested_permissions) if context is not None else None
+        )
+        decision = self.tool_runtime.gateway.evaluate(
+            agent.definition,
+            delegated_context,
+            gate="execution",
+            arguments=arguments,
+        )
+        if not decision.allowed:
+            raise PolicyRejectedError(
+                f"execution gate returned {decision.verdict} for {agent.metadata.identity}: {decision.reason}",
+                decision,
+            )
+
+        backend = self.backends.get(agent.delegation_interface)
+        if backend is None:
+            raise ToolInputError(
+                f"{agent.metadata.identity}: no AgentExecutionBackend is registered for "
+                f"delegation_interface={agent.delegation_interface!r}"
+            )
+        result = backend.execute(
+            agent,
+            arguments,
+            delegated_context,
+            depth=depth,
+            cumulative_cost=cumulative_cost,
+            delegated_permissions=requested_permissions,
+            task_id=task_id,
+            invocation_id=invocation_id,
+        )
+        if not isinstance(result, AgentResult):
+            raise ToolInputError(
+                f"AgentExecutionBackend for {agent.delegation_interface!r} must return AgentResult"
+            )
+        if result.agent_id != agent.metadata.id or result.agent_version != agent.metadata.version:
+            raise ToolInputError("AgentExecutionBackend returned a result for a different Agent")
+        if result.delegation_depth != depth:
+            raise ToolInputError("AgentExecutionBackend returned an incorrect delegation depth")
+        if set(result.delegated_permissions) - set(requested_permissions):
+            raise ToolInputError("AgentExecutionBackend reported permissions outside its delegation")
+        if not math.isfinite(result.cost) or result.cost < 0:
+            raise ToolInputError("AgentExecutionBackend returned a non-finite or negative cost")
+        return result
 
 
 def _agent_result(
