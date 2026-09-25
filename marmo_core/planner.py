@@ -27,6 +27,7 @@ import json
 import re
 
 from .llm import ChatMessage, LLMProvider, default_arguments
+from .budget import BudgetExceededError
 from .models import ResourceDefinition, ValidationIssue
 from .policy import PolicyContext
 from .errors import SecretResolutionError
@@ -454,6 +455,8 @@ class LLMPlanner(Planner):
                     ]
                 )
                 cached = response.content
+            except BudgetExceededError:
+                raise
             except Exception:  # noqa: BLE001 - a failed plan is data, not a crash
                 self.failures += 1
                 cached = ""

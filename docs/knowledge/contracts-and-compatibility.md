@@ -42,3 +42,7 @@ Marmo-Core は SemVer に従い、同一メジャー内で次の表面を壊さ�
 - Unreleased: timeout 後の自動 retry/fallback を停止。明示的に timeout を
   `RetryPolicy.retry_kinds` に指定しても、不明な副作用を重複させないため人の判断を求める。
   `timeout_mode="process"` は追加の選択肢で、既定は互換性のため `thread` のまま。
+- Unreleased: `budget` event に設定・予約・精算を追加。予算を付けた task は同じ設定で
+  再開する必要がある。予算なしの従来 task の形式と挙動は変えない。
+  provider 応答に token usage が無い場合は空の usage として表し、予算付き task は
+  予約額全額を課金扱いする。

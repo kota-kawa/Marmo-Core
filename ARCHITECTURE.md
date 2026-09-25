@@ -135,6 +135,12 @@ Agent の 4 種別）を登録し、ゴールに対して必要なものだけ�
 - **状態ファイル**: `<state-dir>/<task_id>.jsonl`。各行は
   `{schema_version: 1, task_id, seq, timestamp, kind, payload}`、kind は
   `state.EVENT_KINDS`。seq の単調増加で楽観ロック（`StateConflictError`）。
+- **タスク予算**: `Kernel(task_budget=TaskBudget(...))` は通貨とモデル単価を明示し、
+  `budget` event に設定・予約・精算を追記する。再開時は同じ設定が必要。rollback でも
+  実行済み費用は戻さない。selector には残額を渡し、モデル呼び出しと各 Tool / Agent 試行の
+  前に予約する。外部サービスを利用する handler の費用は Resource 見積りに含める。
+  カスタム Retriever / Selector / Planner を予算付きで使用する場合、その実装が
+  `budget_aware=True` を宣言し、内部の有料呼び出しを予算管理する責任を持つ。
 - **監査ログ**: `{trace_id, span_id, timestamp, kind, payload（マスク済み）, prev_hash, hash}`。
   hash は `hash` 以外を正規化 JSON にした SHA-256、`prev_hash` は直前レコードの hash。
   `verify()` と `from_jsonl` がチェーンを検証する。

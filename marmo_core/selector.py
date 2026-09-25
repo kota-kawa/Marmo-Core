@@ -22,8 +22,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import defaultdict
+from decimal import Decimal
 from dataclasses import dataclass, field
-from typing import Mapping
+from typing import Iterable, Mapping
 
 from .models import KINDS, SearchResult, SelectionResult
 
@@ -116,6 +117,8 @@ class RuleBasedSetSelector(SetSelector):
         min_relevance = max(self.min_relevance, context.min_relevance if context else 0.0)
         selected: list[SearchResult] = []
         counts: dict[str, int] = defaultdict(int)
+        total_cost = Decimal(0)
+        budget = Decimal(str(context.budget_cost)) if context and context.budget_cost is not None else None
         for result in results:
             kind = result.resource.metadata.kind
             if kind not in KINDS:
@@ -127,8 +130,12 @@ class RuleBasedSetSelector(SetSelector):
             limit = effective_limits.get(kind, 0)
             if counts[kind] >= limit:
                 continue
+            cost = _resource_cost(result)
+            if budget is not None and total_cost + cost > budget:
+                continue
             selected.append(result)
             counts[kind] += 1
+            total_cost += cost
         if selected:
             parts = [f"{kind}={counts.get(kind, 0)}/{effective_limits.get(kind, 0)}" for kind in KINDS if effective_limits.get(kind, 0)]
             reason = "selected top-ranked resources per kind after active filters: " + ", ".join(parts)
@@ -185,7 +192,8 @@ class GreedyConstrainedSetSelector(SetSelector):
         granted = set(ctx.granted_permissions)
         picked: dict[str, SearchResult] = {}
         counts: dict[str, int] = defaultdict(int)
-        total_cost = 0.0
+        total_cost = Decimal(0)
+        budget = Decimal(str(ctx.budget_cost)) if ctx.budget_cost is not None else None
         notes: list[str] = []
         permission_blocked: list[str] = []
 
@@ -216,11 +224,11 @@ class GreedyConstrainedSetSelector(SetSelector):
             if _conflicts(unit, picked):
                 notes.append(f"{cid}: conflicts with an already selected resource")
                 continue
-            unit_cost = sum(max(m.resource.metadata.cost_estimate, 0.0) for m in unit)
+            unit_cost = _total_cost(unit)
             if len(picked) + len(unit) > ctx.max_resources:
                 notes.append(f"{cid}: would exceed max_resources={ctx.max_resources}")
                 continue
-            if ctx.budget_cost is not None and total_cost + unit_cost > ctx.budget_cost:
+            if budget is not None and total_cost + unit_cost > budget:
                 notes.append(f"{cid}: would exceed budget_cost={ctx.budget_cost}")
                 continue
             unit_kind_counts: dict[str, int] = defaultdict(int)
@@ -313,15 +321,16 @@ class BeamSearchSetSelector(SetSelector):
         ordered_units = sorted(units, key=lambda item: (-item[0], item[1]))
 
         # State: picked_ids -> (utility, cost, counts)
-        beam: dict[frozenset[str], tuple[float, float, dict[str, int]]] = {
-            frozenset(): (0.0, 0.0, defaultdict(int))
+        beam: dict[frozenset[str], tuple[float, Decimal, dict[str, int]]] = {
+            frozenset(): (0.0, Decimal(0), defaultdict(int))
         }
+        budget = Decimal(str(ctx.budget_cost)) if ctx.budget_cost is not None else None
 
         for _, cid, unit_ids in ordered_units:
             next_beam = dict(beam)
             unit_members = [pool[uid] for uid in unit_ids]
 
-            unit_cost = sum(max(m.resource.metadata.cost_estimate, 0.0) for m in unit_members)
+            unit_cost = _total_cost(unit_members)
             unit_missing_perms = set()
             if ctx.enforce_permissions:
                 for m in unit_members:
@@ -343,7 +352,7 @@ class BeamSearchSetSelector(SetSelector):
                 if len(state_ids) + len(unit_ids) > ctx.max_resources:
                     continue
 
-                if ctx.budget_cost is not None and state_cost + unit_cost > ctx.budget_cost:
+                if budget is not None and state_cost + unit_cost > budget:
                     continue
 
                 limit_exceeded = False
@@ -376,7 +385,7 @@ class BeamSearchSetSelector(SetSelector):
 
         best_state_ids = None
         best_util = -1.0
-        best_cost = 0.0
+        best_cost = Decimal(0)
         for state_ids, (util, cost, _) in beam.items():
             if state_ids and util > best_util:
                 best_state_ids = state_ids
@@ -482,7 +491,8 @@ class BranchAndBoundSetSelector(SetSelector):
 
         best_ids: tuple[str, ...] = ()
         best_utility = 0.0
-        best_cost = 0.0
+        best_cost = Decimal(0)
+        budget = Decimal(str(ctx.budget_cost)) if ctx.budget_cost is not None else None
         nodes = 0
         truncated = False
 
@@ -490,7 +500,7 @@ class BranchAndBoundSetSelector(SetSelector):
             index: int,
             picked: dict[str, SearchResult],
             counts: dict[str, int],
-            cost: float,
+            cost: Decimal,
             utility: float,
         ) -> None:
             nonlocal best_ids, best_utility, best_cost, nodes, truncated
@@ -510,13 +520,13 @@ class BranchAndBoundSetSelector(SetSelector):
             new_ids = [uid for uid in unit_ids if uid not in picked]
             if new_ids:
                 new_members = [pool[uid] for uid in new_ids]
-                new_cost = sum(max(m.resource.metadata.cost_estimate, 0.0) for m in new_members)
+                new_cost = _total_cost(new_members)
                 new_counts: dict[str, int] = defaultdict(int)
                 for member in new_members:
                     new_counts[member.resource.metadata.kind] += 1
                 feasible = (
                     len(picked) + len(new_ids) <= ctx.max_resources
-                    and (ctx.budget_cost is None or cost + new_cost <= ctx.budget_cost)
+                    and (budget is None or cost + new_cost <= budget)
                     and not any(
                         ctx.per_kind_limits.get(kind) is not None
                         and counts[kind] + extra > ctx.per_kind_limits[kind]
@@ -536,7 +546,7 @@ class BranchAndBoundSetSelector(SetSelector):
                         counts[kind] -= extra
             dfs(index + 1, picked, counts, cost, utility)
 
-        dfs(0, {}, defaultdict(int), 0.0, 0.0)
+        dfs(0, {}, defaultdict(int), Decimal(0), 0.0)
 
         if best_ids:
             picked_results = [pool[uid] for uid in best_ids]
@@ -563,6 +573,14 @@ class BranchAndBoundSetSelector(SetSelector):
         if notes:
             reason += ": " + "; ".join(notes[:4])
         return SelectionResult((), reason, status="abstain")
+
+
+def _resource_cost(result: SearchResult) -> Decimal:
+    return Decimal(str(max(result.resource.metadata.cost_estimate, 0.0)))
+
+
+def _total_cost(results: Iterable[SearchResult]) -> Decimal:
+    return sum((_resource_cost(result) for result in results), Decimal(0))
 
 
 def _closure(resource_id: str, pool: Mapping[str, SearchResult]) -> tuple[list[str], str | None]:

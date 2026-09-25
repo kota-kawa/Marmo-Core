@@ -9,12 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Provider responses without token usage now keep `LLMResponse.usage` empty
+  instead of reporting zero tokens. Budgeted tasks charge the full reserved
+  amount when usage is unknown.
+
 - A timed-out Tool or Agent is no longer retried or replaced automatically.
   Its external effects may already have happened, so recovery asks for human
   reconciliation before another attempt. The `RetryPolicy` default now retries
   transient errors only.
 
 ### Added
+
+- `Kernel(task_budget=TaskBudget(...))` applies one explicit currency budget to
+  selection, model calls, and every Tool or Agent attempt. Model calls reserve
+  a configured token ceiling before dispatch; resource estimates are reserved
+  before execution. Reservations and settlements persist across retry, resume,
+  and rollback. `Kernel.budget_status(task_id)` reports the remaining amount.
 
 - `ToolRuntime(timeout_mode="process")`, `Kernel(timeout_mode="process")`, and
   `marmo run --timeout-mode process` stop importable Python handlers when their

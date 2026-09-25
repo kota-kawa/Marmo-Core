@@ -163,11 +163,7 @@ class AnthropicLLMProvider(LLMProvider):
             "end_turn": "stop",
             "max_tokens": "length",
         }.get(stop_reason, stop_reason or "stop")
-        usage_data = response.get("usage", {}) or {}
-        usage = {
-            "input_tokens": int(usage_data.get("input_tokens", 0) or 0),
-            "output_tokens": int(usage_data.get("output_tokens", 0) or 0),
-        }
+        usage = _parse_usage(response.get("usage"), "input_tokens", "output_tokens")
         return LLMResponse(
             content="".join(text_parts),
             tool_calls=tuple(tool_calls),
@@ -297,17 +293,30 @@ class OpenAICompatibleLLMProvider(LLMProvider):
                 )
             )
         finish = str(choices[0].get("finish_reason", "stop") or "stop") if choices else "stop"
-        usage_data = response.get("usage", {}) or {}
-        usage = {
-            "input_tokens": int(usage_data.get("prompt_tokens", 0) or 0),
-            "output_tokens": int(usage_data.get("completion_tokens", 0) or 0),
-        }
+        usage = _parse_usage(response.get("usage"), "prompt_tokens", "completion_tokens")
         return LLMResponse(
             content=str(message.get("content") or ""),
             tool_calls=tuple(tool_calls),
             finish_reason="tool_calls" if finish == "tool_calls" else finish,
             usage=usage,
         )
+
+
+def _parse_usage(data: Any, input_key: str, output_key: str) -> dict[str, int]:
+    if not isinstance(data, Mapping):
+        return {}
+    input_raw = data.get(input_key)
+    output_raw = data.get(output_key)
+    if input_raw is None or output_raw is None or isinstance(input_raw, bool) or isinstance(output_raw, bool):
+        return {}
+    try:
+        input_tokens = int(input_raw)
+        output_tokens = int(output_raw)
+    except (TypeError, ValueError, OverflowError):
+        return {}
+    if input_tokens < 0 or output_tokens < 0:
+        return {}
+    return {"input_tokens": input_tokens, "output_tokens": output_tokens}
 
 
 def _default_max_tokens_parameter(base_url: str) -> str:

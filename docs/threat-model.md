@@ -16,6 +16,11 @@ destinations, execution permissions, persisted state, and audit integrity.
   untrusted content, independent of the resource's package `trust_level`.
 - LLM output is a proposal. Tool calls are valid only when the resource was
   activated and the activation/execution gates allow the exact operation.
+- When configured, a task budget is checked before Kernel-controlled model and
+  Resource calls. The budget event log survives rollback, and resume rejects a
+  different policy. External charges inside handlers rely on the Resource's
+  declared estimate; provider usage above the reserved ceiling is recorded and
+  stops further work.
 - Tool handlers and secret resolvers stay beyond the LLM boundary. Secret values
   are materialized only immediately before the handler call.
 - The default thread timeout ends the wait but cannot stop a handler. In

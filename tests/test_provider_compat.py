@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import redirect_stderr, redirect_stdout
+from decimal import Decimal
 from io import BytesIO, StringIO
 from pathlib import Path
 from unittest import mock
@@ -17,6 +18,7 @@ from marmo_core import (
     ChatMessage,
     ContextCompiler,
     Kernel,
+    ModelPrice,
     LLMToolSpec,
     MockLLMProvider,
     OpenAICompatibleEmbeddingProvider,
@@ -25,6 +27,7 @@ from marmo_core import (
     ProviderHTTPError,
     ResourceDefinition,
     ResourceRegistry,
+    TaskBudget,
     ToolCall,
     ToolNameCodec,
 )
@@ -100,6 +103,28 @@ class ToolNameCodecTests(unittest.TestCase):
 
 
 class ProviderToolNameTests(unittest.TestCase):
+    def test_budget_charges_reservation_when_openai_omits_usage(self) -> None:
+        policy = TaskBudget(
+            amount=Decimal("0.01"),
+            currency="USD",
+            resource_cost_unit="USD",
+            model_price=ModelPrice(Decimal("1"), Decimal("1"), 1000, 1000),
+        )
+        for usage in (None, {"prompt_tokens": None, "completion_tokens": None}):
+            with self.subTest(usage=usage):
+                response = {"choices": [{"finish_reason": "stop", "message": {"content": "Done"}}]}
+                if usage is not None:
+                    response["usage"] = usage
+                provider = OpenAICompatibleLLMProvider(
+                    model="m", api_key="k", transport=lambda *args: response
+                )
+                kernel = Kernel(ResourceRegistry(), provider, task_budget=policy)
+
+                result = kernel.run_goal("Say done")
+
+                self.assertEqual(result.status, "completed", result.detail)
+                self.assertEqual(kernel.budget_status(result.task_id)["spent"], "0.002")
+
     def test_openai_encodes_tool_names_and_decodes_calls(self) -> None:
         seen: list[dict] = []
 
