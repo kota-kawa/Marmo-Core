@@ -21,7 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deadline expires. A non-importable handler is rejected before execution in
   this mode. The existing thread mode remains the default for compatibility;
   it only limits how long the caller waits.
-
+- README now links to the Marmo Core website for the library overview, concepts,
+  and usage guide.
 - A held-out benchmark of bundled resources now reports real Tool execution
   success, artifact-checked single-step task completion, Layer 2 set quality,
   Layer 3 cache reuse, and adversarial metadata outcomes. A benchmark-only
