@@ -42,6 +42,12 @@ from .budget import BudgetExceededError, BudgetLedger, BudgetedLLMProvider, Task
 from .compiler import AgentInterface, ContextCompiler
 from .connectors import Connector, connector_tools
 from .errors import ProviderError, ResourceNotFoundError, SecretResolutionError, ToolInputError
+from .execution_snapshot import (
+    SnapshotMismatchError,
+    capture_selection,
+    compiled_fingerprint,
+    restore_selection,
+)
 from .hitl import HitlBroker, HitlError, HitlRequest, HitlResponse, PendingHitlBroker
 from .llm import ChatMessage, LLMProvider, ToolCall, characters_for_tokens
 from .llm_routing import HydeRetriever, LLMRerankRetriever, LLMSetSelector
@@ -493,10 +499,12 @@ class Kernel:
                 else:
                     with self.budget_ledger.bind(state.task_id):
                         result = self._execute(state)
-            except BudgetExceededError as exc:
+            except (BudgetExceededError, SnapshotMismatchError) as exc:
                 current = self.state_store.load(state.task_id)
                 trace_id = current.trace_id or uuid.uuid4().hex
-                self.audit_log.append("budget", {"event": "exceeded", "detail": str(exc)}, trace_id=trace_id)
+                kind = "budget" if isinstance(exc, BudgetExceededError) else "snapshot"
+                event = "exceeded" if kind == "budget" else "mismatch"
+                self.audit_log.append(kind, {"event": event, "detail": str(exc)}, trace_id=trace_id)
                 return self._finish(
                     current,
                     trace_id,
@@ -703,37 +711,58 @@ class Kernel:
         def audit(kind: str, payload: Mapping[str, Any]) -> None:
             self.audit_log.append(kind, payload, trace_id=trace_id)
 
-        # Phase 1 - retrieval and set selection. Pure, so a resume redoes it.
-        results = self._candidate_pool(goal, context)
-        callable_candidates = any(result.resource.kind in ("tool", "agent") for result in results)
-        selection_context = SelectionContext(
-            task=goal,
-            granted_permissions=tuple(context.granted_permissions),
-            per_kind_limits=dict(self.set_limits) if self.set_limits else {},
-            min_relevance=self.min_relevance,
-            budget_cost=(
-                float(self.budget_ledger.status(task_id)["remaining"])
-                if self.budget_ledger is not None
-                else None
-            ),
-        )
-        selected = self.selector.select(results, context=selection_context)
-        if self.budget_ledger is not None:
-            selected_cost = sum(
-                (Decimal(str(item.resource.metadata.cost_estimate)) for item in selected.results),
-                Decimal(0),
+        # Freeze the selected resource identities for every later resume. A
+        # permission escalation happens before a set exists, so it can select
+        # again after the operator grants a narrower permission set.
+        results: list[SearchResult] = []
+        if state.snapshot:
+            selected, candidate_count, callable_candidates, catalog_nonempty = restore_selection(
+                state.snapshot, self.registry
             )
-            remaining = Decimal(self.budget_ledger.status(task_id)["remaining"])
-            if selected_cost > remaining:
-                raise BudgetExceededError(
-                    f"selected resources cost {selected_cost} {self.budget_ledger.policy.currency}; "
-                    f"only {remaining} remains in the task budget"
+            selection_source = "saved_snapshot"
+        else:
+            results = self._candidate_pool(goal, context)
+            callable_candidates = any(result.resource.kind in ("tool", "agent") for result in results)
+            candidate_count = len(results)
+            catalog_nonempty = bool(self.registry.list())
+            selection_context = SelectionContext(
+                task=goal,
+                granted_permissions=tuple(context.granted_permissions),
+                per_kind_limits=dict(self.set_limits) if self.set_limits else {},
+                min_relevance=self.min_relevance,
+                budget_cost=(
+                    float(self.budget_ledger.status(task_id)["remaining"])
+                    if self.budget_ledger is not None
+                    else None
+                ),
+            )
+            selected = self.selector.select(results, context=selection_context)
+            if self.budget_ledger is not None:
+                selected_cost = sum(
+                    (Decimal(str(item.resource.metadata.cost_estimate)) for item in selected.results),
+                    Decimal(0),
                 )
+                remaining = Decimal(self.budget_ledger.status(task_id)["remaining"])
+                if selected_cost > remaining:
+                    raise BudgetExceededError(
+                        f"selected resources cost {selected_cost} {self.budget_ledger.policy.currency}; "
+                        f"only {remaining} remains in the task budget"
+                    )
+            if selected.status != "escalate":
+                snapshot = capture_selection(
+                    selected,
+                    candidate_count=candidate_count,
+                    callable_candidates=callable_candidates,
+                    catalog_nonempty=catalog_nonempty,
+                )
+                state = self.state_store.append(task_id, "snapshot", {"snapshot": snapshot})
+            selection_source = "current_catalog"
         audit(
             "retrieve",
             {
                 "task": goal,
-                "candidates": len(results),
+                "candidates": candidate_count,
+                "source": selection_source,
                 "selection_status": selected.status,
                 "selected": [result.resource.identity for result in selected.results],
                 "selection_reason": selected.reason,
@@ -827,6 +856,16 @@ class Kernel:
                 skipped=skipped,
             )
         audit("compile", compiled.summary())
+
+        fingerprint = compiled_fingerprint(compiled)
+        previous = state.snapshot.get("compiled_fingerprint")
+        if previous is not None and previous != fingerprint:
+            raise SnapshotMismatchError(
+                "compiled execution context changed; resume with the original resource content and compiler"
+            )
+        if previous is None and state.snapshot:
+            snapshot = {**state.snapshot, "compiled_fingerprint": fingerprint}
+            state = self.state_store.append(task_id, "snapshot", {"snapshot": snapshot})
 
         compiled_ids = set(compiled.resource_ids)
         memories = [item for item in memories if item.metadata.identity in compiled_ids]
@@ -970,7 +1009,7 @@ class Kernel:
                     if skipped:
                         names = ", ".join(item["resource"] for item in skipped)
                         detail = f"completed without {len(skipped)} skipped resource(s): {names}"
-                    elif not selected.results and not tool_results and self.registry.list():
+                    elif not selected.results and not tool_results and catalog_nonempty:
                         detail = NO_RESOURCE_MATCHED_DETAIL
                     elif (
                         not tools

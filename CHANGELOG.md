@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A task now persists its selected resources and their scores after routing.
+  Resume restores that set without repeating retrieval or selection, and stops
+  if a selected definition or the compiled execution context changed.
+
 - `Kernel(task_budget=TaskBudget(...))` applies one explicit currency budget to
   selection, model calls, and every Tool or Agent attempt. Model calls reserve
   a configured token ceiling before dispatch and send the output-token ceiling

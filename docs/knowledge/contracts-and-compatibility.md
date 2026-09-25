@@ -47,3 +47,8 @@ Marmo-Core は SemVer に従い、同一メジャー内で次の表面を壊さ�
   再開する必要がある。予算なしの従来 task の形式と挙動は変えない。
   provider 応答に token usage が無い場合や provider 呼び出しが例外になった場合は予約額全額を
   課金扱いする。
+  provider 応答に token usage が無い場合は空の usage として表し、予算付き task は
+  予約額全額を課金扱いする。provider 呼び出しが例外になった場合も使用量不明として予約額全額を
+  課金扱いする。
+- Unreleased: `snapshot` event に選択結果を保存し、再開時の再検索・再選択を避ける。
+  選択 Resource またはコンパイル済み実行 context の fingerprint が異なれば task を失敗させる。
