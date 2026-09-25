@@ -165,7 +165,7 @@ class AgentRuntime:
             definition=agent.definition,
             input_schema=agent.input_schema,
             output_schema=agent.output_schema,
-            handler=wrapped,
+            handler=(agent.handler if self.tool_runtime.timeout_mode == "process" else wrapped),
         )
         delegated_context = replace(context, granted_permissions=requested_permissions) if context else None
         result = self.tool_runtime.execute(wrapped_tool, arguments, delegated_context)

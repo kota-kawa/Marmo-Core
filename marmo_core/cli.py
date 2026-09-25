@@ -220,6 +220,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="maximum estimated tokens for the compiled execution context",
     )
     run_parser.add_argument("--timeout", type=float, default=30.0, help="per-tool execution timeout in seconds")
+    run_parser.add_argument("--timeout-mode", choices=("thread", "process"), default="thread", help="process mode stops importable handlers at the deadline")
     run_parser.add_argument("--audit-log", help="write this run's hash-chained audit records to a JSONL file (overwrites)")
     _add_state_args(run_parser)
     _add_hitl_args(run_parser)
@@ -307,6 +308,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="maximum estimated tokens for the compiled execution context",
     )
     resume_parser.add_argument("--timeout", type=float, default=30.0, help="per-tool execution timeout in seconds")
+    resume_parser.add_argument("--timeout-mode", choices=("thread", "process"), default="thread", help="match the run's timeout mode")
     resume_parser.add_argument("--audit-log", help="JSONL audit file to continue the hash chain in")
     _add_state_args(resume_parser, required=True)
     _add_hitl_args(resume_parser)
@@ -728,6 +730,7 @@ def _build_kernel(args: argparse.Namespace, *, continue_audit: bool) -> Kernel:
         max_agent_cost=args.max_agent_cost,
         context_token_budget=args.context_token_budget,
         timeout_seconds=args.timeout,
+        timeout_mode=args.timeout_mode,
     )
 
 
@@ -903,6 +906,7 @@ _RESUME_FORWARDED_OPTIONS: tuple[tuple[str, str], ...] = (
     ("max_agent_cost", "--max-agent-cost"),
     ("context_token_budget", "--context-token-budget"),
     ("timeout", "--timeout"),
+    ("timeout_mode", "--timeout-mode"),
     ("audit_log", "--audit-log"),
     ("always_confirm", "--always-confirm"),
     ("approver", "--approver"),

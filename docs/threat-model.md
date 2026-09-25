@@ -1,6 +1,6 @@
 # Marmo-Core threat model
 
-Last reviewed: 2026-07-23
+Last reviewed: 2026-09-25
 
 ## Scope and assets
 
@@ -18,6 +18,12 @@ destinations, execution permissions, persisted state, and audit integrity.
   activated and the activation/execution gates allow the exact operation.
 - Tool handlers and secret resolvers stay beyond the LLM boundary. Secret values
   are materialized only immediately before the handler call.
+- The default thread timeout ends the wait but cannot stop a handler. In
+  `timeout_mode="process"` on POSIX, an importable handler runs in a process
+  group that is stopped at the deadline. Windows rejects this mode because
+  stopping the worker alone would leave child processes running. This does not
+  undo an effect already accepted by an external service. A timed-out operation is not retried or replaced
+  automatically; an operator must reconcile its outcome first.
 
 Untrusted content is serialized inside a delimiter that payload text cannot
 close. High-signal override, prompt-extraction, tool-instruction, and secret
@@ -54,6 +60,7 @@ controls must continue to verify these guarantees.
 | Destructive operations | argument-aware deny/escalate rules, exact-operation approval, dry-run, compensation through the same gates | Novel command encodings may evade lexical rules |
 | Excess privilege | declared permissions, deny-by-default trust policy, activation and execution gates, Agent delegated-permission subset check | A malicious in-process handler can misuse permissions explicitly granted to it |
 | Weak execution isolation | L0-L3 declaration, minimum-level gate, built-in L1/L2 Connector restrictions, L3 unavailable by default | DNS rebinding and filesystem TOCTOU remain deployment concerns; L1 is not a filesystem sandbox |
+| Timed-out local handler continuing after return | Optional process timeout for importable handlers; timeout results stop automatic recovery | Thread mode remains available for compatibility; process termination cannot undo committed external effects |
 | Malicious resource package | trust levels, explicit permissions, local validation | Package signatures and distribution registry remain pending; a package that forges its trust, permissions, side-effect, and isolation declarations can pass metadata-based routing and gates. The benchmark in `benchmarks/README.md` measures activation candidates but does not execute the forged Tool |
 | State/audit leakage or tampering | `SecretRef` persistence checks, redaction, hash-chained audit log | Hash chaining detects changes but does not provide remote attestation |
 
@@ -66,6 +73,9 @@ entry here whenever the threat model or its accepted residual risks change.
 
 ## Review history
 
+- 2026-09-25: reviewed deadline behavior. Process mode stops importable local
+  handlers, while external effects remain uncertain; automatic timeout retry
+  and fallback were removed.
 - 2026-07-23: completed the 0.4.0 v2 release-candidate review of new
   execution paths, permission defaults, trust boundaries, and isolation
   claims; no open unmitigated Critical or High finding was identified.

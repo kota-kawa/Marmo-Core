@@ -7,8 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- A timed-out Tool or Agent is no longer retried or replaced automatically.
+  Its external effects may already have happened, so recovery asks for human
+  reconciliation before another attempt. The `RetryPolicy` default now retries
+  transient errors only.
+
 ### Added
 
+- `ToolRuntime(timeout_mode="process")`, `Kernel(timeout_mode="process")`, and
+  `marmo run --timeout-mode process` stop importable Python handlers when their
+  deadline expires. A non-importable handler is rejected before execution in
+  this mode. The existing thread mode remains the default for compatibility;
+  it only limits how long the caller waits.
 - README now links to the Marmo Core website for the library overview, concepts,
   and usage guide.
 - A held-out benchmark of bundled resources now reports real Tool execution

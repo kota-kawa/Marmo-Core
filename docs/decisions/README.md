@@ -13,6 +13,7 @@ Accepted / Superseded / Deprecated。
 | `0005-constraints-solved-by-selector-not-llm.md` | 集合選択の制約は宣言メタデータをソルバーで解き、LLM や検索時フィルタに委ねない | Accepted |
 | `0006-provider-failures-terminate-the-task.md` | プロバイダ失敗はタスクを `failed` で終端させ、監査ログを残す。CLI 終了コードは 1 | Accepted |
 | `0007-minimal-runtime-dependencies-with-user-approval.md` | 実行時依存は最小限に保ち、追加はユーザーに必要性と影響を示して確認を取る | Accepted |
+| `0008-timeout-outcome-is-uncertain.md` | timeout 後の副作用を結果不明として扱い、自動再実行しない。停止可能な実行方式を追加する | Accepted |
 
 ## 書き方
 
