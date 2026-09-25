@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 import re
 from typing import Any, Mapping, Sequence
 
+from .errors import ProviderError
 from .secrets import sanitize_secret_inputs
 
 
@@ -73,6 +74,32 @@ class LLMProvider(ABC):
     def complete(self, messages: Sequence[ChatMessage], tools: Sequence[LLMToolSpec] = ()) -> LLMResponse:
         """Run one chat completion, optionally with tool definitions."""
 
+    @property
+    def supports_output_token_limit(self) -> bool:
+        """Whether ``complete_bounded`` enforces a provider-side output cap."""
+
+        return False
+
+    def complete_bounded(
+        self,
+        messages: Sequence[ChatMessage],
+        tools: Sequence[LLMToolSpec] = (),
+        *,
+        max_output_tokens: int,
+    ) -> LLMResponse:
+        """Complete with a hard output cap, or fail closed when unsupported.
+
+        Budgeted execution relies on this method so the configured output
+        reservation is reflected in the actual provider request. Custom
+        providers must override it and set ``supports_output_token_limit``
+        to ``True`` before they can be used with ``TaskBudget``.
+        """
+
+        raise ProviderError(
+            f"{type(self).__name__} does not enforce a per-request output token limit; "
+            "implement complete_bounded() to use it with a task budget"
+        )
+
 
 class MockLLMProvider(LLMProvider):
     """Deterministic zero-dependency provider for tests, replay, and demos (F-LLM-04).
@@ -111,6 +138,24 @@ class MockLLMProvider(LLMProvider):
             self._cursor += 1
             return response
         return self._rule_based(messages, tools)
+
+    @property
+    def supports_output_token_limit(self) -> bool:
+        return True
+
+    def complete_bounded(
+        self,
+        messages: Sequence[ChatMessage],
+        tools: Sequence[LLMToolSpec] = (),
+        *,
+        max_output_tokens: int,
+    ) -> LLMResponse:
+        if type(max_output_tokens) is not int or max_output_tokens <= 0:
+            raise ValueError("max_output_tokens must be a positive integer")
+        # The mock has no remote generation process to constrain. Its
+        # synthetic response is still checked against the configured ceiling
+        # by BudgetedLLMProvider using reported usage.
+        return self.complete(messages, tools)
 
     def _rule_based(self, messages: Sequence[ChatMessage], tools: Sequence[LLMToolSpec]) -> LLMResponse:
         has_tool_result = any(message.role == "tool" for message in messages)

@@ -8,8 +8,9 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any, Iterator, Mapping, Sequence
 import uuid
+import json
 
-from .errors import MarmoError
+from .errors import MarmoError, ProviderError
 from .llm import ChatMessage, LLMProvider, LLMResponse, LLMToolSpec, estimate_tokens
 from .state import StateStore
 
@@ -214,26 +215,83 @@ class BudgetedLLMProvider(LLMProvider):
         self.provider = provider
         self.ledger = ledger
 
+    @property
+    def supports_output_token_limit(self) -> bool:
+        return True
+
     def complete(self, messages: Sequence[ChatMessage], tools: Sequence[LLMToolSpec] = ()) -> LLMResponse:
+        return self._complete(messages, tools, max_output_tokens=None)
+
+    def complete_bounded(
+        self,
+        messages: Sequence[ChatMessage],
+        tools: Sequence[LLMToolSpec] = (),
+        *,
+        max_output_tokens: int,
+    ) -> LLMResponse:
+        if type(max_output_tokens) is not int or max_output_tokens <= 0:
+            raise ValueError("max_output_tokens must be a positive integer")
+        return self._complete(messages, tools, max_output_tokens=max_output_tokens)
+
+    def _complete(
+        self,
+        messages: Sequence[ChatMessage],
+        tools: Sequence[LLMToolSpec],
+        *,
+        max_output_tokens: int | None,
+    ) -> LLMResponse:
         task_id = self.ledger.active_task_id
         if not task_id:
             raise BudgetExceededError("a budgeted model call requires an active task")
+        if not self.provider.supports_output_token_limit:
+            raise ProviderError(
+                f"{type(self.provider).__name__} does not enforce a per-request output token limit; "
+                "implement complete_bounded() to use it with a task budget"
+            )
         price = self.ledger.policy.model_price
-        estimate = estimate_tokens("\n".join(message.content for message in messages))
-        estimate += estimate_tokens("\n".join(spec.description for spec in tools))
+        serialized_input = json.dumps(
+            {
+                "messages": [message.to_dict() for message in messages],
+                "tools": [spec.to_dict() for spec in tools],
+            },
+            sort_keys=True,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        estimate = estimate_tokens(serialized_input)
         if estimate > price.max_input_tokens:
             raise BudgetExceededError(
                 f"estimated model input {estimate} tokens exceeds the configured "
                 f"max_input_tokens={price.max_input_tokens}"
             )
-        reservation_id = self.ledger.reserve(task_id, "model", price.reservation)
-        response = self.provider.complete(messages, tools)
+        output_limit = price.max_output_tokens
+        if max_output_tokens is not None:
+            output_limit = min(output_limit, max_output_tokens)
+        reservation = price.cost(price.max_input_tokens, output_limit)
+        reservation_id = self.ledger.reserve(task_id, "model", reservation)
+        try:
+            response = self.provider.complete_bounded(
+                messages,
+                tools,
+                max_output_tokens=output_limit,
+            )
+        except Exception:
+            # A failed transport may still have reached the provider. Charge
+            # the reserved ceiling so swallowed provider errors cannot leave
+            # an indefinitely pending reservation or understate possible cost.
+            self.ledger.settle(task_id, reservation_id, reservation)
+            raise
         usage: dict[str, Any] = response.usage
         if not usage or not ("input_tokens" in usage and "output_tokens" in usage):
-            actual = price.reservation
+            actual = reservation
         else:
             actual = price.cost(int(usage["input_tokens"]), int(usage["output_tokens"]))
         self.ledger.settle(task_id, reservation_id, actual, usage=response.usage)
-        if actual > price.reservation:
+        if actual > reservation:
             raise BudgetExceededError("model reported usage above its reserved token ceiling")
+        if usage and ("input_tokens" in usage and "output_tokens" in usage):
+            if int(usage["input_tokens"]) > price.max_input_tokens:
+                raise BudgetExceededError("model reported input usage above its configured token ceiling")
+            if int(usage["output_tokens"]) > output_limit:
+                raise BudgetExceededError("model reported output usage above its configured token ceiling")
         return response

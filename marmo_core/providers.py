@@ -112,7 +112,35 @@ class AnthropicLLMProvider(LLMProvider):
         self.tool_names = ToolNameCodec()
 
     def complete(self, messages: Sequence[ChatMessage], tools: Sequence[LLMToolSpec] = ()) -> LLMResponse:
-        payload = self.build_request(messages, tools)
+        return self._complete(messages, tools, max_output_tokens=None)
+
+    @property
+    def supports_output_token_limit(self) -> bool:
+        return True
+
+    def complete_bounded(
+        self,
+        messages: Sequence[ChatMessage],
+        tools: Sequence[LLMToolSpec] = (),
+        *,
+        max_output_tokens: int,
+    ) -> LLMResponse:
+        if type(max_output_tokens) is not int or max_output_tokens <= 0:
+            raise ValueError("max_output_tokens must be a positive integer")
+        return self._complete(messages, tools, max_output_tokens=max_output_tokens)
+
+    def _complete(
+        self,
+        messages: Sequence[ChatMessage],
+        tools: Sequence[LLMToolSpec],
+        *,
+        max_output_tokens: int | None,
+    ) -> LLMResponse:
+        payload = (
+            self.build_request(messages, tools)
+            if max_output_tokens is None
+            else self.build_request(messages, tools, max_output_tokens=max_output_tokens)
+        )
         headers = {
             "Content-Type": "application/json",
             "x-api-key": self.api_key,
@@ -121,11 +149,20 @@ class AnthropicLLMProvider(LLMProvider):
         response = self.transport(f"{self.base_url}/v1/messages", payload, headers, self.timeout)
         return self.parse_response(response)
 
-    def build_request(self, messages: Sequence[ChatMessage], tools: Sequence[LLMToolSpec]) -> dict[str, Any]:
+    def build_request(
+        self,
+        messages: Sequence[ChatMessage],
+        tools: Sequence[LLMToolSpec],
+        *,
+        max_output_tokens: int | None = None,
+    ) -> dict[str, Any]:
         system_parts = [message.content for message in messages if message.role == "system"]
+        output_limit = self.max_tokens
+        if max_output_tokens is not None:
+            output_limit = min(output_limit, max_output_tokens)
         payload: dict[str, Any] = {
             "model": self.model,
-            "max_tokens": self.max_tokens,
+            "max_tokens": output_limit,
             "messages": _to_anthropic_messages(messages, self.tool_names.encode),
         }
         if system_parts:
@@ -227,11 +264,39 @@ class OpenAICompatibleLLMProvider(LLMProvider):
         self.tool_names = ToolNameCodec()
 
     def complete(self, messages: Sequence[ChatMessage], tools: Sequence[LLMToolSpec] = ()) -> LLMResponse:
+        return self._complete(messages, tools, max_output_tokens=None)
+
+    @property
+    def supports_output_token_limit(self) -> bool:
+        return True
+
+    def complete_bounded(
+        self,
+        messages: Sequence[ChatMessage],
+        tools: Sequence[LLMToolSpec] = (),
+        *,
+        max_output_tokens: int,
+    ) -> LLMResponse:
+        if type(max_output_tokens) is not int or max_output_tokens <= 0:
+            raise ValueError("max_output_tokens must be a positive integer")
+        return self._complete(messages, tools, max_output_tokens=max_output_tokens)
+
+    def _complete(
+        self,
+        messages: Sequence[ChatMessage],
+        tools: Sequence[LLMToolSpec],
+        *,
+        max_output_tokens: int | None,
+    ) -> LLMResponse:
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
         url = f"{self.base_url}/chat/completions"
-        payload = self.build_request(messages, tools)
+        payload = (
+            self.build_request(messages, tools)
+            if max_output_tokens is None
+            else self.build_request(messages, tools, max_output_tokens=max_output_tokens)
+        )
         try:
             response = self._request(url, payload, headers)
         except ProviderHTTPError as exc:
@@ -239,7 +304,15 @@ class OpenAICompatibleLLMProvider(LLMProvider):
             if alternative is None:
                 raise
             self.max_tokens_parameter = alternative
-            response = self._request(url, self.build_request(messages, tools), headers)
+            response = self._request(
+                url,
+                (
+                    self.build_request(messages, tools)
+                    if max_output_tokens is None
+                    else self.build_request(messages, tools, max_output_tokens=max_output_tokens)
+                ),
+                headers,
+            )
         return self.parse_response(response)
 
     def _request(self, url: str, payload: dict[str, Any], headers: dict[str, str]) -> dict:
@@ -250,10 +323,19 @@ class OpenAICompatibleLLMProvider(LLMProvider):
             # server's bare "Invalid API Key", which hides the actual cause.
             raise with_missing_api_key_hint(exc, self.api_key) from None
 
-    def build_request(self, messages: Sequence[ChatMessage], tools: Sequence[LLMToolSpec]) -> dict[str, Any]:
+    def build_request(
+        self,
+        messages: Sequence[ChatMessage],
+        tools: Sequence[LLMToolSpec],
+        *,
+        max_output_tokens: int | None = None,
+    ) -> dict[str, Any]:
+        output_limit = self.max_tokens
+        if max_output_tokens is not None:
+            output_limit = min(output_limit, max_output_tokens)
         payload: dict[str, Any] = {
             "model": self.model,
-            self.max_tokens_parameter: self.max_tokens,
+            self.max_tokens_parameter: output_limit,
             "messages": _to_openai_messages(messages, self.tool_names.encode),
         }
         if self.temperature is not None:

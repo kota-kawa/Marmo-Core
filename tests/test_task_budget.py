@@ -23,6 +23,7 @@ from marmo_core import (
     MockLLMProvider,
     ModelPrice,
     PolicyContext,
+    ProviderError,
     RecoveryManager,
     ResourceDefinition,
     ResourceRegistry,
@@ -174,6 +175,42 @@ class TaskBudgetTests(unittest.TestCase):
         self.assertEqual(result.status, "failed")
         self.assertIn("reported usage above", result.detail)
         self.assertEqual(kernel.budget_status(result.task_id)["spent"], "0.00201")
+
+    def test_reported_output_over_request_cap_fails_even_when_output_is_free(self) -> None:
+        policy = TaskBudget(
+            amount=Decimal("1"),
+            currency="USD",
+            resource_cost_unit="USD",
+            model_price=ModelPrice(Decimal("0"), Decimal("0"), 1000, 2),
+        )
+        model = MockLLMProvider(
+            script=[LLMResponse(content="Done", usage={"input_tokens": 20, "output_tokens": 5})]
+        )
+        kernel = Kernel(ResourceRegistry(), model, task_budget=policy)
+
+        result = kernel.run_goal("Answer this")
+
+        self.assertEqual(result.status, "failed")
+        self.assertIn("output usage above its configured token ceiling", result.detail)
+
+    def test_provider_exception_settles_the_reservation_at_the_ceiling(self) -> None:
+        class FailingProvider(MockLLMProvider):
+            def complete_bounded(self, messages, tools=(), *, max_output_tokens):
+                raise ProviderError("provider unavailable")
+
+        kernel = Kernel(
+            ResourceRegistry(),
+            FailingProvider(),
+            task_budget=_budget("1", input_price="1", output_price="1"),
+        )
+
+        result = kernel.run_goal("Answer this")
+
+        self.assertEqual(result.status, "failed")
+        self.assertIn("provider unavailable", result.detail)
+        status = kernel.budget_status(result.task_id)
+        self.assertEqual(status["spent"], "0.002")
+        self.assertEqual(status["reserved"], "0")
 
     def test_rollback_does_not_refund_spent_budget(self) -> None:
         store = InMemoryStateStore()
