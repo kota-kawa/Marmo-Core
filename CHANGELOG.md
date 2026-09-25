@@ -20,6 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `AgentRuntime` now dispatches through the public `AgentExecutionBackend`
+  interface. The built-in `structured_task` backend runs a resumable child
+  Kernel over an Agent's transitive declared dependencies, narrows its
+  permissions to the Agent declaration, shares the parent task budget, and
+  relays human approvals and modified arguments back to the child. Nested
+  Agent depth and cumulative Agent cost now follow `max_agent_depth` and
+  `max_agent_cost` instead of staying fixed at depth one.
+
 - A task now persists its selected resources and their scores after routing.
   Resume restores that set without repeating retrieval or selection, and stops
   if a selected definition or the compiled execution context changed.

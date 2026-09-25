@@ -16,6 +16,7 @@ Accepted / Superseded / Deprecated。
 | `0008-timeout-outcome-is-uncertain.md` | timeout 後の副作用を結果不明として扱い、自動再実行しない。停止可能な実行方式を追加する | Accepted |
 | `0009-task-budget-reservations.md` | タスク予算を固定し、モデルと Resource の実行前に予約する | Accepted |
 | `0010-execution-snapshot.md` | 再開時は保存した選択 Resource と compiled context を検証して復元する | Accepted |
+| `0011-agent-execution-backends-and-structured-tasks.md` | Agent を backend で実行し、structured task は宣言 dependency の子 Kernel に委譲する | Accepted |
 
 ## 書き方
 

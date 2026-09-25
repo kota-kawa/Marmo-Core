@@ -25,6 +25,12 @@ destinations, execution permissions, persisted state, and audit integrity.
   execution context fingerprint. Resume checks selected Resource definitions
   and stops if their content changed, so a catalog update cannot silently
   redirect an approved task.
+- A `structured_task` Agent runs in a child Kernel whose registry contains only
+  the transitive closure of its declared dependencies. The child receives only
+  the Agent's declared permissions; policy gates and human approvals apply to
+  each child operation, and child Tool results are recorded on the parent task
+  for compensation. Nested Agent calls share the parent's cost ledger and obey
+  its configured depth and cumulative Agent cost limits.
 - Tool handlers and secret resolvers stay beyond the LLM boundary. Secret values
   are materialized only immediately before the handler call.
 - The default thread timeout ends the wait but cannot stop a handler. In
@@ -67,7 +73,7 @@ controls must continue to verify these guarantees.
 | Direct/indirect prompt injection | content/instruction labels, escaped boundaries, detector audit, operation-scoped HITL for induced side effects | Models may still use hostile data in a final answer; detectors are intentionally not complete |
 | Secret or private-data exfiltration | `SecretRef`, late resolution, output/error redaction, host allow/block lists, sensitive external-input HITL | A malicious handler receives secrets explicitly passed to it |
 | Destructive operations | argument-aware deny/escalate rules, exact-operation approval, dry-run, compensation through the same gates | Novel command encodings may evade lexical rules |
-| Excess privilege | declared permissions, deny-by-default trust policy, activation and execution gates, Agent delegated-permission subset check | A malicious in-process handler can misuse permissions explicitly granted to it |
+| Excess privilege | declared permissions, deny-by-default trust policy, activation and execution gates, Agent delegated-permission subset check, dependency-scoped `structured_task` child registry | A malicious in-process handler can misuse permissions explicitly granted to it; dependency declarations and metadata remain trusted inputs |
 | Weak execution isolation | L0-L3 declaration, minimum-level gate, built-in L1/L2 Connector restrictions, L3 unavailable by default | DNS rebinding and filesystem TOCTOU remain deployment concerns; L1 is not a filesystem sandbox |
 | Timed-out local handler continuing after return | Optional process timeout for importable handlers; timeout results stop automatic recovery | Thread mode remains available for compatibility; process termination cannot undo committed external effects |
 | Malicious resource package | trust levels, explicit permissions, local validation | Package signatures and distribution registry remain pending; a package that forges its trust, permissions, side-effect, and isolation declarations can pass metadata-based routing and gates. The benchmark in `benchmarks/README.md` measures activation candidates but does not execute the forged Tool |
@@ -85,6 +91,10 @@ entry here whenever the threat model or its accepted residual risks change.
 - 2026-09-25: reviewed deadline behavior. Process mode stops importable local
   handlers, while external effects remain uncertain; automatic timeout retry
   and fallback were removed.
+- 2026-09-25: reviewed structured Agent delegation. Child Kernels are limited
+  to transitive declared dependencies and Agent-granted permissions, while
+  child side effects remain in the parent task's audit/state and compensation
+  path. In-process handlers remain outside a sandbox.
 - 2026-07-23: completed the 0.4.0 v2 release-candidate review of new
   execution paths, permission defaults, trust boundaries, and isolation
   claims; no open unmitigated Critical or High finding was identified.

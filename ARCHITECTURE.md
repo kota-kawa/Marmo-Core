@@ -44,7 +44,7 @@ Agent の 4 種別）を登録し、ゴールに対して必要なものだけ�
 | ポリシー | `policy.py` | `PolicyContext`、`PolicyGateway.evaluate(gate=activation/execution/output)`、`PolicyRejectedError` | errors, models, safety, security |
 | 実行 | `activator.py` | `ResourceActivator`（activation gate → `InjectedMemory` / `LoadedSkill` / `BoundTool` / `BoundAgent`、`python:` 参照の解決） | errors, models, policy |
 | 実行 | `tool_runtime.py`、`process_execution.py` | `ToolRuntime.execute`（execution gate、シークレット解決、スキーマ検証、dry-run、タイムアウト）。任意指定の process モードは import 可能なハンドラを子プロセスで実行・停止する | activator, errors, policy, secrets |
-| 実行 | `agent_runtime.py` | `AgentRuntime`（Agent を Tool として包む。権限は縮小のみ、深さ・コスト上限） | activator, errors, policy, tool_runtime |
+| 実行 | `agent_runtime.py` | `AgentRuntime` と `AgentExecutionBackend`（`tool_wrap` と Kernel 子タスクの `structured_task`、権限縮小・深さ・コスト上限） | activator, errors, policy, tool_runtime |
 | 実行 | `compiler.py` | `ContextCompiler`（予算と優先度で Memory をトリム、`AgentInterface`） | activator, llm, models, security |
 | 実行 | `planner.py` | `Plan` / `PlanStep`、`Planner` ABC、`RuleBasedPlanner`、`LLMPlanner` | errors, llm, models, policy, secrets |
 | 実行 | `recovery.py` | `RecoveryManager`、`RetryPolicy`、`CircuitBreaker`、補償 | models |
@@ -86,11 +86,13 @@ Agent の 4 種別）を登録し、ゴールに対して必要なものだけ�
    戻す。呼び出しが無ければ `completed`。未知の callable やスキーマ違反は tool
    メッセージでモデルに差し戻す（上限 `max_input_repairs`）。`max_tool_calls` は
    **実行した呼び出し数** を数え、超えれば `failed`。
-10. **Tool 実行** `_run_tool_call`: 平文シークレット拒否 → `always_confirm` 判定 →
-    `checkpoint("before:<call_id>")` → `tool_runtime.execute`（execution gate、
-    シークレット解決、`SafetyInspector`、スキーマ検証、dry-run、タイムアウト）。
-    escalate は `_pause`、deny は `denied`。Agent は `agent_runtime.execute` 経由で同じ
-    `ToolRuntime` を通る。timeout は副作用の結果が不明なため自動再試行・代替を行わない。
+10. **Tool / Agent 実行** `_run_tool_call` と `_run_agent_call`: 平文シークレット拒否 →
+    `always_confirm` 判定 → `checkpoint("before:<call_id>")` → execution gate と実行。
+    Tool は `ToolRuntime` がシークレット解決、`SafetyInspector`、schema 検証、dry-run、
+    timeout を扱う。Agent は `AgentRuntime` が実行 gate、権限の縮小、深さ・累積 cost を
+    検査して `AgentExecutionBackend` に渡す。`tool_wrap` は引き続き `ToolRuntime` を通り、
+    `structured_task` は後述の子 Kernel を動かす。escalate は `_pause`、deny は `denied`。
+    timeout は副作用の結果が不明なため自動再試行・代替を行わない。
 11. **Recovery** 失敗は `recovery.classify_tool_result` → `decide` で retry / fallback /
     escalate / fail（`_abort` と補償）。
 12. **書き戻し** `audit("execute")` と `step` イベント。ツール出力は
@@ -102,6 +104,16 @@ Agent の 4 種別）を登録し、ゴールに対して必要なものだけ�
     kernel.audit_log)` と `.apply(registry)` を呼ぶと `ResourceStats` が更新され、
     `LexicalRetriever` の success 項に反映される。`stats` だけの更新は
     `content_revision` を動かさないので、索引と埋め込みは再構築されない。
+
+`structured_task` Agent は Agent Card の `input_schema` に required な string の `goal` を
+持つ。`metadata.dependencies` の推移閉包だけを子 Kernel の registry に渡し、親 registry 全体は
+見せない。子 Kernel は親と同じ LLM、Retriever、Selector、Planner、Policy Gateway、Tool Runtime、
+State Store、Audit Log、Recovery Manager を使い、PolicyContext の grant を Agent の宣言権限に
+縮める。子のモデル／Retriever／Selector／Planner 呼び出しと Tool / Agent 見積りは親 task の
+BudgetLedger に記録する。HITL request は resource・operation・decision を保って親 task に中継し、
+承認と引数変更は deterministic child task id で元の子 task に戻す。子で完了した ToolResult は
+親 task に一度だけ記録され、後続失敗時の補償対象にもなる。既定 `max_agent_depth=1` は直下の
+Agent 委譲を許し、その子からさらに Agent を呼ぶには明示的に上げる。
 
 ### 3.2 `marmo run` / `marmo resume`
 
@@ -152,6 +164,10 @@ Agent の 4 種別）を登録し、ゴールに対して必要なものだけ�
   外部サービスを利用する handler の費用は Resource 見積りに含める。
   カスタム Retriever / Selector / Planner を予算付きで使用する場合、その実装が
   `budget_aware=True` を宣言し、内部の有料呼び出しを予算管理する責任を持つ。
+- **Agent 委譲**: `AgentRuntime` は `AgentExecutionBackend` の mapping で実装を拡張する。
+  `tool_wrap` は従来のローカル handler、`structured_task` は required string `goal` を受け取る
+  子 Kernel である。子 task は宣言済み dependencies の推移閉包に限定し、Agent の権限と
+  `max_agent_depth` / `max_agent_cost` を引き継ぐ。HITL、state、task budget も親 task と連携する。
 - **監査ログ**: `{trace_id, span_id, timestamp, kind, payload（マスク済み）, prev_hash, hash}`。
   hash は `hash` 以外を正規化 JSON にした SHA-256、`prev_hash` は直前レコードの hash。
   `verify()` と `from_jsonl` がチェーンを検証する。
@@ -179,6 +195,7 @@ Agent の 4 種別）を登録し、ゴールに対して必要なものだけ�
 | ポリシー | `PolicyGateway` または `SafetyInspector` のサブクラス（ルール専用の ABC は無い） | `gateway=` |
 | HITL | `HitlBroker._ask` | `hitl=` |
 | Planner | `Planner.plan` / `replan` | `planner=` |
+| Agent execution | `AgentExecutionBackend.execute` | `AgentRuntime(backends={delegation_interface: backend})` |
 | State | `StateStore` の 5 フック（`_read_events`、`_write_event`、`task_ids`、`_read_session`、`_write_session`） | `state_store=` |
 | Secret | `SecretResolver.resolve` | `secret_resolver=` |
 

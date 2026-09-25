@@ -32,11 +32,17 @@ from concurrent.futures import ThreadPoolExecutor
 from copy import copy
 from dataclasses import dataclass, replace as dataclass_replace
 from decimal import Decimal
+from hashlib import sha256
 from typing import Any, Callable, Iterable, Mapping, Sequence, cast
 import uuid
 
 from .activator import BoundAgent, BoundTool, InjectedMemory, LoadedSkill, ResourceActivator
-from .agent_runtime import AgentResult, AgentRuntime
+from .agent_runtime import (
+    AgentExecutionBackend,
+    AgentExecutionPendingError,
+    AgentResult,
+    AgentRuntime,
+)
 from .audit import AuditLog
 from .budget import BudgetExceededError, BudgetLedger, BudgetedLLMProvider, TaskBudget
 from .compiler import AgentInterface, ContextCompiler
@@ -49,7 +55,7 @@ from .execution_snapshot import (
     compiled_fingerprint,
     restore_selection,
 )
-from .hitl import HitlBroker, HitlError, HitlRequest, HitlResponse, PendingHitlBroker
+from .hitl import HitlBroker, HitlError, HitlPolicy, HitlRequest, HitlResponse, PendingHitlBroker
 from .llm import ChatMessage, LLMProvider, ToolCall, characters_for_tokens
 from .llm_routing import HydeRetriever, LLMRerankRetriever, LLMSetSelector
 from .models import ResourceDefinition, ResourceMetadata, SearchQuery, SearchResult
@@ -167,6 +173,78 @@ class _CallOutcome:
     invalid_input: str | None = None
 
 
+class _DelegatedApprovalBroker(HitlBroker):
+    """Answer child requests only when the parent context already approves them."""
+
+    def __init__(
+        self,
+        context: PolicyContext,
+        delegated_permissions: Sequence[str],
+        policy: HitlPolicy,
+    ) -> None:
+        super().__init__(
+            HitlPolicy(
+                always_confirm_resources=policy.always_confirm_resources,
+                always_confirm_side_effects=policy.always_confirm_side_effects,
+            )
+        )
+        self.context = context
+        self.delegated_permissions = frozenset(delegated_permissions)
+
+    def _ask(self, request: HitlRequest) -> HitlResponse | None:
+        if request.stage == "selection":
+            missing = set((request.arguments or {}).get("missing_permissions", ()))
+            if missing.issubset(self.delegated_permissions):
+                return HitlResponse(kind="approve", request_id=request.request_id, responder="parent-context")
+            return None
+        resource = request.resource
+        resource_id = resource.rsplit("@", 1)[0] if "@" in resource else resource
+        decision = request.decision or {}
+        operation_token = str(decision.get("approval_token", ""))
+        if operation_token:
+            approved = operation_token in self.context.approved_operations
+        else:
+            approved = (
+                resource in self.context.approved_resources
+                or resource_id in self.context.approved_resources
+            )
+        if not approved:
+            return None
+        return HitlResponse(kind="approve", request_id=request.request_id, responder="parent-context")
+
+
+class _StructuredTaskBackend(AgentExecutionBackend):
+    """Execute an Agent Card goal through a dependency-scoped child Kernel."""
+
+    def __init__(self, kernel: "Kernel") -> None:
+        self.kernel = kernel
+
+    def execute(
+        self,
+        agent: BoundAgent,
+        arguments: Mapping[str, Any],
+        context: PolicyContext | None,
+        *,
+        depth: int,
+        cumulative_cost: float,
+        delegated_permissions: tuple[str, ...],
+        task_id: str,
+        invocation_id: str,
+    ) -> AgentResult:
+        if context is None:
+            context = self.kernel.policy_context
+        return self.kernel._execute_structured_agent(
+            agent,
+            arguments,
+            context,
+            depth=depth,
+            cumulative_cost=cumulative_cost,
+            delegated_permissions=delegated_permissions,
+            task_id=task_id,
+            invocation_id=invocation_id,
+        )
+
+
 # Detail attached to a completed task when retrieval matched nothing and the
 # model answered from its own knowledge. Callers that need a tool to have run
 # (and ``marmo run --strict``) treat it as a failure signal; a genuinely
@@ -231,6 +309,10 @@ class Kernel:
         task_budget: TaskBudget | None = None,
         secret_resolver: SecretResolver | None = None,
         prompt_injection_inspector: PromptInjectionInspector | None = None,
+        _shared_budget_ledger: BudgetLedger | None = None,
+        _budget_parent_task_id: str = "",
+        _agent_depth: int = 0,
+        _agent_cost_offset: float = 0.0,
     ) -> None:
         gateway = gateway or PolicyGateway()
         self.connectors = tuple(connectors)
@@ -261,13 +343,23 @@ class Kernel:
 
         self.registry = registry
         self.state_store = state_store or InMemoryStateStore()
-        self.budget_ledger = BudgetLedger(self.state_store, task_budget) if task_budget else None
+        if _shared_budget_ledger is not None and task_budget is not None:
+            raise ValueError("a child Kernel cannot replace its shared task budget")
+        self._budget_parent_task_id = _budget_parent_task_id
+        self.budget_ledger = _shared_budget_ledger or (
+            BudgetLedger(self.state_store, task_budget) if task_budget else None
+        )
+        self._base_llm = llm
         self.llm = BudgetedLLMProvider(llm, self.budget_ledger) if self.budget_ledger else llm
         self.policy_context = policy_context or PolicyContext()
         self.gateway = gateway
-        self.retriever = retriever or LexicalRetriever()
-        self.selector = selector or RuleBasedSetSelector()
-        if self.budget_ledger is not None:
+        if _shared_budget_ledger is not None:
+            self.retriever = copy(retriever) if retriever is not None else LexicalRetriever()
+            self.selector = copy(selector) if selector is not None else RuleBasedSetSelector()
+        else:
+            self.retriever = retriever or LexicalRetriever()
+            self.selector = selector or RuleBasedSetSelector()
+        if self.budget_ledger is not None and _shared_budget_ledger is None:
             self.retriever = self._budgeted_retriever(self.retriever, llm)
             self.selector = self._budgeted_selector(self.selector, llm)
         if activator is None:
@@ -286,17 +378,21 @@ class Kernel:
             secret_resolver=secret_resolver,
             timeout_mode=timeout_mode,
         )
-        self.agent_runtime = agent_runtime or AgentRuntime(
-            self.tool_runtime,
-            max_depth=max_agent_depth,
-            max_total_cost=max_agent_cost,
-        )
+        if agent_runtime is None:
+            self.agent_runtime = AgentRuntime(
+                self.tool_runtime,
+                max_depth=max_agent_depth,
+                max_total_cost=max_agent_cost,
+            )
+        else:
+            self.agent_runtime = copy(agent_runtime)
+            self.agent_runtime.backends = dict(agent_runtime.backends)
         self.compiler = compiler or ContextCompiler()
         self.audit_log = audit_log or AuditLog()
         self.hitl = hitl or PendingHitlBroker()
         self.recovery = recovery or RecoveryManager()
         self.planner = planner
-        if self.budget_ledger is not None:
+        if self.budget_ledger is not None and _shared_budget_ledger is None:
             self.planner = self._budgeted_planner(self.planner, llm)
         self.session_id = session_id
         self.top_k = top_k
@@ -309,6 +405,10 @@ class Kernel:
         # resources before setting one.
         self.min_relevance = min_relevance
         self.max_tool_calls = max_tool_calls
+        if _agent_depth < 0 or _agent_cost_offset < 0:
+            raise ValueError("internal Agent depth and cost offsets must be non-negative")
+        self._agent_depth = _agent_depth
+        self._agent_cost_offset = _agent_cost_offset
         if max_input_repairs < 0:
             raise ValueError("max_input_repairs must be >= 0")
         self.max_input_repairs = max_input_repairs
@@ -324,6 +424,8 @@ class Kernel:
         self.context_token_budget = context_token_budget
         self.prompt_injection_inspector = prompt_injection_inspector or PromptInjectionInspector()
         self._results: dict[str, TaskResult] = {}
+        if "structured_task" not in self.agent_runtime.backends:
+            self.agent_runtime.register_backend("structured_task", _StructuredTaskBackend(self))
 
     def _budgeted_retriever(self, retriever: Retriever, original_llm: LLMProvider) -> Retriever:
         if type(retriever) is LexicalRetriever:
@@ -375,7 +477,7 @@ class Kernel:
 
     def submit(self, goal: str) -> str:
         task_id = self.state_store.create(goal, session_id=self.session_id).task_id
-        if self.budget_ledger is not None:
+        if self.budget_ledger is not None and not self._budget_parent_task_id:
             self.budget_ledger.attach(task_id)
         return task_id
 
@@ -424,30 +526,36 @@ class Kernel:
     def budget_status(self, task_id: str) -> dict[str, str] | None:
         """Return charged, reserved, and remaining cost for a budgeted task."""
 
-        return self.budget_ledger.status(task_id) if self.budget_ledger else None
+        return self.budget_ledger.status(self._budget_task_id(task_id)) if self.budget_ledger else None
+
+    def _budget_task_id(self, task_id: str) -> str:
+        return self._budget_parent_task_id or task_id
 
     def _verify_task_budget(self, task_id: str) -> None:
+        budget_task_id = self._budget_task_id(task_id)
         if self.budget_ledger is not None:
-            self.budget_ledger.verify(task_id)
+            self.budget_ledger.verify(budget_task_id)
         elif any(
             event.kind == "budget" and event.payload.get("action") == "configure"
-            for event in self.state_store.events(task_id)
+            for event in self.state_store.events(budget_task_id)
         ):
             raise ValueError("task was submitted with a budget; resume with the same task_budget")
 
     def _reserve_resource(self, task_id: str, metadata: ResourceMetadata) -> str | None:
         if self.budget_ledger is None:
             return None
-        return self.budget_ledger.reserve(task_id, metadata.identity, metadata.cost_estimate)
+        return self.budget_ledger.reserve(
+            self._budget_task_id(task_id), metadata.identity, metadata.cost_estimate
+        )
 
     def _settle_resource(self, task_id: str, reservation_id: str | None, cost: float) -> None:
         if self.budget_ledger is not None and reservation_id is not None:
-            self.budget_ledger.settle(task_id, reservation_id, cost)
+            self.budget_ledger.settle(self._budget_task_id(task_id), reservation_id, cost)
 
     def _check_budget_overrun(self, task_id: str) -> None:
         if self.budget_ledger is None:
             return
-        status = self.budget_ledger.status(task_id)
+        status = self.budget_ledger.status(self._budget_task_id(task_id))
         if Decimal(status["spent"]) > self.budget_ledger.policy.amount:
             raise BudgetExceededError(
                 f"task spent {status['spent']} {status['currency']}, "
@@ -498,7 +606,7 @@ class Kernel:
                 if self.budget_ledger is None:
                     result = self._execute(state)
                 else:
-                    with self.budget_ledger.bind(state.task_id):
+                    with self.budget_ledger.bind(self._budget_task_id(state.task_id)):
                         result = self._execute(state)
             except (BudgetExceededError, SnapshotMismatchError) as exc:
                 current = self.state_store.load(state.task_id)
@@ -565,7 +673,26 @@ class Kernel:
         call_id = (state.frame.get("calls") or [{}])[0].get("id", "")
         frame = dict(state.frame)
         touched = False
-        if response.kind == "modify" and response.arguments is not None and request.stage == "execution":
+        delegated_task_id = str((request.decision or {}).get("delegated_task_id", ""))
+        delegated_request_id = str((request.decision or {}).get("delegated_request_id", ""))
+        if (
+            response.kind == "modify"
+            and response.arguments is not None
+            and request.stage == "execution"
+            and delegated_task_id
+            and delegated_request_id
+        ):
+            delegated_responses = dict(frame.get("delegated_responses") or {})
+            delegated_responses[delegated_task_id] = HitlResponse(
+                kind="modify",
+                request_id=delegated_request_id,
+                responder=response.responder,
+                note=response.note,
+                arguments=response.arguments,
+            ).to_dict()
+            frame["delegated_responses"] = delegated_responses
+            touched = True
+        elif response.kind == "modify" and response.arguments is not None and request.stage == "execution":
             # Tag the replacement to that call id so it can apply to nothing else.
             frame["override"] = {"call_id": call_id, "arguments": dict(response.arguments)}
             touched = True
@@ -736,7 +863,7 @@ class Kernel:
                 per_kind_limits=dict(self.set_limits) if self.set_limits else {},
                 min_relevance=self.min_relevance,
                 budget_cost=(
-                    float(self.budget_ledger.status(task_id)["remaining"])
+                    float(self.budget_ledger.status(self._budget_task_id(task_id))["remaining"])
                     if self.budget_ledger is not None
                     else None
                 ),
@@ -747,7 +874,9 @@ class Kernel:
                     (Decimal(str(item.resource.metadata.cost_estimate)) for item in selected.results),
                     Decimal(0),
                 )
-                remaining = Decimal(self.budget_ledger.status(task_id)["remaining"])
+                remaining = Decimal(
+                    self.budget_ledger.status(self._budget_task_id(task_id))["remaining"]
+                )
                 if selected_cost > remaining:
                     raise BudgetExceededError(
                         f"selected resources cost {selected_cost} {self.budget_ledger.policy.currency}; "
@@ -1488,9 +1617,56 @@ class Kernel:
                     agent,
                     arguments,
                     run.context,
-                    depth=1,
-                    cumulative_cost=sum(item.cost for item in run.agent_results),
+                    depth=self._agent_depth + 1,
+                    cumulative_cost=(
+                        self._agent_cost_offset + sum(item.cost for item in run.agent_results)
+                    ),
                     delegated_permissions=agent.metadata.required_permissions,
+                    task_id=run.task_id,
+                    invocation_id=f"{call_id}:attempt:{int(entry.get('attempts', 0))}",
+                )
+            except AgentExecutionPendingError as exc:
+                self._settle_resource(run.task_id, reservation_id, 0.0)
+                self._record_delegated_tool_results(run, exc.child_task_id, exc.tool_results)
+                child_request = exc.request
+                child_decision = dict(child_request.decision or {})
+                request_decision: dict[str, Any] = {
+                    "approval_token": child_decision.get("approval_token", ""),
+                    "delegated_task_id": exc.child_task_id,
+                    "delegated_request_id": child_request.request_id,
+                    "delegated_decision": child_decision,
+                }
+                request = HitlRequest.create(
+                    task_id=run.task_id,
+                    stage=child_request.stage,
+                    operation=f"delegated task requires approval: {child_request.operation}",
+                    impact=child_request.impact,
+                    alternatives=child_request.alternatives,
+                    recommendation=child_request.recommendation,
+                    resource=child_request.resource,
+                    arguments=child_request.arguments,
+                    decision=request_decision,
+                )
+                audit(
+                    "delegate",
+                    {
+                        "agent": label,
+                        "status": "paused",
+                        "child_task_id": exc.child_task_id,
+                        "request": request.to_dict(),
+                    },
+                )
+                return _CallOutcome(
+                    control=self._pause(
+                        run.state,
+                        run.trace_id,
+                        request,
+                        detail=f"delegated task {exc.child_task_id} is waiting for approval",
+                        frame=run.frame(),
+                        tool_results=run.tool_results,
+                        agent_results=run.agent_results,
+                        skipped=run.skipped,
+                    )
                 )
             except PolicyRejectedError as exc:
                 self._settle_resource(run.task_id, reservation_id, 0.0)
@@ -1553,6 +1729,14 @@ class Kernel:
                 )
 
             audit("delegate", result.to_dict())
+            if result.child_task_id and self.state_store.exists(result.child_task_id):
+                child_state = self.state_store.load(result.child_task_id)
+                child_tools = [
+                    ToolResult.from_dict(item)
+                    for item in child_state.step_results
+                    if "tool_id" in item
+                ]
+                self._record_delegated_tool_results(run, result.child_task_id, child_tools)
             self.state_store.append(run.task_id, "step", {"result": result.to_dict()})
             run.agent_results.append(result)
             self._settle_resource(run.task_id, reservation_id, result.cost)
@@ -1635,6 +1819,215 @@ class Kernel:
             if not abort_on_failure:
                 return _CallOutcome(failure=failure)
             return _CallOutcome(control=self._abort(run, failure, extra=decision.reason))
+
+    def _record_delegated_tool_results(
+        self,
+        run: _RunState,
+        child_task_id: str,
+        tool_results: Sequence[ToolResult],
+    ) -> None:
+        """Project child side effects into the parent log exactly once."""
+
+        if not tool_results:
+            return
+        parent_state = self.state_store.load(run.task_id)
+        recorded = {
+            str(item.get("_delegated_tool_ref", ""))
+            for item in parent_state.step_results
+            if item.get("_delegated_tool_ref")
+        }
+        for index, result in enumerate(tool_results):
+            reference = f"{child_task_id}:{index}"
+            if reference in recorded:
+                continue
+            payload = result.to_dict()
+            payload["_delegated_tool_ref"] = reference
+            self.state_store.append(run.task_id, "step", {"result": payload})
+            run.tool_results.append(result)
+            recorded.add(reference)
+
+    def _execute_structured_agent(
+        self,
+        agent: BoundAgent,
+        arguments: Mapping[str, Any],
+        context: PolicyContext,
+        *,
+        depth: int,
+        cumulative_cost: float,
+        delegated_permissions: tuple[str, ...],
+        task_id: str,
+        invocation_id: str,
+    ) -> AgentResult:
+        if agent.delegation_interface != "structured_task":
+            raise ToolInputError("structured task backend received a non-structured Agent")
+        issues = validate_arguments(agent.input_schema, arguments)
+        if issues:
+            raise ToolInputError(
+                f"invalid input for {agent.metadata.identity}: "
+                + "; ".join(issues)
+            )
+        goal = arguments.get("goal")
+        if not isinstance(goal, str) or not goal.strip():
+            raise ToolInputError("structured_task requires a non-empty goal string")
+        if context.dry_run:
+            return AgentResult(
+                agent_id=agent.metadata.id,
+                agent_version=agent.metadata.version,
+                status="dry_run",
+                arguments=dict(arguments),
+                output={"dry_run": True, "executed": False, "child_task_created": False},
+                delegation_depth=depth,
+                delegated_permissions=delegated_permissions,
+            )
+
+        child_registry = self._agent_dependency_registry(agent)
+        child_ids = {
+            value
+            for definition in child_registry.all()
+            for value in (definition.metadata.id, definition.metadata.identity)
+        }
+        child_context = dataclass_replace(
+            context,
+            granted_permissions=delegated_permissions,
+            approved_resources=tuple(
+                item for item in context.approved_resources if item in child_ids
+            ),
+        )
+        child_task_id = "delegate-" + sha256(
+            f"{task_id}\0{invocation_id}\0{agent.metadata.identity}".encode("utf-8")
+        ).hexdigest()[:24]
+        if self.state_store.exists(child_task_id):
+            child_state = self.state_store.load(child_task_id)
+            if child_state.goal != goal.strip():
+                raise ToolInputError(
+                    "a delegated task with this invocation id already exists for a different goal"
+                )
+        else:
+            self.state_store.create(
+                goal,
+                task_id=child_task_id,
+                session_id=self.session_id,
+            )
+
+        child_agent_runtime = copy(self.agent_runtime)
+        child_agent_runtime.backends = dict(self.agent_runtime.backends)
+        if isinstance(
+            child_agent_runtime.backends.get("structured_task"), _StructuredTaskBackend
+        ):
+            child_agent_runtime.backends.pop("structured_task")
+        child = Kernel(
+            child_registry,
+            self._base_llm,
+            policy_context=child_context,
+            gateway=self.gateway,
+            retriever=copy(self.retriever),
+            selector=copy(self.selector),
+            activator=self.activator,
+            tool_runtime=self.tool_runtime,
+            agent_runtime=child_agent_runtime,
+            compiler=self.compiler,
+            audit_log=self.audit_log,
+            state_store=self.state_store,
+            hitl=_DelegatedApprovalBroker(
+                child_context,
+                delegated_permissions,
+                self.hitl.policy,
+            ),
+            recovery=self.recovery,
+            planner=copy(self.planner) if self.planner is not None else None,
+            session_id=self.session_id,
+            top_k=self.top_k,
+            set_limits=self.set_limits,
+            min_relevance=self.min_relevance,
+            max_tool_calls=self.max_tool_calls,
+            max_input_repairs=self.max_input_repairs,
+            max_tool_output_tokens=self.max_tool_output_tokens,
+            max_agent_depth=self.agent_runtime.max_depth,
+            max_agent_cost=self.agent_runtime.max_total_cost,
+            max_hitl_rounds=self.max_hitl_rounds,
+            max_replans=self.max_replans,
+            max_parallel_steps=self.max_parallel_steps,
+            compensate_on_failure=False,
+            context_token_budget=self.context_token_budget,
+            _shared_budget_ledger=self.budget_ledger,
+            _budget_parent_task_id=self._budget_task_id(task_id) if self.budget_ledger else "",
+            _agent_depth=depth,
+            _agent_cost_offset=cumulative_cost + agent.metadata.cost_estimate,
+        )
+        parent_state = self.state_store.load(task_id)
+        delegated_responses = parent_state.frame.get("delegated_responses") or {}
+        response_data = delegated_responses.get(child_task_id) if isinstance(delegated_responses, Mapping) else None
+        if isinstance(response_data, Mapping):
+            child_result = child.resume(child_task_id, HitlResponse.from_dict(response_data))
+        else:
+            child_result = child.run(child_task_id)
+        if child_result.paused:
+            assert child_result.hitl is not None
+            if child_result.hitl.stage == "selection":
+                missing = set(
+                    (child_result.hitl.arguments or {}).get("missing_permissions", ())
+                )
+                excess = missing - set(delegated_permissions)
+                if excess:
+                    raise ToolInputError(
+                        "delegated task requested permissions outside the Agent declaration: "
+                        + ", ".join(sorted(excess))
+                    )
+            raise AgentExecutionPendingError(
+                child_task_id,
+                child_result.hitl,
+                tool_results=child_result.tool_results,
+            )
+        delegated_cost = sum(item.cost for item in child_result.agent_results)
+        return AgentResult(
+            agent_id=agent.metadata.id,
+            agent_version=agent.metadata.version,
+            status="success" if child_result.completed else "error",
+            arguments=dict(arguments),
+            output=child_result.output,
+            error=None if child_result.completed else child_result.detail,
+            cost=agent.metadata.cost_estimate + delegated_cost,
+            delegation_depth=depth,
+            delegated_permissions=delegated_permissions,
+            child_task_id=child_task_id,
+        )
+
+    def _agent_dependency_registry(self, agent: BoundAgent) -> ResourceRegistry:
+        definitions: list[ResourceDefinition] = []
+        visited: set[str] = set()
+        visiting: set[str] = set()
+
+        def visit(reference: str) -> None:
+            try:
+                definition = self.registry.get(reference)
+            except ResourceNotFoundError as exc:
+                raise ToolInputError(
+                    f"{agent.metadata.identity} declares unavailable structured_task dependency "
+                    f"{reference!r}: {exc}"
+                ) from exc
+            identity = definition.metadata.identity
+            if identity == agent.metadata.identity:
+                raise ToolInputError(
+                    f"{agent.metadata.identity} cannot depend on itself as a structured_task resource"
+                )
+            if identity in visiting:
+                raise ToolInputError(
+                    f"structured_task dependency cycle detected at {identity}"
+                )
+            if identity in visited:
+                return
+            visiting.add(identity)
+            for dependency in definition.metadata.dependencies:
+                visit(dependency)
+            visiting.remove(identity)
+            visited.add(identity)
+            definitions.append(definition)
+
+        for dependency in agent.metadata.dependencies:
+            visit(dependency)
+        child_registry = ResourceRegistry()
+        child_registry.extend(definitions)
+        return child_registry
 
     # -- plan-driven execution (4.6) -------------------------------------------
 
