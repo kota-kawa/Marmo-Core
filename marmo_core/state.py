@@ -55,6 +55,7 @@ EVENT_KINDS = (
     "step",
     "plan",
     "frame",
+    "snapshot",
     "budget",
     "paused",
     "resumed",
@@ -132,6 +133,7 @@ class TaskState:
     step_results: tuple[dict[str, Any], ...] = ()
     plan: dict[str, Any] | None = None
     frame: dict[str, Any] = field(default_factory=dict)
+    snapshot: dict[str, Any] = field(default_factory=dict)
     pending: dict[str, Any] | None = None
     created_at: str = ""
     updated_at: str = ""
@@ -158,6 +160,7 @@ class TaskState:
             "step_results": [dict(item) for item in self.step_results],
             "plan": dict(self.plan) if self.plan else None,
             "frame": dict(self.frame),
+            "snapshot": dict(self.snapshot),
             "pending": dict(self.pending) if self.pending else None,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -611,6 +614,8 @@ def _apply(state: TaskState, event: StateEvent) -> TaskState:
         return replace(state, plan=dict(plan) if isinstance(plan, Mapping) else None)
     if event.kind == "frame":
         return replace(state, frame=dict(payload.get("frame") or {}))
+    if event.kind == "snapshot":
+        return replace(state, snapshot=dict(payload.get("snapshot") or {}))
     if event.kind == "paused":
         request = payload.get("request")
         return replace(

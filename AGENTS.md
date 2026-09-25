@@ -24,6 +24,7 @@ Marmo-Core は、Object Routing を実装する公開 Python ライブラリで�
 - `docs/knowledge/lessons_from_history.md`／git 履歴と PR から抽出した過去の失敗と教訓／同じ轍を踏まないために、該当領域を触る前に読む。
 - `docs/decisions/README.md`／重要な技術判断（ADR）の索引／判断を変更・追加するときは既存 ADR を確認し、理由と影響を更新・記録する。
 - `docs/decisions/0009-task-budget-reservations.md`／タスク予算の単位・予約・精算と再開時の不変条件／予算処理を変更するとき。
+- `docs/decisions/0010-execution-snapshot.md`／選択済み Resource と再開時の fingerprint 検証／task resume の実行契約を変更するとき。
 - `docs/decisions/0008-timeout-outcome-is-uncertain.md`／timeout 後の不明な副作用と実行方式の判断／期限切れ処理・回復動作を変更するとき。
 - `docs/threat-model.md`／信頼境界・想定脅威・リリース前レビューの記録／権限、副作用、ポリシー、シークレット、HITL に触る変更で読み、境界を動かしたら更新する。
 - `docs/connectors.md`、`docs/local-resource-packages.md`／利用者向けマニュアル／実装の責務や内部挙動を確認する資料としては使わない。

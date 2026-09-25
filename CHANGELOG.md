@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A task now persists its selected resources and their scores after routing.
+  Resume restores that set without repeating retrieval or selection, and stops
+  if a selected definition or the compiled execution context changed.
+
 - `Kernel(task_budget=TaskBudget(...))` applies one explicit currency budget to
   selection, model calls, and every Tool or Agent attempt. Model calls reserve
   a configured token ceiling before dispatch and send the output-token ceiling
@@ -36,6 +40,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deadline expires. A non-importable handler is rejected before execution in
   this mode. The existing thread mode remains the default for compatibility;
   it only limits how long the caller waits.
+
+- Resuming a paused task restores its saved resource selection. Changes to a
+  selected resource, loaded memory or skill text, or compiled context now fail
+  the task instead of silently changing its execution snapshot. Legacy paused
+  tasks that passed activation or execution without a saved snapshot fail closed.
+
 - README now links to the Marmo Core website for the library overview, concepts,
   and usage guide.
 - A held-out benchmark of bundled resources now reports real Tool execution

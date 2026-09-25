@@ -115,8 +115,12 @@ Agent の 4 種別）を登録し、ゴールに対して必要なものだけ�
   completed=0、それ以外=1、例外=2。
 - `resume`: `_build_kernel(continue_audit=True)` が既存の `--audit-log` を
   `AuditLog.from_jsonl`（チェーン検証あり）で読み、`--approve/--reject/--defer/--modify`
-  から `HitlResponse` を作って `kernel.resume(task_id, response)` を呼ぶ。検索・選択・
-  activation は純粋なので再実行され、LLM ループは保存済み `frame` から復元されるため
+  から `HitlResponse` を作って `kernel.resume(task_id, response)` を呼ぶ。選択が確定したら
+  resource identity と内容 fingerprint を state の `snapshot` event に保存し、再開時は
+  検索・選択を繰り返さない。Resource 定義またはコンパイル済み context が変わっていれば
+  task を失敗で終端する。HITL 前に読み込んだ memory / skill の本文 fingerprint も保存し、
+  activation 中に一時停止した後で本文が変わった場合も失敗で終端する。snapshot 導入前の
+  activation / execution pause は対象を復元できないため失敗で終端する。LLM ループは保存済み `frame` から復元されるため
   実行済みの呼び出しは二度走らない。一時停止時に表示される resume コマンドは、実行時の
   `--granted-permission` / `--allow-side-effect` を必ず再現する。
 
@@ -135,6 +139,10 @@ Agent の 4 種別）を登録し、ゴールに対して必要なものだけ�
 - **状態ファイル**: `<state-dir>/<task_id>.jsonl`。各行は
   `{schema_version: 1, task_id, seq, timestamp, kind, payload}`、kind は
   `state.EVENT_KINDS`。seq の単調増加で楽観ロック（`StateConflictError`）。
+- **実行 Snapshot**: 選択確定後に `snapshot` event へ選択 identity・スコア・
+  fingerprint を追記する。memory / skill は activation で本文を読んだ時点で fingerprint を
+  追記する。再開時に同じ選択を復元し、selected Resource・読み込み済み本文・compiled context
+  の fingerprint が変わった場合は実行を拒否する。
 - **タスク予算**: `Kernel(task_budget=TaskBudget(...))` は通貨とモデル単価を明示し、
   `budget` event に設定・予約・精算を追記する。再開時は同じ設定が必要。rollback でも
   実行済み費用は戻さない。selector には残額を渡し、モデル呼び出しと各 Tool / Agent 試行の

@@ -121,6 +121,16 @@ class StateStoreContract:
         self.assertEqual(store.load(state.task_id).variables["step"], 2)
         self.assertEqual(store.replay(state.task_id, until_seq=at_two).variables["step"], 1)
 
+    def test_execution_snapshot_event_roundtrips(self) -> None:
+        store = self.make_store()
+        state = store.create("resume the selected route")
+        snapshot = {"version": 1, "selected": []}
+
+        store.append(state.task_id, "snapshot", {"snapshot": snapshot})
+
+        self.assertEqual(store.load(state.task_id).snapshot, snapshot)
+        self.assertEqual(store.replay(state.task_id).snapshot, snapshot)
+
     def test_optimistic_locking_rejects_a_stale_write(self) -> None:
         store = self.make_store()
         state = store.create("goal")

@@ -21,6 +21,10 @@ destinations, execution permissions, persisted state, and audit integrity.
   different policy. External charges inside handlers rely on the Resource's
   declared estimate; provider usage above the reserved ceiling is recorded and
   stops further work.
+- A paused task keeps the selected Resource identities and the compiled
+  execution context fingerprint. Resume checks selected Resource definitions
+  and stops if their content changed, so a catalog update cannot silently
+  redirect an approved task.
 - Tool handlers and secret resolvers stay beyond the LLM boundary. Secret values
   are materialized only immediately before the handler call.
 - The default thread timeout ends the wait but cannot stop a handler. In
