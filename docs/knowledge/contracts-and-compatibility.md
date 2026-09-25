@@ -39,3 +39,6 @@ Marmo-Core は SemVer に従い、同一メジャー内で次の表面を壊さ�
 - 0.6.0: 関連度成分を相対正規化から絶対値へ。既存のしきい値は再校正が要る
   （ベンチマーク既定 0.55→0.35）。`RuleBasedSetSelector` が `min_relevance` を尊重する
   ようになった。
+- Unreleased: timeout 後の自動 retry/fallback を停止。明示的に timeout を
+  `RetryPolicy.retry_kinds` に指定しても、不明な副作用を重複させないため人の判断を求める。
+  `timeout_mode="process"` は追加の選択肢で、既定は互換性のため `thread` のまま。

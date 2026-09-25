@@ -9,8 +9,8 @@ handler is submitted, regardless of the resource's declared side effect. This
 is deliberately stronger than trusting metadata to say which handlers are
 safe (F-GATE-08).
 
-Timeouts use a worker thread; a timed-out handler is abandoned, not killed.
-Hard process isolation is Connector / sandbox work (F-SEC-05, v2+).
+The legacy thread mode bounds waiting but cannot stop a timed-out handler.
+Process mode accepts importable handlers and stops the worker at the deadline.
 """
 
 from __future__ import annotations
@@ -19,10 +19,13 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Any, Mapping
+import json
+import os
 
 from .activator import BoundTool
 from .errors import ToolInputError
 from .policy import PolicyContext, PolicyGateway, PolicyRejectedError
+from .process_execution import importable_handler, run_importable
 from .secrets import (
     SecretResolver,
     ensure_secret_refs,
@@ -99,12 +102,18 @@ class ToolRuntime:
         *,
         timeout_seconds: float = 30.0,
         secret_resolver: SecretResolver | None = None,
+        timeout_mode: str = "thread",
     ) -> None:
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
+        if timeout_mode not in ("thread", "process"):
+            raise ValueError("timeout_mode must be thread or process")
+        if timeout_mode == "process" and os.name != "posix":
+            raise ValueError("process timeout mode requires POSIX process groups")
         self.gateway = gateway or PolicyGateway()
         self.timeout_seconds = timeout_seconds
         self.secret_resolver = secret_resolver
+        self.timeout_mode = timeout_mode
 
     def execute(
         self,
@@ -149,6 +158,37 @@ class ToolRuntime:
                     "resource": metadata.identity,
                     "side_effect": metadata.side_effect,
                 },
+                safety_findings=decision.risk_findings,
+            )
+        if self.timeout_mode == "process":
+            reference = importable_handler(tool.handler)
+            if reference is None:
+                raise ToolInputError(
+                    f"{metadata.identity}: process timeout requires an importable module-level "
+                    "handler; local closures and runtime-bound callables cannot be stopped safely"
+                )
+            try:
+                json.dumps(resolved_arguments, allow_nan=False)
+            except (TypeError, ValueError) as exc:
+                raise ToolInputError(
+                    f"{metadata.identity}: process timeout requires JSON-compatible arguments"
+                ) from exc
+            start = perf_counter()
+            outcome = run_importable(reference, resolved_arguments, self.timeout_seconds)
+            return ToolResult(
+                tool_id=metadata.id,
+                tool_version=metadata.version,
+                status=outcome.status,
+                arguments=stored_arguments,
+                output=redact_secret_values(outcome.output, secret_values),
+                error=(
+                    f"tool did not finish within {self.timeout_seconds:g}s; outcome may be uncertain"
+                    if outcome.status == "timeout"
+                    else redact_secret_values(outcome.error, secret_values)
+                    if outcome.error is not None
+                    else None
+                ),
+                elapsed_ms=(perf_counter() - start) * 1000,
                 safety_findings=decision.risk_findings,
             )
         start = perf_counter()

@@ -112,7 +112,7 @@ class RetryPolicy:
     multiplier: float = 2.0
     max_backoff_seconds: float = 5.0
     jitter: float = 0.1
-    retry_kinds: tuple[str, ...] = ("transient", "timeout")
+    retry_kinds: tuple[str, ...] = ("transient",)
 
     def __post_init__(self) -> None:
         if self.max_attempts < 1:
@@ -210,7 +210,7 @@ class RecoveryManager:
         return Failure(kind=kind, message=error, resource=metadata.identity, stage="execution")
 
     def classify_agent_result(self, result: Any, metadata: ResourceMetadata) -> Failure:
-        """Classify a failed delegation and preserve timeout retry behavior."""
+        """Classify a failed delegation, including uncertain timeout outcomes."""
 
         if result.status == "timeout":
             return Failure(
@@ -285,6 +285,15 @@ class RecoveryManager:
             return RecoveryDecision(
                 action="fail",
                 reason="the arguments do not satisfy the tool input schema; retrying cannot fix that",
+                failure=failure,
+            )
+        if failure.kind == "timeout":
+            return RecoveryDecision(
+                action="escalate" if self.escalate_when_exhausted else "fail",
+                reason=(
+                    "the operation may have reached an external system; inspect its outcome "
+                    "before authorizing another attempt"
+                ),
                 failure=failure,
             )
         if self.retry_policy.allows(failure, attempts):

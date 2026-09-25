@@ -153,9 +153,18 @@ class RetryPolicyTests(unittest.TestCase):
         policy = RetryPolicy(max_attempts=3)
 
         self.assertTrue(policy.allows(Failure(kind="transient", message="x"), attempts=0))
-        self.assertTrue(policy.allows(Failure(kind="timeout", message="x"), attempts=1))
+        self.assertFalse(policy.allows(Failure(kind="timeout", message="x"), attempts=1))
         self.assertFalse(policy.allows(Failure(kind="transient", message="x"), attempts=2))
         self.assertFalse(policy.allows(Failure(kind="permanent", message="x"), attempts=0))
+
+    def test_timeout_never_retries_or_falls_back_automatically(self) -> None:
+        manager = RecoveryManager(retry_policy=RetryPolicy(retry_kinds=("timeout",)))
+        decision = manager.decide(
+            Failure(kind="timeout", message="deadline", resource="tool.example"),
+            alternatives=("tool.backup",),
+        )
+        self.assertEqual(decision.action, "escalate")
+        self.assertIn("inspect its outcome", decision.reason)
 
     def test_invalid_policies_are_rejected(self) -> None:
         with self.assertRaises(ValueError):

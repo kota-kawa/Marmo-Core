@@ -207,6 +207,7 @@ class Kernel:
         max_parallel_steps: int = 4,
         compensate_on_failure: bool = True,
         timeout_seconds: float = 30.0,
+        timeout_mode: str = "thread",
         context_token_budget: int | None = None,
         secret_resolver: SecretResolver | None = None,
         prompt_injection_inspector: PromptInjectionInspector | None = None,
@@ -258,6 +259,7 @@ class Kernel:
             gateway,
             timeout_seconds=timeout_seconds,
             secret_resolver=secret_resolver,
+            timeout_mode=timeout_mode,
         )
         self.agent_runtime = agent_runtime or AgentRuntime(
             self.tool_runtime,

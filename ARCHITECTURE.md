@@ -43,7 +43,7 @@ Agent の 4 種別）を登録し、ゴールに対して必要なものだけ�
 | ポリシー | `safety.py` | `SafetyInspector`（破壊的コマンド・持ち出し検知）、`redact_sensitive_arguments` | models, secrets |
 | ポリシー | `policy.py` | `PolicyContext`、`PolicyGateway.evaluate(gate=activation/execution/output)`、`PolicyRejectedError` | errors, models, safety, security |
 | 実行 | `activator.py` | `ResourceActivator`（activation gate → `InjectedMemory` / `LoadedSkill` / `BoundTool` / `BoundAgent`、`python:` 参照の解決） | errors, models, policy |
-| 実行 | `tool_runtime.py` | `ToolRuntime.execute`（execution gate、シークレット解決、スキーマ検証、dry-run、タイムアウト） | activator, errors, policy, secrets |
+| 実行 | `tool_runtime.py`、`process_execution.py` | `ToolRuntime.execute`（execution gate、シークレット解決、スキーマ検証、dry-run、タイムアウト）。任意指定の process モードは import 可能なハンドラを子プロセスで実行・停止する | activator, errors, policy, secrets |
 | 実行 | `agent_runtime.py` | `AgentRuntime`（Agent を Tool として包む。権限は縮小のみ、深さ・コスト上限） | activator, errors, policy, tool_runtime |
 | 実行 | `compiler.py` | `ContextCompiler`（予算と優先度で Memory をトリム、`AgentInterface`） | activator, llm, models, security |
 | 実行 | `planner.py` | `Plan` / `PlanStep`、`Planner` ABC、`RuleBasedPlanner`、`LLMPlanner` | errors, llm, models, policy, secrets |
@@ -90,7 +90,7 @@ Agent の 4 種別）を登録し、ゴールに対して必要なものだけ�
     `checkpoint("before:<call_id>")` → `tool_runtime.execute`（execution gate、
     シークレット解決、`SafetyInspector`、スキーマ検証、dry-run、タイムアウト）。
     escalate は `_pause`、deny は `denied`。Agent は `agent_runtime.execute` 経由で同じ
-    `ToolRuntime` を通る。
+    `ToolRuntime` を通る。timeout は副作用の結果が不明なため自動再試行・代替を行わない。
 11. **Recovery** 失敗は `recovery.classify_tool_result` → `decide` で retry / fallback /
     escalate / fail（`_abort` と補償）。
 12. **書き戻し** `audit("execute")` と `step` イベント。ツール出力は
