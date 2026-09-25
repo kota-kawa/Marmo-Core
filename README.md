@@ -171,6 +171,7 @@ Run `marmo --help` or `marmo run --help` for all CLI options.
 
 | Guide | Contents |
 | --- | --- |
+| [Project website](https://project-kk.com/en/marmo) | Library overview, concepts, and usage guide. |
 | [Built-in Connectors](docs/connectors.md) | Connector setup and usage. |
 | [Local Resource Packages](docs/local-resource-packages.md) | Packaging and loading local resources. |
 | [Benchmarks](benchmarks/README.md) | Routing evaluation and committed results. |
@@ -347,6 +348,7 @@ CLI の全オプションは `marmo --help` または `marmo run --help` で確�
 
 | 資料 | 内容 |
 | --- | --- |
+| [プロジェクトサイト](https://project-kk.com/marmo) | ライブラリの概要、機能、使い方。 |
 | [組み込みコネクタ](docs/connectors.md) | コネクタの設定と使い方。 |
 | [ローカルリソースパッケージ](docs/local-resource-packages.md) | ローカルリソースの梱包と読み込み。 |
 | [ベンチマーク](benchmarks/README.md) | ルーティングの評価と測定結果。 |
