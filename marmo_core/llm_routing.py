@@ -1,7 +1,7 @@
-"""LLM-assisted routing layers: HyDE query transform, LLM re-ranking, and
-the LLM Set Selector.
+"""LLM-assisted routing layers: HyDE query transform, LLM re-ranking,
+whole-catalog LLM selection, and the LLM Set Selector.
 
-Three LLM-assisted variants from §15.2 / §15.3 of the requirements
+Four LLM-assisted variants from §15.2 / §15.3 of the requirements
 document, all built on the ``LLMProvider`` abstraction so the core stays
 dependency-free:
 
@@ -13,6 +13,10 @@ dependency-free:
 - ``LLMRerankRetriever`` (案C 最小プロトタイプ): an inner retriever
   proposes candidates, then one LLM call re-orders them by reading their
   lightweight metadata. This is the first-layer application of 案C.
+- ``LLMCatalogRetriever``: no candidate retrieval at all — the LLM reads
+  the name and the opening characters of every resource in the catalog and
+  picks from that. It is the baseline the retrieve-then-rerank stack is
+  measured against, and it is sharded when the catalog outgrows one prompt.
 - ``LLMSetSelector`` (案C の第2層適用): one LLM call reads the candidate
   pool's metadata — including dependencies, conflicts, and permissions —
   and returns a resource *set* (or abstains / escalates). It is the
@@ -41,9 +45,9 @@ import re
 
 from .llm import ChatMessage, LLMProvider
 from .budget import BudgetExceededError
-from .models import SearchQuery, SearchResult, SelectionResult
+from .models import ResourceDefinition, SearchQuery, SearchResult, SelectionResult
 from .registry import ResourceRegistry
-from .retriever import Retriever
+from .retriever import LexicalRetriever, Retriever
 from .selector import SelectionContext, SetSelector
 
 _HYDE_SYSTEM = (
@@ -149,6 +153,11 @@ class LLMRerankRetriever(_LLMFailureTracker, Retriever):
     ``SearchResult`` scores are left untouched (they explain the inner
     ranking, not the LLM's), so treat the returned order — not the scores —
     as the ranking.
+
+    Models sometimes answer with the candidates' list numbers instead of
+    their ids. ``accept_positions=True`` reads such a number as the candidate
+    at that position; the default ignores it, which is what runs replayed
+    from an existing reply cache were scored with.
     """
 
     def __init__(
@@ -158,6 +167,8 @@ class LLMRerankRetriever(_LLMFailureTracker, Retriever):
         *,
         rerank_pool: int = 50,
         rerank_limit: int = 10,
+        description_limit: int = _DESCRIPTION_LIMIT,
+        accept_positions: bool = False,
         cache: MutableMapping[str, str] | None = None,
     ) -> None:
         super().__init__()
@@ -165,6 +176,8 @@ class LLMRerankRetriever(_LLMFailureTracker, Retriever):
         self.inner = inner
         self.rerank_pool = max(1, rerank_pool)
         self.rerank_limit = max(1, rerank_limit)
+        self.description_limit = max(0, description_limit)
+        self.accept_positions = accept_positions
         self.cache = cache if cache is not None else {}
 
     def search(self, registry: ResourceRegistry, query: SearchQuery) -> list[SearchResult]:
@@ -185,8 +198,13 @@ class LLMRerankRetriever(_LLMFailureTracker, Retriever):
 
     def _ranked_ids(self, task: str, pool: list[SearchResult]) -> list[str]:
         ids = [result.resource.metadata.id for result in pool]
+        # The limit joins the key only when it is not the default, so replies
+        # cached before it became configurable still replay.
+        key_parts: list[object] = [task, ids]
+        if self.description_limit != _DESCRIPTION_LIMIT:
+            key_parts.append(self.description_limit)
         key = hashlib.sha256(
-            json.dumps([task, ids], ensure_ascii=False).encode("utf-8")
+            json.dumps(key_parts, ensure_ascii=False).encode("utf-8")
         ).hexdigest()
         cached = self.cache.get(key)
         if cached is None:
@@ -207,15 +225,149 @@ class LLMRerankRetriever(_LLMFailureTracker, Retriever):
                 self._record_failure("candidate rerank", error)
                 cached = ""
             self.cache[key] = cached
-        return _extract_ids(cached, ids)
+        return _extract_ids(cached, ids, accept_positions=self.accept_positions)
 
     def _prompt(self, task: str, pool: list[SearchResult]) -> str:
-        lines = [f"Task: {task}", "", "Candidates:"]
-        for position, result in enumerate(pool, start=1):
-            metadata = result.resource.metadata
-            description = re.sub(r"\s+", " ", metadata.description).strip()[:_DESCRIPTION_LIMIT]
-            lines.append(f"{position}. id={metadata.id} kind={metadata.kind} name={metadata.name}: {description}")
-        return "\n".join(lines)
+        return _candidate_prompt(
+            task, [result.resource for result in pool], self.description_limit
+        )
+
+
+def _candidate_prompt(
+    task: str, definitions: list[ResourceDefinition], description_limit: int
+) -> str:
+    """The numbered candidate list shown to the LLM.
+
+    ``description_limit`` caps how much of each description is shown; ``0``
+    shows the id, kind, and name only.
+    """
+
+    lines = [f"Task: {task}", "", "Candidates:"]
+    for position, definition in enumerate(definitions, start=1):
+        metadata = definition.metadata
+        line = f"{position}. id={metadata.id} kind={metadata.kind} name={metadata.name}"
+        if description_limit > 0:
+            description = re.sub(r"\s+", " ", metadata.description).strip()[:description_limit]
+            line += f": {description}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+class LLMCatalogRetriever(_LLMFailureTracker, Retriever):
+    """Rank by letting the LLM read the whole catalog, with no retrieval first.
+
+    Every resource that passes the query's filters is listed — id, kind,
+    name, and the first ``description_limit`` characters of its description —
+    and the LLM names the best ones. Ids it names come first in its order;
+    ``inner`` supplies the ranking behind them, and the whole ranking when
+    the LLM fails. As with ``LLMRerankRetriever``, ``SearchResult`` scores
+    are the lexical ones, not the LLM's: read the order, not the scores.
+
+    A catalog larger than ``shard_size`` is split into consecutive shards
+    with one call each, and one more call ranks the shards' picks against
+    each other. ``shard_size=None`` always sends the catalog in one prompt.
+
+    A reply may name a candidate by its id or by its number in the list;
+    against a long list of long ids, models often answer with the numbers.
+    ``empty_replies`` counts replies that named no listed candidate and
+    ``unknown_ids`` counts entries that were neither a listed id nor a valid
+    list number; both are tallied for cached replies too, so a replayed run
+    reports them.
+    """
+
+    def __init__(
+        self,
+        llm: LLMProvider,
+        inner: Retriever,
+        *,
+        select_limit: int = 10,
+        description_limit: int = _DESCRIPTION_LIMIT,
+        shard_size: int | None = None,
+        cache: MutableMapping[str, str] | None = None,
+    ) -> None:
+        super().__init__()
+        if shard_size is not None and shard_size < 2:
+            raise ValueError("shard_size must be >= 2")
+        self.llm = llm
+        self.inner = inner
+        self.select_limit = max(1, select_limit)
+        self.description_limit = max(0, description_limit)
+        self.shard_size = shard_size
+        self.cache = cache if cache is not None else {}
+        self.empty_replies = 0
+        self.unknown_ids = 0
+        self._catalog_filter = LexicalRetriever()
+
+    def search(self, registry: ResourceRegistry, query: SearchQuery) -> list[SearchResult]:
+        task = query.task.strip()
+        if not task:
+            return self.inner.search(registry, query)
+        catalog = self._catalog(registry, query)
+        ranked = self.inner.search(registry, query)
+        if len(catalog) < 2:
+            return ranked
+        picked = self._select(task, [result.resource for result in catalog])
+        by_id = {result.resource.metadata.id: result for result in ranked}
+        listed = {result.resource.metadata.id: result for result in catalog}
+        reordered = [by_id.get(rid, listed[rid]) for rid in picked]
+        chosen = set(picked)
+        reordered += [r for r in ranked if r.resource.metadata.id not in chosen]
+        return reordered[: query.top_k]
+
+    def _catalog(self, registry: ResourceRegistry, query: SearchQuery) -> list[SearchResult]:
+        """Every resource passing the query's filters, in id order.
+
+        A task-less lexical search applies the filters without ranking by the
+        task, so the list the LLM reads does not depend on lexical overlap.
+        """
+
+        unranked = replace(
+            query, task="", top_k=max(1, len(registry)), per_kind_limits={}, min_score=0.0
+        )
+        results = self._catalog_filter.search(registry, unranked)
+        return sorted(results, key=lambda result: result.resource.metadata.id)
+
+    def _select(self, task: str, catalog: list[ResourceDefinition]) -> list[str]:
+        if self.shard_size is None or len(catalog) <= self.shard_size:
+            return self._ask(task, catalog)
+        by_id = {definition.metadata.id: definition for definition in catalog}
+        finalists: list[ResourceDefinition] = []
+        for start in range(0, len(catalog), self.shard_size):
+            shard = catalog[start : start + self.shard_size]
+            finalists += [by_id[rid] for rid in self._ask(task, shard)]
+        if len(finalists) < 2:
+            return [definition.metadata.id for definition in finalists]
+        return self._ask(task, finalists)
+
+    def _ask(self, task: str, definitions: list[ResourceDefinition]) -> list[str]:
+        ids = [definition.metadata.id for definition in definitions]
+        system = _RERANK_SYSTEM.format(limit=self.select_limit)
+        prompt = _candidate_prompt(task, definitions, self.description_limit)
+        key = hashlib.sha256(
+            json.dumps([system, prompt], ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
+        cached = self.cache.get(key)
+        if cached is None:
+            try:
+                response = self.llm.complete(
+                    [
+                        ChatMessage(role="system", content=system),
+                        ChatMessage(role="user", content=prompt),
+                    ]
+                )
+                cached = response.content
+            except BudgetExceededError:
+                raise
+            except Exception as error:
+                self._record_failure("catalog selection", error)
+                cached = ""
+            self.cache[key] = cached
+        named = _extract_ids(cached, ids, accept_positions=True)
+        picked = list(dict.fromkeys(named))[: self.select_limit]
+        if not picked:
+            self.empty_replies += 1
+        self.unknown_ids += _unknown_id_count(cached, ids)
+        return picked
 
 
 _SET_SELECT_SYSTEM = (
@@ -409,11 +561,45 @@ def _parse_set_reply(text: str, valid_ids: list[str]) -> tuple[str, list[str], s
     return None
 
 
-def _extract_ids(text: str, valid_ids: list[str]) -> list[str]:
+def _named_candidate(item: object, valid_ids: list[str], valid: set[str], accept_positions: bool) -> str | None:
+    """The candidate id one reply entry names, or ``None`` when it names none.
+
+    An entry is an id first; with ``accept_positions`` a whole number that is
+    not itself an id is read as the 1-based position in the candidate list.
+    """
+
+    text = str(item).strip()
+    if text in valid:
+        return text
+    if accept_positions and not isinstance(item, bool) and text.isdecimal():
+        position = int(text)
+        if 1 <= position <= len(valid_ids):
+            return valid_ids[position - 1]
+    return None
+
+
+def _unknown_id_count(text: str, valid_ids: list[str]) -> int:
+    """How many entries of the reply's JSON array name no candidate, by id or position."""
+
+    match = re.search(r"\[.*\]", text, re.DOTALL)
+    if not match:
+        return 0
+    try:
+        parsed = json.loads(match.group(0))
+    except json.JSONDecodeError:
+        return 0
+    if not isinstance(parsed, list):
+        return 0
+    valid = set(valid_ids)
+    return sum(1 for item in parsed if _named_candidate(item, valid_ids, valid, True) is None)
+
+
+def _extract_ids(text: str, valid_ids: list[str], *, accept_positions: bool = False) -> list[str]:
     """Pull candidate ids out of the LLM reply, tolerating non-JSON output.
 
     Tries strict JSON first; otherwise falls back to first-occurrence order
-    of any valid id appearing verbatim in the reply.
+    of any valid id appearing verbatim in the reply. ``accept_positions``
+    also reads whole numbers in the JSON array as positions in ``valid_ids``.
     """
 
     if not text:
@@ -424,7 +610,8 @@ def _extract_ids(text: str, valid_ids: list[str]) -> list[str]:
             parsed = json.loads(match.group(0))
             if isinstance(parsed, list):
                 valid = set(valid_ids)
-                ordered = [str(item) for item in parsed if str(item) in valid]
+                named = (_named_candidate(item, valid_ids, valid, accept_positions) for item in parsed)
+                ordered = [rid for rid in named if rid is not None]
                 if ordered:
                     return ordered
         except json.JSONDecodeError:

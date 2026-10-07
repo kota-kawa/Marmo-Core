@@ -36,7 +36,7 @@ Agent の 4 種別）を登録し、ゴールに対して必要なものだけ�
 | 検索 | `graph_routing.py` | `CapabilityGraphRetriever`（依存・capability 名前空間で候補を拡張） | models, registry, retriever, semantic |
 | 検索 | `hierarchy.py` | `HierarchicalRetriever`、`GroupingStrategy`（namespace / provider / permission / embedding） | models, registry, retriever, semantic |
 | 検索 | `rerank.py` | `CrossEncoderProvider` ABC、`CrossEncoderRerankRetriever` | models, registry, retriever |
-| 検索 | `llm_routing.py` | `HydeRetriever`、`LLMRerankRetriever`、`LLMSetSelector` | llm, models, registry, retriever, selector |
+| 検索 | `llm_routing.py` | `HydeRetriever`、`LLMRerankRetriever`、`LLMCatalogRetriever`、`LLMSetSelector` | llm, models, registry, retriever, selector |
 | 選択 | `selector.py` | `SetSelector` ABC、`SelectionContext`、`RuleBasedSetSelector`（既定）、Greedy / Beam / BranchAndBound の制約付きソルバー | models |
 | 選択 | `adaptive.py` | `CaseBasedRouter`、`RoutingCaseStore`（Kernel には組み込まれていない） | errors, models, registry, retriever, selector, semantic |
 | 選択 | `evaluator.py` | `ExecutionEvaluator`（監査ログ → `ResourceStats` 書き戻し。Kernel からは呼ばれない） | audit, models, registry |
