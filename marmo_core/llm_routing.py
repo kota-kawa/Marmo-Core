@@ -577,6 +577,10 @@ def _named_candidate(item: object, valid_ids: list[str], valid: set[str], accept
     not itself an id is read as the 1-based position in the candidate list.
     """
 
+    if not isinstance(item, (str, int, float)):
+        # A nested list or object names nothing, and str() of a deeply nested
+        # one can itself exhaust the stack.
+        return None
     text = str(item)
     if text in valid:
         return text

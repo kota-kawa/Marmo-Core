@@ -303,13 +303,24 @@ class ExtractIdsTests(unittest.TestCase):
         reply = json.dumps(["9" * 5000, "\u0662", " 1 "])
         self.assertEqual(_extract_ids(reply, ["a", "b"], accept_positions=True), ["a"])
 
-    def test_unparseable_json_numbers_and_nesting_do_not_raise(self) -> None:
-        # json.loads raises ValueError (not JSONDecodeError) past the int digit
-        # limit and RecursionError on deep nesting; neither may escape search().
-        for reply in ("[" + "9" * 5000 + "]", "[" * 100000 + "]" * 100000):
-            self.assertEqual(_extract_ids(reply, ["a", "b"], accept_positions=True), [])
-            self.assertEqual(_unknown_id_count(reply, ["a", "b"]), 0)
-            self.assertIsNone(_parse_set_reply("{" + reply + "}", ["a", "b"]))
+    def test_json_numbers_past_the_int_digit_limit_do_not_raise(self) -> None:
+        # json.loads raises ValueError, not JSONDecodeError, for these.
+        reply = "[" + "9" * 5000 + "]"
+        self.assertEqual(_extract_ids(reply, ["a", "b"], accept_positions=True), [])
+        self.assertEqual(_unknown_id_count(reply, ["a", "b"]), 0)
+        self.assertIsNone(_parse_set_reply("{" + reply + "}", ["a", "b"]))
+
+    def test_deeply_nested_json_does_not_raise(self) -> None:
+        # Whether json.loads raises RecursionError or returns the nested list
+        # depends on the interpreter build; neither outcome may escape.
+        reply = "[" * 100000 + "]" * 100000
+        self.assertEqual(_extract_ids(reply, ["a", "b"], accept_positions=True), [])
+        self.assertIn(_unknown_id_count(reply, ["a", "b"]), (0, 1))
+        self.assertIsNone(_parse_set_reply("{" + reply + "}", ["a", "b"]))
+
+    def test_nested_entries_name_no_candidate(self) -> None:
+        self.assertEqual(_extract_ids('[["a"], {"id": "b"}, "b"]', ["a", "b"], accept_positions=True), ["b"])
+        self.assertEqual(_unknown_id_count('[["a"], {"id": "b"}, "b"]', ["a", "b"]), 2)
 
     def test_ids_are_matched_without_stripping_whitespace(self) -> None:
         self.assertEqual(_extract_ids('["x", " a"]', ["a", "x"]), ["x"])
