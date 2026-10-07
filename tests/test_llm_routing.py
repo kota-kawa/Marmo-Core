@@ -115,7 +115,6 @@ class LLMRerankRetrieverTests(unittest.TestCase):
         retriever.search(self.registry, query)
         self.assertEqual(len(llm.requests), 1)
 
-
     def test_description_limit_truncates_and_zero_shows_names_only(self) -> None:
         llm = MockLLMProvider(script=[LLMResponse(content="[]"), LLMResponse(content="[]")])
         query = SearchQuery(task="verify report quality", top_k=2)
@@ -299,6 +298,13 @@ class ExtractIdsTests(unittest.TestCase):
         self.assertEqual(_extract_ids("[2, 1]", ["a", "b"]), [])
         self.assertEqual(_extract_ids("[2, 1]", ["a", "b"], accept_positions=True), ["b", "a"])
         self.assertEqual(_extract_ids('["2", 0, 3]', ["a", "2"], accept_positions=True), ["2"])
+
+    def test_oversized_and_non_ascii_numbers_are_not_positions(self) -> None:
+        reply = json.dumps(["9" * 5000, "\u0662", " 1 "])
+        self.assertEqual(_extract_ids(reply, ["a", "b"], accept_positions=True), ["a"])
+
+    def test_ids_are_matched_without_stripping_whitespace(self) -> None:
+        self.assertEqual(_extract_ids('["x", " a"]', ["a", "x"]), ["x"])
 
     def test_invalid_ids_are_dropped(self) -> None:
         self.assertEqual(_extract_ids('["c", "a"]', ["a", "b"]), ["a"])

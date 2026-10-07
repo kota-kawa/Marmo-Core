@@ -577,11 +577,13 @@ def _named_candidate(item: object, valid_ids: list[str], valid: set[str], accept
     not itself an id is read as the 1-based position in the candidate list.
     """
 
-    text = str(item).strip()
+    text = str(item)
     if text in valid:
         return text
-    if accept_positions and not isinstance(item, bool) and text.isdecimal():
-        position = int(text)
+    digits = text.strip()
+    # ASCII digits only, and short enough that int() cannot be made to fail.
+    if accept_positions and not isinstance(item, bool) and digits.isascii() and digits.isdecimal() and len(digits) <= 9:
+        position = int(digits)
         if 1 <= position <= len(valid_ids):
             return valid_ids[position - 1]
     return None
