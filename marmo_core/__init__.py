@@ -98,7 +98,7 @@ from .hierarchy import (
     ProviderGrouping,
     RouteDecision,
 )
-from .llm_routing import HydeRetriever, LLMRerankRetriever, LLMSetSelector
+from .llm_routing import HydeRetriever, LLMCatalogRetriever, LLMRerankRetriever, LLMSetSelector
 from .loader import load_resource_definitions, load_registry
 from .package import (
     KERNEL_VERSION,
@@ -263,6 +263,7 @@ __all__ = [
     "InjectedMemory",
     "JsonFileStateStore",
     "Kernel",
+    "LLMCatalogRetriever",
     "LLMPlanner",
     "LLMProvider",
     "LLMRerankRetriever",

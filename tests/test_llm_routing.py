@@ -8,6 +8,7 @@ import unittest
 from marmo_core import (
     HydeRetriever,
     LexicalRetriever,
+    LLMCatalogRetriever,
     LLMRerankRetriever,
     LLMResponse,
     LLMSetSelector,
@@ -19,7 +20,7 @@ from marmo_core import (
     SelectionContext,
 )
 from marmo_core.errors import ProviderHTTPError
-from marmo_core.llm_routing import _extract_ids, _parse_set_reply
+from marmo_core.llm_routing import _extract_ids, _parse_set_reply, _unknown_id_count
 
 
 def _tool(resource_id: str, description: str) -> ResourceDefinition:
@@ -114,6 +115,172 @@ class LLMRerankRetrieverTests(unittest.TestCase):
         retriever.search(self.registry, query)
         self.assertEqual(len(llm.requests), 1)
 
+    def test_description_limit_truncates_and_zero_shows_names_only(self) -> None:
+        llm = MockLLMProvider(script=[LLMResponse(content="[]"), LLMResponse(content="[]")])
+        query = SearchQuery(task="verify report quality", top_k=2)
+        LLMRerankRetriever(llm, LexicalRetriever(), description_limit=6).search(self.registry, query)
+        LLMRerankRetriever(llm, LexicalRetriever(), description_limit=0).search(self.registry, query)
+        truncated, names_only = (request["messages"][-1]["content"] for request in llm.requests)
+        self.assertIn("name=alpha: Verify\n", truncated)
+        self.assertNotIn("report", truncated.split("Candidates:")[1])
+        self.assertTrue(names_only.endswith("name=beta"))
+
+    def test_non_default_description_limit_does_not_replay_default_cache(self) -> None:
+        llm = MockLLMProvider(
+            script=[LLMResponse(content='["tool.beta"]'), LLMResponse(content='["tool.alpha"]')]
+        )
+        cache: dict[str, str] = {}
+        query = SearchQuery(task="verify report quality", top_k=2)
+        LLMRerankRetriever(llm, LexicalRetriever(), cache=cache).search(self.registry, query)
+        results = LLMRerankRetriever(
+            llm, LexicalRetriever(), description_limit=80, cache=cache
+        ).search(self.registry, query)
+        self.assertEqual(len(llm.requests), 2)
+        self.assertEqual(results[0].resource.metadata.id, "tool.alpha")
+
+
+    def test_list_positions_are_ignored_unless_accepted(self) -> None:
+        query = SearchQuery(task="verify report quality", top_k=2)
+        inner_order = [r.resource.metadata.id for r in LexicalRetriever().search(self.registry, query)]
+        for accept, expected in ((False, inner_order), (True, inner_order[::-1])):
+            llm = MockLLMProvider(script=[LLMResponse(content="[2]")])
+            retriever = LLMRerankRetriever(llm, LexicalRetriever(), accept_positions=accept)
+            results = retriever.search(self.registry, query)
+            self.assertEqual([r.resource.metadata.id for r in results], expected)
+
+
+class LLMCatalogRetrieverTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.registry = ResourceRegistry()
+        self.registry.add(_tool("tool.churn.analysis", "Analyze customer churn and retention cohorts."))
+        self.registry.add(_tool("tool.invoice.builder", "Build and send invoices to clients."))
+        self.registry.add(_tool("tool.report.checker", "Verify report quality and structure."))
+        self.registry.add(_tool("tool.report.writer", "Write a report from structured notes."))
+
+    def _ids(self, results: list[SearchResult]) -> list[str]:
+        return [result.resource.metadata.id for result in results]
+
+    def test_llm_sees_resources_that_lexical_retrieval_would_never_surface(self) -> None:
+        # No vocabulary overlap: the inner retriever returns nothing for this task.
+        task = "people keep leaving our product"
+        self.assertEqual(LexicalRetriever().search(self.registry, SearchQuery(task=task)), [])
+        llm = MockLLMProvider(script=[LLMResponse(content='["tool.churn.analysis"]')])
+        retriever = LLMCatalogRetriever(llm, LexicalRetriever())
+        results = retriever.search(self.registry, SearchQuery(task=task, top_k=3))
+        self.assertEqual(self._ids(results), ["tool.churn.analysis"])
+        prompt = llm.requests[0]["messages"][-1]["content"]
+        for resource_id in ("tool.churn.analysis", "tool.invoice.builder", "tool.report.checker", "tool.report.writer"):
+            self.assertIn(f"id={resource_id} ", prompt)
+
+    def test_llm_picks_lead_and_inner_ranking_fills_the_rest(self) -> None:
+        llm = MockLLMProvider(script=[LLMResponse(content='["tool.invoice.builder", "tool.report.writer"]')])
+        retriever = LLMCatalogRetriever(llm, LexicalRetriever())
+        results = retriever.search(self.registry, SearchQuery(task="verify report quality", top_k=4))
+        self.assertEqual(
+            self._ids(results),
+            ["tool.invoice.builder", "tool.report.writer", "tool.report.checker"],
+        )
+
+    def test_catalog_respects_query_filters(self) -> None:
+        self.registry.add(
+            ResourceDefinition.from_mapping(
+                {**_tool("skill.report.style", "Report style guide.").metadata.to_dict(), "kind": "skill"}
+            )
+        )
+        llm = MockLLMProvider(script=[LLMResponse(content='["skill.report.style"]')])
+        retriever = LLMCatalogRetriever(llm, LexicalRetriever())
+        results = retriever.search(
+            self.registry, SearchQuery(task="verify report quality", kinds=("tool",), top_k=2)
+        )
+        self.assertNotIn("skill.report.style", llm.requests[0]["messages"][-1]["content"])
+        self.assertNotIn("skill.report.style", self._ids(results))
+        self.assertEqual(retriever.unknown_ids, 1)
+        self.assertEqual(retriever.empty_replies, 1)
+
+    def test_per_kind_limits_cap_the_llm_picks_too(self) -> None:
+        llm = MockLLMProvider(
+            script=[LLMResponse(content='["tool.invoice.builder", "tool.churn.analysis"]')]
+        )
+        retriever = LLMCatalogRetriever(llm, LexicalRetriever())
+        results = retriever.search(
+            self.registry,
+            SearchQuery(task="verify report quality", top_k=4, per_kind_limits={"tool": 1}),
+        )
+        self.assertEqual(self._ids(results), ["tool.invoice.builder"])
+
+    def test_permission_filter_keeps_ungranted_resources_out_of_the_prompt(self) -> None:
+        self.registry.add(
+            ResourceDefinition.from_mapping(
+                {
+                    **_tool("tool.report.publisher", "Publish the report externally.").metadata.to_dict(),
+                    "required_permissions": ["net.write"],
+                }
+            )
+        )
+        llm = MockLLMProvider(script=[LLMResponse(content='["tool.report.publisher"]')])
+        retriever = LLMCatalogRetriever(llm, LexicalRetriever())
+        results = retriever.search(
+            self.registry,
+            SearchQuery(task="verify report quality", require_permissions=True, top_k=5),
+        )
+        self.assertNotIn("tool.report.publisher", llm.requests[0]["messages"][-1]["content"])
+        self.assertNotIn("tool.report.publisher", self._ids(results))
+
+    def test_shards_get_one_call_each_and_a_final_call_ranks_their_picks(self) -> None:
+        llm = MockLLMProvider(
+            script=[
+                LLMResponse(content='["tool.invoice.builder"]'),
+                LLMResponse(content='["tool.report.writer"]'),
+                LLMResponse(content='["tool.report.writer", "tool.invoice.builder"]'),
+            ]
+        )
+        retriever = LLMCatalogRetriever(llm, LexicalRetriever(), shard_size=2)
+        results = retriever.search(self.registry, SearchQuery(task="draft the quarterly summary", top_k=2))
+        self.assertEqual(self._ids(results), ["tool.report.writer", "tool.invoice.builder"])
+        prompts = [request["messages"][-1]["content"] for request in llm.requests]
+        self.assertEqual(len(prompts), 3)
+        self.assertIn("tool.churn.analysis", prompts[0])
+        self.assertNotIn("tool.report.writer", prompts[0])
+        self.assertNotIn("tool.churn.analysis", prompts[2])
+
+    def test_reply_may_name_candidates_by_list_position(self) -> None:
+        # The catalog is listed in id order: 2 = invoice.builder, 4 = report.writer.
+        llm = MockLLMProvider(script=[LLMResponse(content='[4, "2", 4, 9, true]')])
+        retriever = LLMCatalogRetriever(llm, LexicalRetriever())
+        results = retriever.search(self.registry, SearchQuery(task="draft the quarterly summary", top_k=4))
+        self.assertEqual(self._ids(results), ["tool.report.writer", "tool.invoice.builder"])
+        self.assertEqual(retriever.unknown_ids, 2)
+        self.assertEqual(retriever.empty_replies, 0)
+
+    def test_select_limit_caps_the_llm_picks(self) -> None:
+        llm = MockLLMProvider(
+            script=[LLMResponse(content='["tool.invoice.builder", "tool.churn.analysis"]')]
+        )
+        retriever = LLMCatalogRetriever(llm, LexicalRetriever(), select_limit=1)
+        results = retriever.search(self.registry, SearchQuery(task="draft the quarterly summary", top_k=4))
+        self.assertEqual(self._ids(results), ["tool.invoice.builder"])
+
+    def test_llm_failure_degrades_to_the_inner_ranking(self) -> None:
+        retriever = LLMCatalogRetriever(_FailingLLM(), LexicalRetriever())
+        with self.assertLogs("marmo_core.llm_routing", "WARNING") as logs:
+            results = retriever.search(self.registry, SearchQuery(task="verify report quality", top_k=1))
+        self.assertEqual(self._ids(results), ["tool.report.checker"])
+        self.assertEqual(retriever.failures, 1)
+        self.assertEqual(retriever.empty_replies, 1)
+        self.assertIn("LLMCatalogRetriever", logs.output[0])
+
+    def test_identical_catalog_and_task_hit_the_cache(self) -> None:
+        llm = MockLLMProvider(script=[LLMResponse(content='["tool.report.writer"]')])
+        retriever = LLMCatalogRetriever(llm, LexicalRetriever())
+        query = SearchQuery(task="verify report quality", top_k=2)
+        retriever.search(self.registry, query)
+        retriever.search(self.registry, query)
+        self.assertEqual(len(llm.requests), 1)
+
+    def test_shard_size_below_two_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            LLMCatalogRetriever(MockLLMProvider(), LexicalRetriever(), shard_size=1)
+
 
 class ExtractIdsTests(unittest.TestCase):
     def test_strict_json_array(self) -> None:
@@ -126,6 +293,37 @@ class ExtractIdsTests(unittest.TestCase):
 
     def test_fallback_to_first_occurrence_order(self) -> None:
         self.assertEqual(_extract_ids("I suggest b then a.", ["a", "b"]), ["b", "a"])
+
+    def test_positions_resolve_only_when_accepted_and_ids_win(self) -> None:
+        self.assertEqual(_extract_ids("[2, 1]", ["a", "b"]), [])
+        self.assertEqual(_extract_ids("[2, 1]", ["a", "b"], accept_positions=True), ["b", "a"])
+        self.assertEqual(_extract_ids('["2", 0, 3]', ["a", "2"], accept_positions=True), ["2"])
+
+    def test_oversized_and_non_ascii_numbers_are_not_positions(self) -> None:
+        reply = json.dumps(["9" * 5000, "\u0662", " 1 "])
+        self.assertEqual(_extract_ids(reply, ["a", "b"], accept_positions=True), ["a"])
+
+    def test_json_numbers_past_the_int_digit_limit_do_not_raise(self) -> None:
+        # json.loads raises ValueError, not JSONDecodeError, for these.
+        reply = "[" + "9" * 5000 + "]"
+        self.assertEqual(_extract_ids(reply, ["a", "b"], accept_positions=True), [])
+        self.assertEqual(_unknown_id_count(reply, ["a", "b"]), 0)
+        self.assertIsNone(_parse_set_reply("{" + reply + "}", ["a", "b"]))
+
+    def test_deeply_nested_json_does_not_raise(self) -> None:
+        # Whether json.loads raises RecursionError or returns the nested list
+        # depends on the interpreter build; neither outcome may escape.
+        reply = "[" * 100000 + "]" * 100000
+        self.assertEqual(_extract_ids(reply, ["a", "b"], accept_positions=True), [])
+        self.assertIn(_unknown_id_count(reply, ["a", "b"]), (0, 1))
+        self.assertIsNone(_parse_set_reply("{" + reply + "}", ["a", "b"]))
+
+    def test_nested_entries_name_no_candidate(self) -> None:
+        self.assertEqual(_extract_ids('[["a"], {"id": "b"}, "b"]', ["a", "b"], accept_positions=True), ["b"])
+        self.assertEqual(_unknown_id_count('[["a"], {"id": "b"}, "b"]', ["a", "b"]), 2)
+
+    def test_ids_are_matched_without_stripping_whitespace(self) -> None:
+        self.assertEqual(_extract_ids('["x", " a"]', ["a", "x"]), ["x"])
 
     def test_invalid_ids_are_dropped(self) -> None:
         self.assertEqual(_extract_ids('["c", "a"]', ["a", "b"]), ["a"])

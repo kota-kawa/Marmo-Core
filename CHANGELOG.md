@@ -20,6 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `LLMCatalogRetriever` ranks by showing the LLM the whole filtered catalog
+  (id, kind, name, and the first `description_limit` characters of each
+  description) with no candidate retrieval first. It is the baseline for
+  measuring retrieve-then-rerank against, splits a catalog larger than
+  `shard_size` into one call per shard plus a final ranking call, and reports
+  `empty_replies` and `unknown_ids`. A reply may name candidates by id or by
+  their number in the list.
+- `LLMRerankRetriever` takes `description_limit` (default 240, the previous
+  fixed value; `0` shows names only) and `accept_positions` (default `False`,
+  the previous behavior), which reads a reply of list numbers as the
+  candidates at those positions instead of ignoring it.
+
 - `AgentRuntime` now dispatches through the public `AgentExecutionBackend`
   interface. The built-in `structured_task` backend runs a resumable child
   Kernel over an Agent's transitive declared dependencies, narrows its
