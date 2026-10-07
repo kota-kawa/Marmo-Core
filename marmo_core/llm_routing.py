@@ -263,6 +263,15 @@ class LLMCatalogRetriever(_LLMFailureTracker, Retriever):
     the LLM fails. As with ``LLMRerankRetriever``, ``SearchResult`` scores
     are the lexical ones, not the LLM's: read the order, not the scores.
 
+    What the query's filters and limits mean here: the kind, trust-level,
+    side-effect, keyword, tag, and permission filters decide what the LLM is
+    shown, and ``per_kind_limits`` and ``top_k`` cap the final order. An LLM
+    pick is *not* held to ``min_score`` or to whatever narrowing ``inner``
+    does on its own (a pool size, a routed group) — surfacing what ``inner``
+    would not is the point — so a pick ``inner`` did not return carries its
+    task-less lexical score. This is a ranking, not a gate: activation,
+    execution, and output policy still decide what may run.
+
     A catalog larger than ``shard_size`` is split into consecutive shards
     with one call each, and one more call ranks the shards' picks against
     each other. ``shard_size=None`` always sends the catalog in one prompt.
@@ -312,7 +321,7 @@ class LLMCatalogRetriever(_LLMFailureTracker, Retriever):
         reordered = [by_id.get(rid, listed[rid]) for rid in picked]
         chosen = set(picked)
         reordered += [r for r in ranked if r.resource.metadata.id not in chosen]
-        return reordered[: query.top_k]
+        return self._catalog_filter.apply_limits(reordered, query)
 
     def _catalog(self, registry: ResourceRegistry, query: SearchQuery) -> list[SearchResult]:
         """Every resource passing the query's filters, in id order.

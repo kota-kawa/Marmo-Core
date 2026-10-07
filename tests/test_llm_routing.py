@@ -198,6 +198,35 @@ class LLMCatalogRetrieverTests(unittest.TestCase):
         self.assertEqual(retriever.unknown_ids, 1)
         self.assertEqual(retriever.empty_replies, 1)
 
+    def test_per_kind_limits_cap_the_llm_picks_too(self) -> None:
+        llm = MockLLMProvider(
+            script=[LLMResponse(content='["tool.invoice.builder", "tool.churn.analysis"]')]
+        )
+        retriever = LLMCatalogRetriever(llm, LexicalRetriever())
+        results = retriever.search(
+            self.registry,
+            SearchQuery(task="verify report quality", top_k=4, per_kind_limits={"tool": 1}),
+        )
+        self.assertEqual(self._ids(results), ["tool.invoice.builder"])
+
+    def test_permission_filter_keeps_ungranted_resources_out_of_the_prompt(self) -> None:
+        self.registry.add(
+            ResourceDefinition.from_mapping(
+                {
+                    **_tool("tool.report.publisher", "Publish the report externally.").metadata.to_dict(),
+                    "required_permissions": ["net.write"],
+                }
+            )
+        )
+        llm = MockLLMProvider(script=[LLMResponse(content='["tool.report.publisher"]')])
+        retriever = LLMCatalogRetriever(llm, LexicalRetriever())
+        results = retriever.search(
+            self.registry,
+            SearchQuery(task="verify report quality", require_permissions=True, top_k=5),
+        )
+        self.assertNotIn("tool.report.publisher", llm.requests[0]["messages"][-1]["content"])
+        self.assertNotIn("tool.report.publisher", self._ids(results))
+
     def test_shards_get_one_call_each_and_a_final_call_ranks_their_picks(self) -> None:
         llm = MockLLMProvider(
             script=[
