@@ -20,7 +20,7 @@ from marmo_core import (
     SelectionContext,
 )
 from marmo_core.errors import ProviderHTTPError
-from marmo_core.llm_routing import _extract_ids, _parse_set_reply
+from marmo_core.llm_routing import _extract_ids, _parse_set_reply, _unknown_id_count
 
 
 def _tool(resource_id: str, description: str) -> ResourceDefinition:
@@ -302,6 +302,14 @@ class ExtractIdsTests(unittest.TestCase):
     def test_oversized_and_non_ascii_numbers_are_not_positions(self) -> None:
         reply = json.dumps(["9" * 5000, "\u0662", " 1 "])
         self.assertEqual(_extract_ids(reply, ["a", "b"], accept_positions=True), ["a"])
+
+    def test_unparseable_json_numbers_and_nesting_do_not_raise(self) -> None:
+        # json.loads raises ValueError (not JSONDecodeError) past the int digit
+        # limit and RecursionError on deep nesting; neither may escape search().
+        for reply in ("[" + "9" * 5000 + "]", "[" * 100000 + "]" * 100000):
+            self.assertEqual(_extract_ids(reply, ["a", "b"], accept_positions=True), [])
+            self.assertEqual(_unknown_id_count(reply, ["a", "b"]), 0)
+            self.assertIsNone(_parse_set_reply("{" + reply + "}", ["a", "b"]))
 
     def test_ids_are_matched_without_stripping_whitespace(self) -> None:
         self.assertEqual(_extract_ids('["x", " a"]', ["a", "x"]), ["x"])

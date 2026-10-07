@@ -554,7 +554,7 @@ def _parse_set_reply(text: str, valid_ids: list[str]) -> tuple[str, list[str], s
     if match:
         try:
             parsed = json.loads(match.group(0))
-        except json.JSONDecodeError:
+        except (ValueError, RecursionError):
             parsed = None
         if isinstance(parsed, dict):
             status = str(parsed.get("status", "selected"))
@@ -597,7 +597,7 @@ def _unknown_id_count(text: str, valid_ids: list[str]) -> int:
         return 0
     try:
         parsed = json.loads(match.group(0))
-    except json.JSONDecodeError:
+    except (ValueError, RecursionError):
         return 0
     if not isinstance(parsed, list):
         return 0
@@ -625,7 +625,7 @@ def _extract_ids(text: str, valid_ids: list[str], *, accept_positions: bool = Fa
                 ordered = [rid for rid in named if rid is not None]
                 if ordered:
                     return ordered
-        except json.JSONDecodeError:
+        except (ValueError, RecursionError):
             pass
     positions = [(text.find(rid), rid) for rid in valid_ids if rid in text]
     return [rid for _, rid in sorted(positions)]
