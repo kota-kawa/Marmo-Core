@@ -80,46 +80,19 @@ flowchart TD
 
 ```mermaid
 flowchart TB
-    subgraph entry["Entry points"]
-        cli["marmo CLI"]
-        api["Python API"]
-    end
+    entry["<b>Entry points</b><br/>marmo CLI, Python API"]
     kernel["<b>Kernel</b><br/>orchestrates one task"]
-    subgraph routing["Routing"]
-        retriever["Retriever<br/>order and relevance"]
-        selector["Set selector<br/>constraints and the set"]
-    end
-    subgraph control["Control"]
-        policy["Policy gateway<br/>activation, execution, output"]
-        hitl["Human approval"]
-        budget["Task budget"]
-    end
-    subgraph execution["Execution"]
-        compiler["Context compiler"]
-        tools["Tool runtime"]
-        agents["Agent runtime<br/>child Kernel"]
-        recovery["Recovery"]
-    end
-    subgraph record["Record"]
-        state["State store<br/>event-sourced, JSONL or SQLite"]
-        audit["Audit log<br/>SHA-256 hash chain"]
-    end
-    subgraph boundary["Replaceable boundaries"]
-        llm["LLM provider<br/>OpenAI-compatible, Anthropic, mock"]
-        connectors["Connectors and MCP<br/>HTTP, file, shell, SQLite"]
-        embeddings["Embeddings and cross-encoder"]
-    end
-    registry[("Resource registry<br/>Memory, Skill, Tool, Agent")]
-    cli --> kernel
-    api --> kernel
-    kernel --> routing
-    kernel --> control
-    kernel --> execution
-    kernel --> record
+    routing["<b>Routing</b><br/>Retriever: order and relevance<br/>Set selector: the set"]
+    control["<b>Control</b><br/>Policy gateway<br/>Human approval<br/>Task budget"]
+    execution["<b>Execution</b><br/>Context compiler<br/>Tool runtime<br/>Agent runtime, child Kernel<br/>Recovery"]
+    record["<b>Record</b><br/>State store: event-sourced<br/>Audit log: hash chain"]
+    registry[("<b>Resource registry</b><br/>Memory, Skill, Tool, Agent")]
+    boundary["<b>Replaceable boundaries</b><br/>LLM provider: OpenAI-compatible, Anthropic, mock<br/>Connectors and MCP: HTTP, file, shell, SQLite<br/>Embeddings and cross-encoder"]
+    entry --> kernel
+    kernel --> routing & control & execution & record
     routing --> registry
-    routing --> embeddings
-    execution --> llm
-    execution --> connectors
+    routing --> boundary
+    execution --> boundary
 ```
 
 The kernel holds no algorithms of its own. Retrieval decides order and relevance, selection decides the set, and the gates decide whether an operation may run. Each of these is an interface passed to `Kernel(...)`, which is how new routing methods are tried without touching the default behaviour. [ARCHITECTURE.md](ARCHITECTURE.md) lists every module and extension point.
@@ -543,46 +516,19 @@ flowchart TD
 
 ```mermaid
 flowchart TB
-    subgraph entry["入口"]
-        cli["marmo CLI"]
-        api["Python API"]
-    end
+    entry["<b>入口</b><br/>marmo CLI、Python API"]
     kernel["<b>Kernel</b><br/>一つのタスクを束ねる"]
-    subgraph routing["ルーティング"]
-        retriever["Retriever<br/>順序と関連度"]
-        selector["Set Selector<br/>制約の充足と集合"]
-    end
-    subgraph control["制御"]
-        policy["Policy Gateway<br/>activation・execution・output"]
-        hitl["人の承認"]
-        budget["タスク予算"]
-    end
-    subgraph execution["実行"]
-        compiler["Context Compiler"]
-        tools["Tool Runtime"]
-        agents["Agent Runtime<br/>子 Kernel"]
-        recovery["Recovery"]
-    end
-    subgraph record["記録"]
-        state["State Store<br/>イベントソーシング、JSONL / SQLite"]
-        audit["監査ログ<br/>SHA-256 ハッシュチェーン"]
-    end
-    subgraph boundary["差し替え可能な境界"]
-        llm["LLM プロバイダ<br/>OpenAI 互換・Anthropic・モック"]
-        connectors["コネクタと MCP<br/>HTTP・ファイル・シェル・SQLite"]
-        embeddings["埋め込みと cross-encoder"]
-    end
-    registry[("リソースレジストリ<br/>Memory・Skill・Tool・Agent")]
-    cli --> kernel
-    api --> kernel
-    kernel --> routing
-    kernel --> control
-    kernel --> execution
-    kernel --> record
+    routing["<b>ルーティング</b><br/>Retriever: 順序と関連度<br/>Set Selector: 集合"]
+    control["<b>制御</b><br/>Policy Gateway<br/>人の承認<br/>タスク予算"]
+    execution["<b>実行</b><br/>Context Compiler<br/>Tool Runtime<br/>Agent Runtime、子 Kernel<br/>Recovery"]
+    record["<b>記録</b><br/>State Store: イベントソーシング<br/>監査ログ: ハッシュチェーン"]
+    registry[("<b>リソースレジストリ</b><br/>Memory、Skill、Tool、Agent")]
+    boundary["<b>差し替え可能な境界</b><br/>LLM プロバイダ: OpenAI 互換、Anthropic、モック<br/>コネクタと MCP: HTTP、ファイル、シェル、SQLite<br/>埋め込みと cross-encoder"]
+    entry --> kernel
+    kernel --> routing & control & execution & record
     routing --> registry
-    routing --> embeddings
-    execution --> llm
-    execution --> connectors
+    routing --> boundary
+    execution --> boundary
 ```
 
 カーネル自身はアルゴリズムを持ちません。検索が順序と関連度を、選択が集合を、ゲートが実行の可否を決めます。いずれも `Kernel(...)` に渡すインターフェースなので、既定の挙動を変えずに新しいルーティング手法を試せます。全モジュールと拡張点は [ARCHITECTURE.md](ARCHITECTURE.md) にあります。
