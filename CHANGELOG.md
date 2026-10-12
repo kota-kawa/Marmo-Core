@@ -68,6 +68,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - README now links to the Marmo Core website for the library overview, concepts,
   and usage guide.
+- README now opens with an overview for readers evaluating the project: the
+  request pipeline, layer, and task-lifecycle diagrams, real CLI output,
+  the safeguards and their limits, design decisions with their decision
+  records, measured results, and past failures with the check that now
+  prevents each. The install and usage sections are unchanged.
 - A held-out benchmark of bundled resources now reports real Tool execution
   success, artifact-checked single-step task completion, Layer 2 set quality,
   Layer 3 cache reuse, and adversarial metadata outcomes. A benchmark-only
