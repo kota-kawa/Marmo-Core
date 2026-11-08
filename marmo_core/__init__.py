@@ -154,6 +154,7 @@ from .recovery import (
     compensation_for,
 )
 from .fusion import RRFRetriever
+from .vector_index import ExactVectorIndex, HNSWVectorIndex, VectorIndex
 from .registry import ResourceRegistry
 from .rerank import CrossEncoderProvider, CrossEncoderRerankRetriever
 from .retriever import LexicalRetriever, Retriever
@@ -260,6 +261,9 @@ __all__ = [
     "HitlRequest",
     "HitlResponse",
     "HybridRetriever",
+    "HNSWVectorIndex",
+    "ExactVectorIndex",
+    "VectorIndex",
     "HydeRetriever",
     "HTTPConnector",
     "InMemoryStateStore",

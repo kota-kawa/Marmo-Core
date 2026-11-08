@@ -39,6 +39,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `RRFRetriever` fuses two retrievers' rankings with Reciprocal Rank Fusion.
 
+- `HybridRetriever(vector_index=...)` takes a `VectorIndex` factory:
+  `ExactVectorIndex` (numpy, exact) or `HNSWVectorIndex` (usearch HNSW,
+  approximate). Without it the pure-Python similarity loop is unchanged.
+
 - `BedrockLLMProvider` and `--llm bedrock` use the existing OpenAI-compatible
   Chat Completions implementation with `BEDROCK_API_KEY` (or
   `AWS_BEARER_TOKEN_BEDROCK`). Defaults to gpt-oss-120b in us-east-1; model,

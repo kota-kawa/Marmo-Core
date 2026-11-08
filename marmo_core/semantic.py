@@ -36,6 +36,7 @@ from .retriever import (
     _tokens,
 )
 from .secrets import redact_credentials
+from .vector_index import VectorIndex
 
 _EMBED_TEXT_LIMIT = 4000
 _DEFAULT_BATCH_SIZE = 64
@@ -159,6 +160,12 @@ class HybridRetriever(Retriever):
     resource after every task. Query vectors are cached too, bounded, because
     one goal fans out into several searches (the kernel tops up starved kinds)
     that all embed the same task string.
+
+    ``vector_index`` (a factory such as ``ExactVectorIndex`` or
+    ``HNSWVectorIndex``) replaces the pure-Python similarity loop over every
+    document: the index finds the embedding-nearest documents and scores the
+    lexical candidates. It is built once per registry content revision. With
+    the default ``None`` the behavior is unchanged.
     """
 
     def __init__(
@@ -169,6 +176,7 @@ class HybridRetriever(Retriever):
         semantic_weight: float = 0.5,
         candidate_pool: int = 50,
         query_cache_size: int = 128,
+        vector_index: Callable[[], VectorIndex] | None = None,
     ) -> None:
         if not 0.0 <= semantic_weight <= 1.0:
             raise ValueError("semantic_weight must be between 0.0 and 1.0")
@@ -181,6 +189,8 @@ class HybridRetriever(Retriever):
             WeakKeyDictionary()
         )
         self._query_vectors: OrderedDict[str, list[float]] = OrderedDict()
+        self.vector_index = vector_index
+        self._index_cache: WeakKeyDictionary[ResourceRegistry, tuple[int, VectorIndex]] = WeakKeyDictionary()
 
     def search(self, registry: ResourceRegistry, query: SearchQuery) -> list[SearchResult]:
         if not query.task.strip() or self.semantic_weight == 0.0:
@@ -192,21 +202,31 @@ class HybridRetriever(Retriever):
             min_score=0.0,
         )
         candidates = self.lexical.search(registry, widened)
-        vectors = self._vectors_for(registry)
         query_vector = self._query_vector(query.task)
-        semantic_scores = {
-            identity: _cosine_01(query_vector, vector) for identity, vector in vectors.items()
-        }
         # The inverted index only surfaces documents sharing at least one
         # token with the task, so pull in the embedding-nearest documents it
         # missed; they enter with zero lexical relevance and compete on the
         # blended score.
         pooled = {result.resource.identity for result in candidates}
-        nearest = sorted(
-            (identity for identity in semantic_scores if identity not in pooled),
-            key=lambda identity: (semantic_scores[identity], identity),
-            reverse=True,
-        )[: self.candidate_pool]
+        if self.vector_index is None:
+            vectors = self._vectors_for(registry)
+            semantic_scores = {
+                identity: _cosine_01(query_vector, vector) for identity, vector in vectors.items()
+            }
+            nearest = sorted(
+                (identity for identity in semantic_scores if identity not in pooled),
+                key=lambda identity: (semantic_scores[identity], identity),
+                reverse=True,
+            )[: self.candidate_pool]
+        else:
+            index = self._vector_index_for(registry)
+            found = index.nearest(query_vector, self.candidate_pool, exclude=pooled)
+            semantic_scores = {
+                identity: _cosine_to_01(cosine)
+                for identity, cosine in index.similarity(query_vector, pooled).items()
+            }
+            semantic_scores.update((identity, _cosine_to_01(cosine)) for identity, cosine in found)
+            nearest = [identity for identity, _ in found]
         candidates += self.lexical.score_semantic_candidates(registry, widened, nearest)
         if not candidates:
             return []
@@ -240,6 +260,20 @@ class HybridRetriever(Retriever):
         vectors = {definition.identity: vector for definition, vector in zip(definitions, embedded)}
         self._vector_cache[registry] = (content_revision, vectors)
         return vectors
+
+    def _vector_index_for(self, registry: ResourceRegistry) -> VectorIndex:
+        """The vector index for this registry, rebuilt only when its text changed."""
+
+        assert self.vector_index is not None
+        cached = self._index_cache.get(registry)
+        content_revision = registry.content_revision
+        if cached is not None and cached[0] == content_revision:
+            return cached[1]
+        vectors = self._vectors_for(registry)
+        index = self.vector_index()
+        index.build(list(vectors), list(vectors.values()))
+        self._index_cache[registry] = (content_revision, index)
+        return index
 
     def _query_vector(self, task: str) -> list[float]:
         """Embed one task string, reusing the last ``query_cache_size`` of them."""
