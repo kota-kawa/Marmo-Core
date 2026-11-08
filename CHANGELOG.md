@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Semantic relevance is now cosine similarity clipped to [0, 1]. Negative
+  cosines used to map to `(cosine + 1) / 2`, which ranked a cosine of -0.14
+  above one of +0.14 in `HybridRetriever` and in `HierarchicalRetriever`'s
+  group routing. Positive cosines, which real sentence embeddings almost
+  always produce, score exactly as before.
+
 - Provider responses without token usage now keep `LLMResponse.usage` empty
   instead of reporting zero tokens. Budgeted tasks charge the full reserved
   amount when usage is unknown.
@@ -19,6 +25,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   transient errors only.
 
 ### Added
+
+- `TopKSetSelector` (global Top-K with optional dependency expansion,
+  conflict dropping, and a permission check) and `RepairingSetSelector`
+  (the same repair applied to any selector's output), as baselines for the
+  integrated constrained solvers.
+
+- `LLMSetSelector(show_constraints=False)` omits dependency, conflict, and
+  permission facts from the prompt. The default is unchanged.
+
+- `LexicalRetriever(k1=..., b=...)` sets the BM25 parameters; the defaults
+  (1.5 and 0.75) are unchanged.
+
+- `RRFRetriever` fuses two retrievers' rankings with Reciprocal Rank Fusion.
+
+- `HybridRetriever(vector_index=...)` takes a `VectorIndex` factory:
+  `ExactVectorIndex` (numpy, exact) or `HNSWVectorIndex` (usearch HNSW,
+  approximate). Without it the pure-Python similarity loop is unchanged.
 
 - `BedrockLLMProvider` and `--llm bedrock` use the existing OpenAI-compatible
   Chat Completions implementation with `BEDROCK_API_KEY` (or

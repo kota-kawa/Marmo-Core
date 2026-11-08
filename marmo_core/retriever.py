@@ -125,7 +125,11 @@ class _Bm25Index:
     documents from outranking resources whose declared purpose is the task.
     """
 
-    def __init__(self, definitions: list[ResourceDefinition]) -> None:
+    def __init__(
+        self, definitions: list[ResourceDefinition], *, k1: float = _BM25_K1, b: float = _BM25_B
+    ) -> None:
+        self.k1 = k1
+        self.b = b
         self.definitions = definitions
         self.doc_count = len(definitions)
         self.doc_index_by_identity = {
@@ -243,10 +247,10 @@ class _Bm25Index:
                 continue
             idf = self.idf(token)
             for doc_index, frequency in postings:
-                length_norm = 1.0 - _BM25_B + _BM25_B * (
+                length_norm = 1.0 - self.b + self.b * (
                     self.doc_lengths[doc_index] / self.average_length if self.average_length else 1.0
                 )
-                scores[doc_index] += idf * (frequency * (_BM25_K1 + 1.0)) / (frequency + _BM25_K1 * length_norm)
+                scores[doc_index] += idf * (frequency * (self.k1 + 1.0)) / (frequency + self.k1 * length_norm)
         return dict(scores)
 
 
@@ -257,9 +261,21 @@ class LexicalRetriever(Retriever):
     registry's *content* revision, so writing execution stats back does not
     throw the tokenization away), and repeated searches cost milliseconds
     even at thousands of resources.
+
+    ``k1`` (term-frequency saturation) and ``b`` (length normalization) are
+    the BM25 parameters of the document scores; the defaults are the values
+    the library has always used. The relevance yardstick
+    (``_Bm25Index.reference_score``) is the query's summed idf and does not
+    depend on them.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, k1: float = _BM25_K1, b: float = _BM25_B) -> None:
+        if k1 < 0.0:
+            raise ValueError("k1 must be non-negative")
+        if not 0.0 <= b <= 1.0:
+            raise ValueError("b must be between 0.0 and 1.0")
+        self.k1 = k1
+        self.b = b
         self._index_cache: WeakKeyDictionary[
             ResourceRegistry, tuple[int, int, _Bm25Index]
         ] = WeakKeyDictionary()
@@ -326,7 +342,7 @@ class LexicalRetriever(Retriever):
                 index.refresh(registry.all())
                 self._index_cache[registry] = (content_revision, revision, index)
             return index
-        index = _Bm25Index(registry.all())
+        index = _Bm25Index(registry.all(), k1=self.k1, b=self.b)
         self._index_cache[registry] = (content_revision, revision, index)
         return index
 

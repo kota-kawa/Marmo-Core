@@ -153,16 +153,20 @@ from .recovery import (
     RetryPolicy,
     compensation_for,
 )
+from .fusion import RRFRetriever
+from .vector_index import ExactVectorIndex, HNSWVectorIndex, VectorIndex
 from .registry import ResourceRegistry
 from .rerank import CrossEncoderProvider, CrossEncoderRerankRetriever
 from .retriever import LexicalRetriever, Retriever
 from .selector import (
     BranchAndBoundSetSelector,
     GreedyConstrainedSetSelector,
+    RepairingSetSelector,
     RuleBasedSetSelector,
     SelectionContext,
     SetSelector,
     BeamSearchSetSelector,
+    TopKSetSelector,
 )
 from .semantic import (
     EmbeddingProvider,
@@ -257,6 +261,9 @@ __all__ = [
     "HitlRequest",
     "HitlResponse",
     "HybridRetriever",
+    "HNSWVectorIndex",
+    "ExactVectorIndex",
+    "VectorIndex",
     "HydeRetriever",
     "HTTPConnector",
     "InMemoryStateStore",
@@ -321,6 +328,7 @@ __all__ = [
     "Retriever",
     "RetryPolicy",
     "RouteDecision",
+    "RRFRetriever",
     "RoutingCase",
     "RoutingCaseStore",
     "RoutingDecision",
@@ -328,6 +336,8 @@ __all__ = [
     "SafetyFinding",
     "SafetyInspector",
     "RuleBasedSetSelector",
+    "RepairingSetSelector",
+    "TopKSetSelector",
     "SQLiteStateStore",
     "SQLiteConnector",
     "SearchQuery",

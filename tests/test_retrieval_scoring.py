@@ -402,5 +402,40 @@ class CandidatePoolSearchBudgetTests(unittest.TestCase):
         self.assertIn("skill", kinds)
 
 
+class BM25ParameterTests(unittest.TestCase):
+    def _registry(self) -> ResourceRegistry:
+        registry = ResourceRegistry()
+        registry.add(_resource("tool.short", "tool", "invoices"))
+        registry.add(
+            _resource(
+                "tool.long",
+                "tool",
+                "invoices plus many unrelated words about gardens rivers mountains forests and lakes",
+            )
+        )
+        return registry
+
+    def test_length_normalization_follows_b(self) -> None:
+        registry = self._registry()
+        tokens = ["invoices"]
+        default_index = LexicalRetriever()._index_for(registry)
+        flat_index = LexicalRetriever(b=0.0)._index_for(registry)
+        default_scores = default_index.bm25_scores(tokens)
+        flat_scores = flat_index.bm25_scores(tokens)
+        short, long = (default_index.doc_index_by_identity[f"tool.{name}@1.0.0"] for name in ("short", "long"))
+        self.assertGreater(default_scores[short], default_scores[long])
+        self.assertAlmostEqual(flat_scores[short], flat_scores[long])
+
+    def test_defaults_are_the_historical_values(self) -> None:
+        retriever = LexicalRetriever()
+        self.assertEqual((retriever.k1, retriever.b), (1.5, 0.75))
+
+    def test_invalid_parameters_are_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            LexicalRetriever(k1=-0.1)
+        with self.assertRaises(ValueError):
+            LexicalRetriever(b=1.5)
+
+
 if __name__ == "__main__":
     unittest.main()

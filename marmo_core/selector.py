@@ -16,6 +16,11 @@ and budgets — and per §15.6 a selector is allowed to *not* pick anything
 - ``BranchAndBoundSetSelector`` (solver #3) proves the Σu optimum by
   exhaustive search with an admissible upper bound, measuring how far the
   approximate solvers sit from the exact objective.
+- ``TopKSetSelector`` is the global Top-K baseline; its optional
+  post-processing (add dependencies, drop conflicts, escalate on missing
+  permissions) is the "rank, then repair" alternative to the integrated
+  solvers. ``RepairingSetSelector`` applies the same repair to any other
+  selector's output.
 """
 
 from __future__ import annotations
@@ -573,6 +578,189 @@ class BranchAndBoundSetSelector(SetSelector):
         if notes:
             reason += ": " + "; ".join(notes[:4])
         return SelectionResult((), reason, status="abstain")
+
+
+class TopKSetSelector(SetSelector):
+    """Global Top-K baseline with optional constraint post-processing.
+
+    Takes the ``k`` highest-ranked candidates that pass the context's score
+    and relevance floors, regardless of kind. With every post-processing
+    switch off it is the plain Top-K baseline: it never escalates, and it
+    abstains only when no candidate passes the floors.
+
+    The switches turn it into the simplest constraint-aware alternative to
+    the integrated solvers — rank first, then repair:
+
+    - ``expand_dependencies`` adds each picked candidate's dependency closure
+      from the candidate pool; a candidate whose closure is not in the pool
+      is dropped.
+    - ``drop_conflicts`` walks the set in score order and drops any member
+      that conflicts with a member already kept; when ``expand_dependencies``
+      is also on, members whose dependencies were dropped go too.
+    - ``check_permissions`` escalates when a remaining member needs a
+      permission the context did not grant.
+
+    The repair is the same one ``RepairingSetSelector`` applies to any other
+    selector's output.
+    """
+
+    def __init__(
+        self,
+        k: int,
+        *,
+        expand_dependencies: bool = False,
+        drop_conflicts: bool = False,
+        check_permissions: bool = False,
+    ) -> None:
+        if k < 1:
+            raise ValueError("k must be at least 1")
+        self.k = k
+        self.expand_dependencies = expand_dependencies
+        self.drop_conflicts = drop_conflicts
+        self.check_permissions = check_permissions
+
+    def select(
+        self, results: list[SearchResult], *, context: SelectionContext | None = None
+    ) -> SelectionResult:
+        ctx = context or SelectionContext()
+        candidates = [
+            r
+            for r in results
+            if r.score >= ctx.min_score
+            and float(r.components.get("relevance", 1.0)) >= ctx.min_relevance
+        ]
+        if not candidates:
+            return SelectionResult(
+                (), "no candidate met the minimum score and relevance thresholds", status="abstain"
+            )
+        picked = candidates[: self.k]
+        return _repair_selection(
+            picked,
+            results,
+            ctx,
+            expand_dependencies=self.expand_dependencies,
+            drop_conflicts=self.drop_conflicts,
+            check_permissions=self.check_permissions,
+            label=f"top-{self.k}",
+        )
+
+
+class RepairingSetSelector(SetSelector):
+    """Apply the ``TopKSetSelector`` post-processing to another selector's set.
+
+    Only a ``selected`` outcome with at least one resource is repaired;
+    abstain and escalate pass through unchanged. The repair can only use
+    candidates from the pool the wrapped selector was given.
+    """
+
+    def __init__(
+        self,
+        inner: SetSelector,
+        *,
+        expand_dependencies: bool = True,
+        drop_conflicts: bool = True,
+        check_permissions: bool = True,
+    ) -> None:
+        self.inner = inner
+        self.expand_dependencies = expand_dependencies
+        self.drop_conflicts = drop_conflicts
+        self.check_permissions = check_permissions
+
+    def select(
+        self, results: list[SearchResult], *, context: SelectionContext | None = None
+    ) -> SelectionResult:
+        ctx = context or SelectionContext()
+        selection = self.inner.select(results, context=ctx)
+        if selection.status != "selected" or not selection.results:
+            return selection
+        return _repair_selection(
+            list(selection.results),
+            results,
+            ctx,
+            expand_dependencies=self.expand_dependencies,
+            drop_conflicts=self.drop_conflicts,
+            check_permissions=self.check_permissions,
+            label="repaired selection",
+        )
+
+
+def _repair_selection(
+    picked: list[SearchResult],
+    pool_results: list[SearchResult],
+    ctx: SelectionContext,
+    *,
+    expand_dependencies: bool,
+    drop_conflicts: bool,
+    check_permissions: bool,
+    label: str,
+) -> SelectionResult:
+    """Dependency expansion, conflict dropping, and the permission check, in that order."""
+
+    pool = {result.resource.metadata.id: result for result in pool_results}
+    for result in picked:
+        pool.setdefault(result.resource.metadata.id, result)
+    notes: list[str] = []
+    kept: dict[str, SearchResult] = {}
+    for result in picked:
+        rid = result.resource.metadata.id
+        if not expand_dependencies:
+            kept.setdefault(rid, result)
+            continue
+        unit_ids, missing = _closure(rid, pool)
+        if missing is not None:
+            notes.append(f"{rid}: dependency {missing} not in candidate pool")
+            continue
+        for uid in unit_ids:
+            kept.setdefault(uid, pool[uid])
+
+    if drop_conflicts:
+        survivors: dict[str, SearchResult] = {}
+        for result in sorted(kept.values(), key=lambda r: (-r.score, r.resource.metadata.id)):
+            if _conflicts([result], survivors):
+                notes.append(f"{result.resource.metadata.id}: conflicts with a higher-ranked member")
+                continue
+            survivors[result.resource.metadata.id] = result
+        kept = survivors
+        if expand_dependencies:
+            changed = True
+            while changed:
+                changed = False
+                for rid, result in list(kept.items()):
+                    if any(dependency not in kept for dependency in result.resource.metadata.dependencies):
+                        del kept[rid]
+                        notes.append(f"{rid}: a dependency was dropped")
+                        changed = True
+
+    if not kept:
+        reason = f"{label}: nothing left after post-processing"
+        if notes:
+            reason += ": " + "; ".join(notes[:4])
+        return SelectionResult((), reason, status="abstain")
+
+    if check_permissions and ctx.enforce_permissions:
+        granted = set(ctx.granted_permissions)
+        missing_permissions = sorted(
+            {
+                permission
+                for result in kept.values()
+                for permission in result.resource.metadata.required_permissions
+                if permission not in granted
+            }
+        )
+        if missing_permissions:
+            return SelectionResult(
+                (),
+                f"{label} needs permissions that were not granted: "
+                + ", ".join(missing_permissions)
+                + "; a human can grant them and re-run",
+                status="escalate",
+            )
+
+    ordered = tuple(sorted(kept.values(), key=lambda r: (-r.score, r.resource.metadata.id)))
+    reason = f"{label}: {len(ordered)} resource(s)"
+    if notes:
+        reason += "; post-processing: " + "; ".join(notes[:4])
+    return SelectionResult(ordered, reason)
 
 
 def _resource_cost(result: SearchResult) -> Decimal:

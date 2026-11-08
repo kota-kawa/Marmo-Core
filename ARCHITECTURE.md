@@ -32,12 +32,14 @@ Agent の 4 種別）を登録し、ゴールに対して必要なものだけ�
 | レジストリ・ロード | `package.py` | `marmo-package.json` / `.lock.json`、SemVer、`verify_local_package` | _version, errors |
 | レジストリ・ロード | `loader.py` | ディレクトリ走査（`.json` / `.md`）、`load_registry`、`validate_resource_paths` | errors, markdown_skill, models, package, registry |
 | 検索 | `retriever.py` | `Retriever` ABC、BM25F 転置インデックスの `LexicalRetriever`、複合スコア | models, registry |
-| 検索 | `semantic.py` | `EmbeddingProvider` ABC、`HashingEmbeddingProvider`、`OpenAICompatibleEmbeddingProvider`、`HybridRetriever` | environment, errors, models, registry, retriever, secrets |
+| 検索 | `semantic.py` | `EmbeddingProvider` ABC、`HashingEmbeddingProvider`、`OpenAICompatibleEmbeddingProvider`、`HybridRetriever`（`vector_index=` で近傍探索を差し替え） | environment, errors, models, registry, retriever, secrets, vector_index |
+| 検索 | `vector_index.py` | `VectorIndex` ABC、`ExactVectorIndex`（numpy）、`HNSWVectorIndex`（usearch）。どちらも任意依存 | なし |
+| 検索 | `fusion.py` | `RRFRetriever`（2 つの検索器の順位を Reciprocal Rank Fusion で融合） | models, registry, retriever |
 | 検索 | `graph_routing.py` | `CapabilityGraphRetriever`（依存・capability 名前空間で候補を拡張） | models, registry, retriever, semantic |
 | 検索 | `hierarchy.py` | `HierarchicalRetriever`、`GroupingStrategy`（namespace / provider / permission / embedding） | models, registry, retriever, semantic |
 | 検索 | `rerank.py` | `CrossEncoderProvider` ABC、`CrossEncoderRerankRetriever` | models, registry, retriever |
 | 検索 | `llm_routing.py` | `HydeRetriever`、`LLMRerankRetriever`、`LLMCatalogRetriever`、`LLMSetSelector` | llm, models, registry, retriever, selector |
-| 選択 | `selector.py` | `SetSelector` ABC、`SelectionContext`、`RuleBasedSetSelector`（既定）、Greedy / Beam / BranchAndBound の制約付きソルバー | models |
+| 選択 | `selector.py` | `SetSelector` ABC、`SelectionContext`、`RuleBasedSetSelector`（既定）、Greedy / Beam / BranchAndBound の制約付きソルバー、比較用の `TopKSetSelector` と `RepairingSetSelector`（上位 K 件・任意の選択結果に依存の追加・競合の除去・権限の確認をかける） | models |
 | 選択 | `adaptive.py` | `CaseBasedRouter`、`RoutingCaseStore`（Kernel には組み込まれていない） | errors, models, registry, retriever, selector, semantic |
 | 選択 | `evaluator.py` | `ExecutionEvaluator`（監査ログ → `ResourceStats` 書き戻し。Kernel からは呼ばれない） | audit, models, registry |
 | ポリシー | `safety.py` | `SafetyInspector`（破壊的コマンド・持ち出し検知）、`redact_sensitive_arguments` | models, secrets |
