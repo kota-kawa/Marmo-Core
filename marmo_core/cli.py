@@ -39,7 +39,7 @@ from .models import KINDS, SIDE_EFFECTS, TRUST_LEVELS, SearchQuery
 from .package import verify_local_package, write_package_lock
 from .planner import LLMPlanner, Planner, RuleBasedPlanner
 from .policy import PolicyContext, PolicyGateway
-from .providers import AnthropicLLMProvider, OpenAICompatibleLLMProvider
+from .providers import AnthropicLLMProvider, BedrockLLMProvider, OpenAICompatibleLLMProvider
 from .recovery import CircuitBreaker, RecoveryManager, RetryPolicy
 from .safety import redact_sensitive_arguments
 from .registry import ResourceRegistry
@@ -48,7 +48,7 @@ from .selector import DEFAULT_SET_LIMITS, RuleBasedSetSelector
 from .security import ISOLATION_LEVELS
 from .state import InMemoryStateStore, JsonFileStateStore
 
-LLM_CHOICES = ("mock", "openai", "anthropic")
+LLM_CHOICES = ("mock", "openai", "anthropic", "bedrock")
 RETRIEVER_CHOICES = ("lexical", "hyde")
 
 
@@ -141,7 +141,8 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "model that drives the run: 'mock' replays --tool-args offline (default); "
             "'openai' and 'anthropic' read OPENAI_MODEL/OPENAI_API_KEY or "
-            "ANTHROPIC_MODEL/ANTHROPIC_API_KEY/ANTHROPIC_MAX_TOKENS from the environment or .env"
+            "ANTHROPIC_MODEL/ANTHROPIC_API_KEY/ANTHROPIC_MAX_TOKENS; 'bedrock' reads "
+            "BEDROCK_MODEL/BEDROCK_API_KEY/BEDROCK_REGION from the environment or .env"
         ),
     )
     run_parser.add_argument(
@@ -1106,6 +1107,8 @@ def _build_llm(choice: str, tool_arguments: Mapping[str, Mapping[str, Any]]) -> 
         return OpenAICompatibleLLMProvider()
     if choice == "anthropic":
         return AnthropicLLMProvider()
+    if choice == "bedrock":
+        return BedrockLLMProvider()
     return MockLLMProvider(tool_arguments=tool_arguments)
 
 

@@ -6,9 +6,9 @@ applications that want
 streaming, retries, or the full feature surface should wrap the official
 vendor SDK behind the same ``LLMProvider`` interface as an optional extra.
 
-Both providers accept a ``transport`` callable ``(url, payload, headers,
+The providers accept a ``transport`` callable ``(url, payload, headers,
 timeout) -> dict`` so tests run offline. API keys come from the environment
-(``ANTHROPIC_API_KEY`` / ``OPENAI_API_KEY``) unless passed explicitly; keys
+(``ANTHROPIC_API_KEY`` / ``OPENAI_API_KEY`` / ``BEDROCK_API_KEY``) unless passed explicitly; keys
 are held by the provider and never enter prompts, state, or logs (F-SEC-06) —
 error bodies are run through ``redact_credentials`` before they reach an
 exception, because providers echo the rejected key back in 401 responses.
@@ -37,6 +37,7 @@ from .environment import (
 )
 from .errors import ProviderHTTPError
 from .llm import ChatMessage, LLMProvider, LLMResponse, LLMToolSpec, ToolCall
+from .secrets import redact_credentials
 from .semantic import DEFAULT_OPENAI_BASE_URL, _post_json, with_missing_api_key_hint
 
 ANTHROPIC_VERSION = "2023-06-01"
@@ -321,7 +322,13 @@ class OpenAICompatibleLLMProvider(LLMProvider):
         except ProviderHTTPError as exc:
             # A 401/403 with no key configured is otherwise reported as the
             # server's bare "Invalid API Key", which hides the actual cause.
-            raise with_missing_api_key_hint(exc, self.api_key) from None
+            safe_error = ProviderHTTPError(
+                message=redact_credentials(exc.message, secret_values=(self.api_key,)),
+                status=exc.status,
+                body=redact_credentials(exc.body, secret_values=(self.api_key,)),
+                url=redact_credentials(exc.url, secret_values=(self.api_key,)),
+            )
+            raise with_missing_api_key_hint(safe_error, self.api_key) from None
 
     def build_request(
         self,
@@ -381,6 +388,55 @@ class OpenAICompatibleLLMProvider(LLMProvider):
             tool_calls=tuple(tool_calls),
             finish_reason="tool_calls" if finish == "tool_calls" else finish,
             usage=usage,
+        )
+
+
+class BedrockLLMProvider(OpenAICompatibleLLMProvider):
+    """Bedrock Chat Completions using the existing OpenAI-compatible client.
+
+    Defaults to gpt-oss-120b in us-east-1. Use a model and endpoint that
+    support Chat Completions; Claude requires the Anthropic Messages API.
+    """
+
+    def __init__(
+        self,
+        model: str | None = None,
+        *,
+        api_key: str | None = None,
+        region: str | None = None,
+        base_url: str | None = None,
+        max_tokens: int = 4096,
+        timeout: float = 120.0,
+        temperature: float | None = None,
+        reasoning_effort: str | None = None,
+        transport: Transport | None = None,
+    ) -> None:
+        resolved_model = model if model is not None else (
+            optional_environment("BEDROCK_MODEL") or "openai.gpt-oss-120b-1:0"
+        )
+        resolved_key = api_key if api_key is not None else (
+            optional_environment("BEDROCK_API_KEY")
+            or optional_environment("AWS_BEARER_TOKEN_BEDROCK") or ""
+        )
+        if not resolved_key.strip():
+            raise ValueError("BEDROCK_API_KEY or AWS_BEARER_TOKEN_BEDROCK must be set")
+        if base_url is None:
+            base_url = optional_environment("BEDROCK_BASE_URL")
+        if base_url is None:
+            region = region if region is not None else (
+                optional_environment("BEDROCK_REGION") or optional_environment("AWS_REGION")
+                or optional_environment("AWS_DEFAULT_REGION") or "us-east-1"
+            )
+            if not re.fullmatch(r"[a-z]{2}(?:-[a-z0-9]+)+-\d+", region):
+                raise ValueError("BEDROCK_REGION must be a valid AWS region")
+            suffix = "amazonaws.com.cn" if region.startswith("cn-") else "amazonaws.com"
+            base_url = f"https://bedrock-runtime.{region}.{suffix}/openai/v1"
+        super().__init__(
+            model=resolved_model, api_key=resolved_key, base_url=base_url,
+            max_tokens=max_tokens, timeout=timeout, temperature=temperature,
+            reasoning_effort=(optional_environment("BEDROCK_REASONING_EFFORT")
+                              if reasoning_effort is None else reasoning_effort),
+            transport=transport,
         )
 
 

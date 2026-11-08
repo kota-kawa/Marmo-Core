@@ -363,6 +363,7 @@ cp .env.example .env
 | --- | --- |
 | OpenAI-compatible | `OPENAI_API_KEY`, `OPENAI_MODEL` |
 | Anthropic | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `ANTHROPIC_MAX_TOKENS` |
+| Bedrock (OpenAI-compatible) | `BEDROCK_API_KEY` (or `AWS_BEARER_TOKEN_BEDROCK`) |
 
 The model name and maximum token setting can instead be passed to the corresponding Python provider constructor. `OPENAI_BASE_URL` selects another OpenAI-compatible endpoint; leave it empty for `api.openai.com`. `OPENAI_REASONING_EFFORT` is optional and provider-specific. See [`.env.example`](.env.example) for the full configuration and examples. OS environment variables take precedence over `.env` values.
 
@@ -375,6 +376,8 @@ marmo run resources/tools \
   --granted-permission fs.read \
   --allow-side-effect none --allow-side-effect read
 ```
+
+Use `--llm bedrock` for Bedrock Chat Completions. `BedrockLLMProvider` reuses `OpenAICompatibleLLMProvider`; it defaults to `openai.gpt-oss-120b-1:0` at `https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1`. Set `BEDROCK_REGION` to the key’s region, `BEDROCK_MODEL` for another Chat Completions model, or `BEDROCK_BASE_URL` for another endpoint. `BEDROCK_REASONING_EFFORT` is optional. Claude is not supported by this API. See [AWS Chat Completions](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-chat-completions.html).
 
 Use `--llm anthropic` for Anthropic. With a real model, `--tool-args` is ignored: the model chooses the Tool and its arguments. The default lexical retriever matches resources against their English metadata. For a goal in another language, add `--retriever hyde`; it uses the selected real model to restate the goal in that vocabulary before retrieval.
 
@@ -799,6 +802,7 @@ cp .env.example .env
 | --- | --- |
 | OpenAI 互換 | `OPENAI_API_KEY`、`OPENAI_MODEL` |
 | Anthropic | `ANTHROPIC_API_KEY`、`ANTHROPIC_MODEL`、`ANTHROPIC_MAX_TOKENS` |
+| Bedrock（OpenAI 互換） | `BEDROCK_API_KEY`（または `AWS_BEARER_TOKEN_BEDROCK`） |
 
 対応する Python プロバイダーのコンストラクタに、モデル名や最大トークン数を明示的に渡すこともできます。OpenAI 互換の別の接続先には `OPENAI_BASE_URL` を設定します。空なら `api.openai.com` が使われます。`OPENAI_REASONING_EFFORT` は任意で、利用可能な値はプロバイダーによって異なります。設定全体と例は [`.env.example`](.env.example) を参照してください。OS の環境変数は `.env` より優先されます。
 
@@ -811,6 +815,8 @@ marmo run resources/tools \
   --granted-permission fs.read \
   --allow-side-effect none --allow-side-effect read
 ```
+
+Bedrock では `--llm bedrock` を使います。`BedrockLLMProvider` は既存の `OpenAICompatibleLLMProvider` を再利用し、既定では `us-east-1` の `openai.gpt-oss-120b-1:0` を呼びます。キーを発行したリージョンを `BEDROCK_REGION`、モデルを `BEDROCK_MODEL`、接続先を `BEDROCK_BASE_URL`、推論設定を `BEDROCK_REASONING_EFFORT` で変更できます。Chat Completions 対応モデルを指定してください。Claude はこの API に対応していません。[AWS 公式仕様](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-chat-completions.html) を参照してください。
 
 Anthropic では `--llm anthropic` を使います。実モデルを選んだ場合、`--tool-args` は無視され、Tool と引数はモデルが選びます。既定の語彙検索はリソースの英語メタデータに照合します。日本語などで目標を書く場合は `--retriever hyde` を付けると、指定した実モデルが検索前に目標をその語彙へ言い換えます。
 
