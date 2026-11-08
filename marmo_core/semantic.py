@@ -310,11 +310,8 @@ def _cosine_01(left: Sequence[float], right: Sequence[float]) -> float:
 def _cosine_to_01(cosine: float) -> float:
     """The relevance scale used for semantic similarity: cosine clipped to [0, 1].
 
-    The mapping must be monotonic, because nearest-neighbor indexes rank by
-    raw cosine. An earlier version mapped negative cosines to
-    ``(cosine + 1) / 2``, which scored a cosine of -0.14 (0.43) above one of
-    +0.14 (0.14). Real sentence embeddings almost never produce negative
-    cosines between texts, so positive values are unchanged.
+    The mapping must be monotonic in cosine, because nearest-neighbor indexes
+    rank by raw cosine.
     """
 
     return max(0.0, min(1.0, cosine))

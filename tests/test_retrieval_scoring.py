@@ -402,10 +402,6 @@ class CandidatePoolSearchBudgetTests(unittest.TestCase):
         self.assertIn("skill", kinds)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class BM25ParameterTests(unittest.TestCase):
     def _registry(self) -> ResourceRegistry:
         registry = ResourceRegistry()
@@ -439,3 +435,7 @@ class BM25ParameterTests(unittest.TestCase):
             LexicalRetriever(k1=-0.1)
         with self.assertRaises(ValueError):
             LexicalRetriever(b=1.5)
+
+
+if __name__ == "__main__":
+    unittest.main()

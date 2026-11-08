@@ -595,8 +595,8 @@ class TopKSetSelector(SetSelector):
       from the candidate pool; a candidate whose closure is not in the pool
       is dropped.
     - ``drop_conflicts`` walks the set in score order and drops any member
-      that conflicts with a member already kept (then drops members whose
-      dependencies were dropped).
+      that conflicts with a member already kept; when ``expand_dependencies``
+      is also on, members whose dependencies were dropped go too.
     - ``check_permissions`` escalates when a remaining member needs a
       permission the context did not grant.
 
