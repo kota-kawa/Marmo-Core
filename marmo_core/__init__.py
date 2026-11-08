@@ -153,6 +153,7 @@ from .recovery import (
     RetryPolicy,
     compensation_for,
 )
+from .fusion import RRFRetriever
 from .registry import ResourceRegistry
 from .rerank import CrossEncoderProvider, CrossEncoderRerankRetriever
 from .retriever import LexicalRetriever, Retriever
@@ -323,6 +324,7 @@ __all__ = [
     "Retriever",
     "RetryPolicy",
     "RouteDecision",
+    "RRFRetriever",
     "RoutingCase",
     "RoutingCaseStore",
     "RoutingDecision",
