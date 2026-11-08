@@ -34,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `LLMSetSelector(show_constraints=False)` omits dependency, conflict, and
   permission facts from the prompt. The default is unchanged.
 
+- `LexicalRetriever(k1=..., b=...)` sets the BM25 parameters; the defaults
+  (1.5 and 0.75) are unchanged.
+
 - `BedrockLLMProvider` and `--llm bedrock` use the existing OpenAI-compatible
   Chat Completions implementation with `BEDROCK_API_KEY` (or
   `AWS_BEARER_TOKEN_BEDROCK`). Defaults to gpt-oss-120b in us-east-1; model,
