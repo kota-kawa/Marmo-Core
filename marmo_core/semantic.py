@@ -270,8 +270,20 @@ def _cosine_01(left: Sequence[float], right: Sequence[float]) -> float:
     right_norm = math.sqrt(sum(b * b for b in right))
     if left_norm == 0.0 or right_norm == 0.0:
         return 0.0
-    cosine = dot / (left_norm * right_norm)
-    return max(0.0, min(1.0, (cosine + 1.0) / 2.0)) if cosine < 0 else min(1.0, cosine)
+    return _cosine_to_01(dot / (left_norm * right_norm))
+
+
+def _cosine_to_01(cosine: float) -> float:
+    """The relevance scale used for semantic similarity: cosine clipped to [0, 1].
+
+    The mapping must be monotonic, because nearest-neighbor indexes rank by
+    raw cosine. An earlier version mapped negative cosines to
+    ``(cosine + 1) / 2``, which scored a cosine of -0.14 (0.43) above one of
+    +0.14 (0.14). Real sentence embeddings almost never produce negative
+    cosines between texts, so positive values are unchanged.
+    """
+
+    return max(0.0, min(1.0, cosine))
 
 
 def _post_json(url: str, payload: dict, headers: dict, timeout: float) -> dict:
