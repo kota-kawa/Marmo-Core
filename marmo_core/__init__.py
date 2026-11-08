@@ -144,7 +144,7 @@ from .planner import (
     validate_plan,
 )
 from .policy import PolicyContext, PolicyDecision, PolicyGateway, PolicyRejectedError
-from .providers import AnthropicLLMProvider, OpenAICompatibleLLMProvider, ToolNameCodec
+from .providers import AnthropicLLMProvider, BedrockLLMProvider, OpenAICompatibleLLMProvider, ToolNameCodec
 from .recovery import (
     CircuitBreaker,
     Failure,
@@ -214,6 +214,7 @@ __all__ = [
     "BudgetedLLMProvider",
     "AutoApproveHitlBroker",
     "BeamSearchSetSelector",
+    "BedrockLLMProvider",
     "BoundTool",
     "BoundAgent",
     "BranchAndBoundSetSelector",

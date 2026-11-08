@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `BedrockLLMProvider` and `--llm bedrock` use the existing OpenAI-compatible
+  Chat Completions implementation with `BEDROCK_API_KEY` (or
+  `AWS_BEARER_TOKEN_BEDROCK`). Defaults to gpt-oss-120b in us-east-1; model,
+  endpoint, region and reasoning effort can be configured in `.env`.
+  OpenAI-compatible HTTP errors redact the exact configured API key.
+
 - `LLMCatalogRetriever` ranks by showing the LLM the whole filtered catalog
   (id, kind, name, and the first `description_limit` characters of each
   description) with no candidate retrieval first. It is the baseline for

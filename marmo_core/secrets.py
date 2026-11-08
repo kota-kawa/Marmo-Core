@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 import os
 import re
 
@@ -59,9 +59,16 @@ CREDENTIAL_VALUE_PATTERNS = (
 REDACTED = "[REDACTED]"
 
 
-def redact_credentials(text: str) -> str:
-    """Replace credential-shaped substrings so they cannot reach a log or a reply."""
+def redact_credentials(text: str, *, secret_values: Sequence[str] = ()) -> str:
+    """Redact credential patterns and known values of at least eight characters.
 
+    Short test placeholders are excluded from exact matching to preserve
+    ordinary error text and parameter names. Real API keys exceed this length.
+    """
+
+    for value in secret_values:
+        if len(value) >= 8:
+            text = text.replace(value, REDACTED)
     for pattern in CREDENTIAL_VALUE_PATTERNS:
         text = pattern.sub(REDACTED, text)
     return text

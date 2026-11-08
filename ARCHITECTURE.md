@@ -50,7 +50,7 @@ Agent の 4 種別）を登録し、ゴールに対して必要なものだけ�
 | 実行 | `recovery.py` | `RecoveryManager`、`RetryPolicy`、`CircuitBreaker`、補償 | models |
 | 実行 | `kernel.py` | `Kernel`、`TaskResult`。全層の束ね役 | ほぼ全部 |
 | プロバイダ | `llm.py` | `LLMProvider` ABC、`ChatMessage`、`ToolCall`、`MockLLMProvider`、`estimate_tokens` | secrets |
-| プロバイダ | `providers.py` | `ToolNameCodec`、`AnthropicLLMProvider`、`OpenAICompatibleLLMProvider`（urllib、`transport` 注入可） | environment, errors, llm, semantic |
+| プロバイダ | `providers.py` | `ToolNameCodec`、`AnthropicLLMProvider`、`OpenAICompatibleLLMProvider`、`BedrockLLMProvider`（urllib、`transport` 注入可） | environment, errors, llm, semantic |
 | 状態・監査・HITL | `state.py` | イベントソーシングの `StateStore` ABC と InMemory / JsonFile / SQLite 実装、`TaskState`、`Checkpoint` | errors, secrets |
 | 状態・監査・HITL | `audit.py` | `AuditRecord`、`AuditLog`（SHA-256 ハッシュチェーン）、`mask_sensitive` | secrets |
 | 状態・監査・HITL | `hitl.py` | `HitlRequest` / `HitlResponse` / `HitlPolicy`、`HitlBroker` ABC と Pending / Callback / Console / AutoApprove | errors, models |
@@ -120,7 +120,7 @@ Agent 委譲を許し、その子からさらに Agent を呼ぶには明示的�
 - `run`: `_build_kernel(continue_audit=False)` が `load_registry`（既定パスは
   `resources/`、`skills/`、`examples/resources/` の順。`--no-default-resources` で無効）、
   CLI 引数からの `PolicyContext` と `HitlPolicy`、`ConsoleHitlBroker`（`--confirm`）
-  または `PendingHitlBroker`、`_build_llm`（mock / openai / anthropic）、
+  または `PendingHitlBroker`、`_build_llm`（mock / openai / anthropic / bedrock）、
   `_build_retriever`（lexical / hyde）、planner、connectors、
   `JsonFileStateStore(--state-dir)` を組み立て、`kernel.run_goal(--task)` を実行する。
   `_report_task` が `--audit-log` の書き出しと `--strict` の検査を行う。終了コードは
@@ -211,6 +211,7 @@ Agent 委譲を許し、その子からさらに Agent を呼ぶには明示的�
 | 変数 | 読む場所 |
 |---|---|
 | `ANTHROPIC_MODEL`（必須）、`ANTHROPIC_API_KEY`、`ANTHROPIC_MAX_TOKENS`（必須・正の整数） | `providers.py` |
+| `BEDROCK_API_KEY` / `AWS_BEARER_TOKEN_BEDROCK`、`BEDROCK_MODEL`、`BEDROCK_REGION` / `AWS_REGION` / `AWS_DEFAULT_REGION`、`BEDROCK_BASE_URL`、`BEDROCK_REASONING_EFFORT` | `providers.py`（OpenAI 互換 Chat Completions を再利用） |
 | `OPENAI_MODEL`（必須）、`OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_REASONING_EFFORT` | `providers.py` |
 | `OPENAI_EMBEDDING_MODEL`（必須）、`OPENAI_API_KEY`、`OPENAI_BASE_URL` | `semantic.py` |
 | `MARMO_NOTIFICATION_<DESTINATION>_URL` | `sample_resources/tools.py` |

@@ -15,6 +15,7 @@ import urllib.error
 
 from marmo_core import (
     AnthropicLLMProvider,
+    BedrockLLMProvider,
     BudgetedLLMProvider,
     BudgetLedger,
     BudgetExceededError,
@@ -83,6 +84,87 @@ def _openai_tool_call_response(name: str) -> dict:
         ],
         "usage": {"prompt_tokens": 1, "completion_tokens": 1},
     }
+
+
+class BedrockProviderTests(unittest.TestCase):
+    def test_bedrock_reuses_chat_completions_with_tools_and_bounded_usage(self) -> None:
+        seen = []
+        def transport(url, payload, headers, timeout):
+            seen.append((url, payload, headers))
+            reply = _openai_tool_call_response(payload["tools"][0]["function"]["name"])
+            reply["usage"] = {"prompt_tokens": 12, "completion_tokens": 5}
+            return reply
+        with mock.patch.dict(os.environ, {"OPENAI_API_KEY": "wrong-key", "OPENAI_REASONING_EFFORT": "high"}, clear=True):
+            provider = BedrockLLMProvider(api_key="bedrock-test-key", region="us-west-2", model="openai.gpt-oss-120b-1:0", transport=transport)
+            response = provider.complete_bounded(
+                [ChatMessage(role="user", content="Read")],
+                [LLMToolSpec("tool.file.read", "Read a file", {"type": "object", "properties": {}})],
+                max_output_tokens=32,
+            )
+        self.assertIsInstance(provider, OpenAICompatibleLLMProvider)
+        self.assertEqual(seen[0][0], "https://bedrock-runtime.us-west-2.amazonaws.com/openai/v1/chat/completions")
+        self.assertEqual(seen[0][2]["Authorization"], "Bearer bedrock-test-key")
+        self.assertNotIn("bedrock-test-key", json.dumps(seen[0][1]))
+        self.assertEqual(seen[0][1][provider.max_tokens_parameter], 32)
+        self.assertNotIn("reasoning_effort", seen[0][1])
+        self.assertEqual(response.tool_calls[0].name, "tool.file.read")
+        self.assertEqual(response.usage, {"input_tokens": 12, "output_tokens": 5})
+        self.assertTrue(provider.supports_output_token_limit)
+
+    def test_defaults_and_aws_standard_key_alias(self) -> None:
+        with mock.patch("marmo_core.environment.load_local_dotenv"), mock.patch.dict(os.environ, {"AWS_BEARER_TOKEN_BEDROCK": "aws-token"}, clear=True):
+            provider = BedrockLLMProvider()
+        self.assertEqual(provider.model, "openai.gpt-oss-120b-1:0")
+        self.assertEqual(provider.base_url, "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1")
+        self.assertEqual(provider.api_key, "aws-token")
+
+    def test_dotenv_settings_and_process_precedence(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".env"
+            path.write_text("BEDROCK_API_KEY=file-key\nBEDROCK_MODEL=file-model\nBEDROCK_REGION=us-west-2\nBEDROCK_REASONING_EFFORT=low\n")
+            with mock.patch("marmo_core.environment.find_dotenv", return_value=str(path)), mock.patch.dict(os.environ, {"BEDROCK_API_KEY": "process-key"}, clear=True):
+                provider = BedrockLLMProvider()
+                self.assertEqual(provider.api_key, "process-key")
+                self.assertEqual(provider.model, "file-model")
+                self.assertEqual(provider.reasoning_effort, "low")
+                self.assertIn("us-west-2", provider.base_url)
+
+    def test_explicit_settings_override_other_providers_and_bedrock_environment(self) -> None:
+        with mock.patch.dict(os.environ, {"BEDROCK_MODEL": "other", "BEDROCK_BASE_URL": "https://other.example/v1", "OPENAI_MODEL": "wrong"}, clear=True):
+            provider = BedrockLLMProvider(model="chosen", api_key="chosen-key", base_url="https://bedrock-mantle.us-east-1.api.aws/v1/", reasoning_effort="low")
+        self.assertEqual(provider.model, "chosen")
+        self.assertEqual(provider.base_url, "https://bedrock-mantle.us-east-1.api.aws/v1")
+        self.assertEqual(provider.reasoning_effort, "low")
+
+    def test_missing_bedrock_key_never_uses_openai_key(self) -> None:
+        with mock.patch("marmo_core.environment.load_local_dotenv"), mock.patch.dict(os.environ, {"OPENAI_API_KEY": "wrong"}, clear=True):
+            with self.assertRaisesRegex(ValueError, "BEDROCK_API_KEY"):
+                BedrockLLMProvider()
+
+    def test_region_fallbacks_and_invalid_region(self) -> None:
+        for name in ("AWS_REGION", "AWS_DEFAULT_REGION"):
+            with self.subTest(name=name), mock.patch("marmo_core.environment.load_local_dotenv"), mock.patch.dict(os.environ, {name: "ap-northeast-1"}, clear=True):
+                self.assertIn("ap-northeast-1", BedrockLLMProvider(api_key="key").base_url)
+        with self.assertRaisesRegex(ValueError, "region"):
+            BedrockLLMProvider(api_key="key", region="bad/region")
+
+    def test_authentication_error_redacts_opaque_bedrock_key(self) -> None:
+        key = "opaque-bedrock-test-token-without-a-vendor-prefix"
+        body = json.dumps({"message": f"Rejected {key}"})
+        error = urllib.error.HTTPError("https://bedrock.example", 403, "Forbidden", {}, BytesIO(body.encode()))
+        with mock.patch("marmo_core.semantic.urllib.request.urlopen", side_effect=error):
+            with self.assertRaises(ProviderHTTPError) as caught:
+                BedrockLLMProvider(api_key=key, region="us-east-1", model="test").complete([])
+        self.assertEqual(caught.exception.status, 403)
+        self.assertNotIn(key, str(caught.exception))
+        self.assertNotIn(key, caught.exception.body)
+        self.assertIn("Rejected", caught.exception.body)
+
+    def test_cli_selects_bedrock(self) -> None:
+        from marmo_core.cli import _build_llm, build_parser
+        with mock.patch("marmo_core.cli.BedrockLLMProvider") as constructor:
+            self.assertIs(_build_llm("bedrock", {}), constructor.return_value)
+        self.assertEqual(build_parser().parse_args(["run", "--task", "hello", "--llm", "bedrock"]).llm, "bedrock")
 
 
 class ToolNameCodecTests(unittest.TestCase):
