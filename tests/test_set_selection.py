@@ -8,11 +8,14 @@ from marmo_core import (
     BranchAndBoundSetSelector,
     GreedyConstrainedSetSelector,
     BeamSearchSetSelector,
+    RepairingSetSelector,
     ResourceDefinition,
     RuleBasedSetSelector,
     SearchResult,
     SelectionContext,
     SelectionResult,
+    SetSelector,
+    TopKSetSelector,
 )
 
 
@@ -252,6 +255,103 @@ class BranchAndBoundSelectorTests(unittest.TestCase):
             beam = BeamSearchSetSelector(beam_width=5).select(results, context=ctx)
             self.assertGreaterEqual(utility(bnb) + 1e-9, utility(greedy), f"trial {trial}")
             self.assertGreaterEqual(utility(bnb) + 1e-9, utility(beam), f"trial {trial}")
+
+
+def _ids(selection: SelectionResult) -> set[str]:
+    return {r.resource.metadata.id for r in selection.results}
+
+
+class TopKSelectorTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.skill = _resource("skill.a", kind="skill")
+        self.main = _resource("tool.main", dependencies=["skill.a"], conflicts_with=["tool.alt"])
+        self.alt = _resource("tool.alt", conflicts_with=["tool.main"])
+        self.agent = _resource("agent.a", kind="agent", dependencies=["tool.main"])
+        self.results = [
+            _result(self.alt, 0.9),
+            _result(self.agent, 0.8),
+            _result(self.main, 0.7),
+            _result(self.skill, 0.3),
+        ]
+
+    def test_plain_top_k_takes_the_k_best_regardless_of_kind(self) -> None:
+        selection = TopKSetSelector(3).select(self.results, context=SelectionContext())
+        self.assertEqual(selection.status, "selected")
+        self.assertEqual(_ids(selection), {"tool.alt", "agent.a", "tool.main"})
+
+    def test_plain_top_k_honours_relevance_floor_and_abstains_when_nothing_passes(self) -> None:
+        context = SelectionContext(min_relevance=0.75)
+        self.assertEqual(_ids(TopKSetSelector(3).select(self.results, context=context)), {"tool.alt", "agent.a"})
+        nothing = TopKSetSelector(3).select(self.results, context=SelectionContext(min_relevance=0.95))
+        self.assertEqual(nothing.status, "abstain")
+
+    def test_expansion_adds_dependencies_from_the_pool(self) -> None:
+        selection = TopKSetSelector(2, expand_dependencies=True).select(self.results, context=SelectionContext())
+        self.assertEqual(_ids(selection), {"tool.alt", "agent.a", "tool.main", "skill.a"})
+
+    def test_conflict_dropping_keeps_the_higher_ranked_and_removes_orphaned_dependents(self) -> None:
+        selection = TopKSetSelector(2, expand_dependencies=True, drop_conflicts=True).select(
+            self.results, context=SelectionContext()
+        )
+        # tool.alt outranks tool.main, so tool.main goes, and agent.a (which
+        # needs tool.main) goes with it; skill.a is no longer anyone's dependency
+        # but was pulled in, and stays.
+        self.assertEqual(_ids(selection), {"tool.alt", "skill.a"})
+
+    def test_candidate_whose_dependency_is_missing_from_the_pool_is_dropped(self) -> None:
+        orphan = _resource("tool.orphan", dependencies=["skill.absent"])
+        selection = TopKSetSelector(1, expand_dependencies=True).select(
+            [_result(orphan, 0.9), _result(self.skill, 0.2)], context=SelectionContext()
+        )
+        self.assertEqual(selection.status, "abstain")
+        self.assertIn("skill.absent", selection.reason)
+
+    def test_permission_check_escalates_when_a_member_needs_an_ungranted_permission(self) -> None:
+        gated = _resource("tool.gated", required_permissions=["pay.write"])
+        results = [_result(gated, 0.9)]
+        selection = TopKSetSelector(1, check_permissions=True).select(
+            results, context=SelectionContext(granted_permissions=("pay.read",))
+        )
+        self.assertEqual(selection.status, "escalate")
+        self.assertIn("pay.write", selection.reason)
+        plain = TopKSetSelector(1).select(results, context=SelectionContext(granted_permissions=("pay.read",)))
+        self.assertEqual(plain.status, "selected")
+
+    def test_k_must_be_positive(self) -> None:
+        with self.assertRaises(ValueError):
+            TopKSetSelector(0)
+
+
+class _FixedSelector(SetSelector):
+    def __init__(self, selection: SelectionResult) -> None:
+        self.selection = selection
+
+    def select(self, results, *, context=None):
+        return self.selection
+
+
+class RepairingSelectorTests(unittest.TestCase):
+    def test_repairs_a_selected_set_with_candidates_from_the_pool(self) -> None:
+        skill = _resource("skill.a", kind="skill")
+        tool = _resource("tool.a", dependencies=["skill.a"])
+        results = [_result(tool, 0.9), _result(skill, 0.4)]
+        inner = _FixedSelector(SelectionResult((results[0],), "inner picked the tool"))
+        selection = RepairingSetSelector(inner).select(results, context=SelectionContext())
+        self.assertEqual(_ids(selection), {"tool.a", "skill.a"})
+
+    def test_abstain_and_escalate_pass_through_unchanged(self) -> None:
+        for status in ("abstain", "escalate"):
+            inner = _FixedSelector(SelectionResult((), "inner stopped", status=status))
+            selection = RepairingSetSelector(inner).select([], context=SelectionContext())
+            self.assertEqual(selection.status, status)
+            self.assertEqual(selection.reason, "inner stopped")
+
+    def test_escalates_when_the_repaired_set_needs_ungranted_permissions(self) -> None:
+        gated = _resource("tool.gated", required_permissions=["pay.write"])
+        results = [_result(gated, 0.9)]
+        inner = _FixedSelector(SelectionResult(tuple(results), "inner picked it"))
+        selection = RepairingSetSelector(inner).select(results, context=SelectionContext())
+        self.assertEqual(selection.status, "escalate")
 
 
 if __name__ == "__main__":

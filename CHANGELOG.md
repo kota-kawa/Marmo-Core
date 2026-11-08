@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `TopKSetSelector` (global Top-K with optional dependency expansion,
+  conflict dropping, and a permission check) and `RepairingSetSelector`
+  (the same repair applied to any selector's output), as baselines for the
+  integrated constrained solvers.
+
 - `BedrockLLMProvider` and `--llm bedrock` use the existing OpenAI-compatible
   Chat Completions implementation with `BEDROCK_API_KEY` (or
   `AWS_BEARER_TOKEN_BEDROCK`). Defaults to gpt-oss-120b in us-east-1; model,

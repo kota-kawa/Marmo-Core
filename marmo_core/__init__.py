@@ -159,10 +159,12 @@ from .retriever import LexicalRetriever, Retriever
 from .selector import (
     BranchAndBoundSetSelector,
     GreedyConstrainedSetSelector,
+    RepairingSetSelector,
     RuleBasedSetSelector,
     SelectionContext,
     SetSelector,
     BeamSearchSetSelector,
+    TopKSetSelector,
 )
 from .semantic import (
     EmbeddingProvider,
@@ -328,6 +330,8 @@ __all__ = [
     "SafetyFinding",
     "SafetyInspector",
     "RuleBasedSetSelector",
+    "RepairingSetSelector",
+    "TopKSetSelector",
     "SQLiteStateStore",
     "SQLiteConnector",
     "SearchQuery",
