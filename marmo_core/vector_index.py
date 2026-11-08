@@ -58,6 +58,9 @@ class _NormalizedMatrix:
         np = self.np
         self.ids = list(ids)
         self.position = {identity: index for index, identity in enumerate(self.ids)}
+        if not self.ids:
+            self.matrix = None  # an empty catalog: every query finds nothing
+            return
         matrix = np.asarray(vectors, dtype=np.float32)
         if matrix.ndim != 2 or matrix.shape[0] != len(self.ids):
             raise ValueError("vectors must be a non-empty 2-D array with one row per id")
@@ -133,6 +136,9 @@ class HNSWVectorIndex(VectorIndex):
             raise ImportError("HNSWVectorIndex needs usearch: pip install 'marmo-core[benchmark-ann]'") from error
         data = self._data
         data.load(ids, vectors)
+        if data.matrix is None:
+            self._index = None
+            return
         np = data.np
         index = Index(
             ndim=int(data.matrix.shape[1]),

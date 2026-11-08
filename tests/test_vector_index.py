@@ -98,6 +98,10 @@ class ExactVectorIndexTests(unittest.TestCase):
         retriever.search(registry, SearchQuery(task="contracts", top_k=3))
         self.assertEqual(built, [len(TOPICS)])
 
+    def test_empty_registry_returns_no_results(self) -> None:
+        retriever = HybridRetriever(_LetterCounts(), vector_index=ExactVectorIndex)
+        self.assertEqual(retriever.search(ResourceRegistry(), SearchQuery(task="x", top_k=3)), [])
+
     def test_nearest_excludes_ids_and_orders_by_similarity(self) -> None:
         index = ExactVectorIndex()
         index.build(["a", "b", "c"], [[1.0, 0.0], [0.8, 0.6], [0.0, 1.0]])
@@ -108,6 +112,10 @@ class ExactVectorIndexTests(unittest.TestCase):
 
 @unittest.skipUnless(HAS_NUMPY and HAS_USEARCH, "numpy or usearch is not installed")
 class HNSWVectorIndexTests(unittest.TestCase):
+    def test_empty_registry_returns_no_results(self) -> None:
+        retriever = HybridRetriever(_LetterCounts(), vector_index=HNSWVectorIndex)
+        self.assertEqual(retriever.search(ResourceRegistry(), SearchQuery(task="x", top_k=3)), [])
+
     def test_small_catalog_neighbors_match_exact_search(self) -> None:
         registry = _registry()
         provider = _LetterCounts()
