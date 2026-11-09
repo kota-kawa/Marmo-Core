@@ -63,6 +63,7 @@ from .planner import LLMPlanner, Plan, PlanStep, Planner, RuleBasedPlanner, reso
 from .policy import PolicyContext, PolicyGateway, PolicyRejectedError
 from .recovery import Failure, RecoveryDecision, RecoveryManager, compensation_for, needs_compensation
 from .registry import ResourceRegistry
+from .routing_contracts import TaskSpec
 from .retriever import LexicalRetriever, Retriever
 from .selector import (
     DEFAULT_SET_LIMITS,
@@ -387,7 +388,9 @@ class Kernel:
         else:
             self.agent_runtime = copy(agent_runtime)
             self.agent_runtime.backends = dict(agent_runtime.backends)
-        self.compiler = compiler or ContextCompiler()
+        self.compiler = compiler or ContextCompiler(
+            preserve_dependencies=bool(getattr(self.selector, "requires_contract_verification", False))
+        )
         self.audit_log = audit_log or AuditLog()
         self.hitl = hitl or PendingHitlBroker()
         self.recovery = recovery or RecoveryManager()
@@ -724,17 +727,39 @@ class Kernel:
         missing); a denied resource that would only fill a spare slot is
         left out, so widening the set never turns a clean read-only run into
         a strict failure because an unrelated write tool was pulled in.
+
+        Contract-aware selection instead retains permission-only alternatives
+        at every rank and removes other denied candidates, including the first.
         """
 
+        contract_routing = getattr(self.selector, "requires_contract_verification", False)
         kept: list[SearchResult] = []
         seen_kinds: set[str] = set()
         for result in results:
             kind = result.resource.metadata.kind
             first_of_kind = kind not in seen_kinds
             seen_kinds.add(kind)
-            if first_of_kind or not self.gateway.evaluate(result.resource, context, gate="activation").denied:
+            if (first_of_kind and not contract_routing) or not self._selection_candidate_denied(result, context):
                 kept.append(result)
         return kept
+
+    def _selection_candidate_denied(self, result: SearchResult, context: PolicyContext) -> bool:
+        """Keep discoverable permission alternatives for strict set selection.
+
+        The supplied registry is assumed discoverable. This is not a separate
+        discovery ACL: only a temporary policy context relaxes this candidate's
+        declared permissions; actual task permissions and execution gates stay
+        unchanged. Other policy denials still remove the candidate.
+        """
+
+        if getattr(self.selector, "requires_contract_verification", False):
+            context = dataclass_replace(
+                context,
+                granted_permissions=tuple(sorted(
+                    set(context.granted_permissions) | set(result.resource.metadata.required_permissions)
+                )),
+            )
+        return self.gateway.evaluate(result.resource, context, gate="activation").denied
 
     def _tool_message_content(self, value: Any, *, source: str) -> str:
         """Label one tool result for the model, capped so it cannot overflow it.
@@ -770,7 +795,8 @@ class Kernel:
         index. One, not one per kind: with an embedding-backed or LLM-backed
         retriever each search is a paid round trip on the same goal string.
 
-        Top-ups drop candidates the activation gate would deny, and respect
+        Top-ups drop candidates the activation gate would deny (except for
+        permission-only denials under contract-aware selection), and respect
         the selector's ``min_score`` floor when it has one: the point is to
         give the selector something it can actually use, and reporting an
         unrelated denied resource as "skipped" would turn a clean read-only
@@ -822,7 +848,7 @@ class Kernel:
                 continue
             if result.score < floor:
                 continue
-            if self.gateway.evaluate(result.resource, context, gate="activation").denied:
+            if self._selection_candidate_denied(result, context):
                 continue
             seen.add(result.resource.identity)
             results.append(result)
@@ -846,8 +872,46 @@ class Kernel:
         # Freeze the selected resource identities for every later resume. A
         # permission escalation happens before a set exists, so it can select
         # again after the operator grants a narrower permission set.
+        task_spec = None
+        resolver = getattr(self.selector, "resolve_task_spec", None)
+        if callable(resolver):
+            if state.snapshot:
+                saved_spec = state.snapshot.get("routing_task_spec")
+                if not isinstance(saved_spec, Mapping):
+                    raise SnapshotMismatchError("saved routing TaskSpec is missing or malformed")
+                task_spec = TaskSpec.from_mapping(saved_spec)
+            else:
+                try:
+                    task_spec = resolver(goal)
+                except Exception:
+                    audit("retrieve", {"selection_status": "abstain", "selection_reason": "TaskSpec extraction failed"})
+                    return self._finish(state, trace_id, "failed", detail="routing abstained: TaskSpec extraction failed")
+                if not isinstance(task_spec, TaskSpec):
+                    task_spec = TaskSpec.from_mapping({})
+                state = self.state_store.append(task_id, "snapshot", {"snapshot": {
+                    "routing_task_spec": task_spec.to_mapping(), "selection_pending": True,
+                }})
+        selection_context = SelectionContext(
+            task=goal,
+            task_spec=task_spec,
+            context_token_budget=self.context_token_budget,
+            granted_permissions=tuple(context.granted_permissions),
+            per_kind_limits=dict(self.set_limits) if self.set_limits else {},
+            min_relevance=self.min_relevance,
+            budget_cost=(
+                float(self.budget_ledger.status(self._budget_task_id(task_id))["remaining"])
+                if self.budget_ledger is not None
+                else None
+            ),
+        )
         results: list[SearchResult] = []
-        if state.snapshot:
+        if state.snapshot and not state.snapshot.get("selection_pending", False):
+            if getattr(self.selector, "requires_contract_verification", False):
+                if "routing_selection_budget_cost" not in state.snapshot:
+                    raise SnapshotMismatchError("saved routing selection budget is missing")
+                selection_context = dataclass_replace(
+                    selection_context, budget_cost=state.snapshot["routing_selection_budget_cost"]
+                )
             selected, candidate_count, callable_candidates, catalog_nonempty = restore_selection(
                 state.snapshot, self.registry
             )
@@ -857,17 +921,6 @@ class Kernel:
             callable_candidates = any(result.resource.kind in ("tool", "agent") for result in results)
             candidate_count = len(results)
             catalog_nonempty = bool(self.registry.list())
-            selection_context = SelectionContext(
-                task=goal,
-                granted_permissions=tuple(context.granted_permissions),
-                per_kind_limits=dict(self.set_limits) if self.set_limits else {},
-                min_relevance=self.min_relevance,
-                budget_cost=(
-                    float(self.budget_ledger.status(self._budget_task_id(task_id))["remaining"])
-                    if self.budget_ledger is not None
-                    else None
-                ),
-            )
             selected = self.selector.select(results, context=selection_context)
             if self.budget_ledger is not None:
                 selected_cost = sum(
@@ -889,6 +942,10 @@ class Kernel:
                     callable_candidates=callable_candidates,
                     catalog_nonempty=catalog_nonempty,
                 )
+                if task_spec is not None:
+                    snapshot["routing_task_spec"] = task_spec.to_mapping()
+                if getattr(self.selector, "requires_contract_verification", False):
+                    snapshot["routing_selection_budget_cost"] = selection_context.budget_cost
                 state = self.state_store.append(task_id, "snapshot", {"snapshot": snapshot})
             selection_source = "current_catalog"
         audit(
@@ -903,7 +960,7 @@ class Kernel:
             },
         )
         if selected.status == "escalate":
-            missing = _missing_permissions(results, context.granted_permissions)
+            missing = selected.missing_permissions or _missing_permissions(results, context.granted_permissions)
             return self._pause(
                 state,
                 trace_id,
@@ -920,6 +977,11 @@ class Kernel:
                     arguments={"missing_permissions": list(missing)},
                 ),
                 detail=f"set selection escalated: {selected.reason}",
+            )
+
+        if selected.status == "abstain" and getattr(self.selector, "requires_contract_verification", False):
+            return self._finish(
+                state, trace_id, "failed", detail=f"routing abstained: {selected.reason}"
             )
 
         # Phase 2 - activation. Also pure: loading text and binding callables
@@ -1011,6 +1073,38 @@ class Kernel:
                 skipped=skipped,
             )
         audit("compile", compiled.summary())
+
+        validator = getattr(self.selector, "validate_selection", None)
+        if getattr(self.selector, "requires_contract_verification", False):
+            if not callable(validator):
+                raise ValueError("contract-aware selector must provide validate_selection")
+            usable_ids = set(compiled.resource_ids) - set(compiled.trimmed_resource_ids)
+            actual = [item for item in selected.results if item.resource.identity in usable_ids]
+            expected = ContextCompiler(preserve_dependencies=True).compile(
+                goal,
+                memories=[item for item in memories if item.metadata.identity in usable_ids],
+                skills=[item for item in skills if item.metadata.identity in usable_ids],
+                tools=[item for item in tools if item.metadata.identity in usable_ids],
+                agents=[AgentInterface.from_definition(item.definition) for item in agents
+                        if item.metadata.identity in usable_ids],
+                priorities=context_priorities,
+            )
+            payload_valid = (
+                compiled.messages == expected.messages and compiled.tools == expected.tools
+                and set(compiled.resource_ids) == set(expected.resource_ids)
+            )
+            valid, reason = validator(actual, context=selection_context, compiled=compiled)
+            if not payload_valid:
+                valid, reason = False, "compiled payload differs from activated resource content"
+            audit("compile", {
+                "stage": "contract_verification", "valid": valid, "reason": reason,
+                "resource_ids": sorted(usable_ids),
+            })
+            if not valid:
+                return self._finish(
+                    state, trace_id, "failed",
+                    detail=f"compiled selection contract failed: {reason}", skipped=skipped,
+                )
 
         fingerprint = compiled_fingerprint(compiled)
         previous = state.snapshot.get("compiled_fingerprint")

@@ -40,6 +40,7 @@ Agent の 4 種別）を登録し、ゴールに対して必要なものだけ�
 | 検索 | `rerank.py` | `CrossEncoderProvider` ABC、`CrossEncoderRerankRetriever` | models, registry, retriever |
 | 検索 | `llm_routing.py` | `HydeRetriever`、`LLMRerankRetriever`、`LLMCatalogRetriever`、`LLMSetSelector` | llm, models, registry, retriever, selector |
 | 選択 | `selector.py` | `SetSelector` ABC、`SelectionContext`、`RuleBasedSetSelector`（既定）、Greedy / Beam / BranchAndBound の制約付きソルバー、比較用の `TopKSetSelector` と `RepairingSetSelector`（上位 K 件・任意の選択結果に依存の追加・競合の除去・権限の確認をかける） | models |
+| 選択 | `routing_contracts.py`、`sufficient_selector.py` | opt-in の TaskSpec・資源契約と GoalAwareSetSelector（要求被覆・権限・依存・集合描画量） | models, selector |
 | 選択 | `adaptive.py` | `CaseBasedRouter`、`RoutingCaseStore`（Kernel には組み込まれていない） | errors, models, registry, retriever, selector, semantic |
 | 選択 | `evaluator.py` | `ExecutionEvaluator`（監査ログ → `ResourceStats` 書き戻し。Kernel からは呼ばれない） | audit, models, registry |
 | ポリシー | `safety.py` | `SafetyInspector`（破壊的コマンド・持ち出し検知）、`redact_sensitive_arguments` | models, secrets |
@@ -73,6 +74,8 @@ Agent の 4 種別）を登録し、ゴールに対して必要なものだけ�
    activation gate で deny されるものを除く（ただし各 kind の首位は残す）。件数が
    足りない kind があれば、kind 限定の追加検索を **1 回だけ** 行う（1 ゴールあたり
    検索は最大 2 回）。
+   契約検証を要求する Selector では候補ごとの権限不足だけを一時的に緩めた policy 判定を
+   行い、権限追加で利用可能になる下位候補も集合選択へ渡す。実際の権限は変更しない。
 4. **選択** `selector.select(results, context=SelectionContext)` → `audit("retrieve")`。
    `escalate` なら `_pause`（selection ステージの `HitlRequest`）。
 5. **Activation gate** `activator.activate` → `PolicyGateway.evaluate(gate="activation")`
@@ -80,6 +83,8 @@ Agent の 4 種別）を登録し、ゴールに対して必要なものだけ�
    `recovery.classify_activation`。
 6. **コンテキスト構築** `compiler.compile(...)` → `audit("compile")`。Memory は
    `PromptInjectionInspector` を通し、検知すれば `audit("security")`。
+   `requires_contract_verification=True` の Selector では、依存保持 compiler が既定となり、
+   活性化・コンパイル後の実集合と本文・schema を再検査する。不足時はモデルを呼ばず失敗する。
 7. **会話フレームの復元** `state.frame` から messages、実行済み呼び出し、修正回数などを
    戻す。`planner` があれば `_execute_plan` に分岐し、Plan の DAG を wave 単位で実行。
 8. **LLM 呼び出し** `llm.complete(messages, compiled.tools)` → `audit("llm")`。
@@ -157,6 +162,8 @@ Agent 委譲を許し、その子からさらに Agent を呼ぶには明示的�
   fingerprint を追記する。memory / skill は activation で本文を読んだ時点で fingerprint を
   追記する。再開時に同じ選択を復元し、selected Resource・読み込み済み本文・compiled context
   の fingerprint が変わった場合は実行を拒否する。
+  `resolve_task_spec` を持つ Selector では要求も検索前に保存し、権限待ちからの再開でも
+  再抽出しない。研究用契約の限界は `docs/task-sufficient-routing.md` を参照する。
 - **タスク予算**: `Kernel(task_budget=TaskBudget(...))` は通貨とモデル単価を明示し、
   `budget` event に設定・予約・精算を追記する。再開時は同じ設定が必要。rollback でも
   実行済み費用は戻さない。selector には残額を渡し、モデル呼び出しと各 Tool / Agent 試行の

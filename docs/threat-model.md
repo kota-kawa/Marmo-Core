@@ -1,6 +1,6 @@
 # Marmo-Core threat model
 
-Last reviewed: 2026-09-25
+Last reviewed: 2026-11-09
 
 ## Scope and assets
 
@@ -16,6 +16,16 @@ destinations, execution permissions, persisted state, and audit integrity.
   untrusted content, independent of the resource's package `trust_level`.
 - LLM output is a proposal. Tool calls are valid only when the resource was
   activated and the activation/execution gates allow the exact operation.
+- Opt-in task-sufficient routing treats observed resource contracts as reviewed
+  declarations, not proof of real capability. Unknown contracts and unsupported
+  runtime preconditions cannot establish sufficiency. A frozen TaskSpec survives
+  permission escalation; metadata cannot silently replace the user's requirements.
+  Dependency closure and final rendered payload are checked before the model call.
+  These checks do not establish truth of metadata or actual task completion.
+  Its candidate discovery assumes the supplied registry is visible to the caller;
+  a temporary candidate policy context relaxes required permissions for selection
+  only. There is no separate discovery ACL. Hosts must exclude confidential
+  resources from that registry; actual activation and execution remain gated.
 - When configured, a task budget is checked before Kernel-controlled model and
   Resource calls. The budget event log survives rollback, and resume rejects a
   different policy. External charges inside handlers rely on the Resource's
@@ -88,6 +98,9 @@ entry here whenever the threat model or its accepted residual risks change.
 
 ## Review history
 
+- 2026-11-09: documented the opt-in task-sufficiency boundary: declared capability
+  remains an assumption; frozen requirements, complete context dependencies and
+  final payload validation complement existing activation/execution gates.
 - 2026-09-25: reviewed deadline behavior. Process mode stops importable local
   handlers, while external effects remain uncertain; automatic timeout retry
   and fallback were removed.
