@@ -72,13 +72,26 @@ class GoalAwareSetSelector(SetSelector):
             raise ValueError("max_nodes must be at least 1")
         self.task_spec_provider = task_spec_provider
         self.strategy = strategy
-        self.rendered_token_cost = rendered_token_cost or _default_rendered_token_cost
+        self._has_custom_rendered_token_cost = rendered_token_cost is not None
+        self.rendered_token_cost = (
+            rendered_token_cost
+            if rendered_token_cost is not None
+            else _default_rendered_token_cost
+        )
         self.max_nodes = max_nodes
 
     def select(
         self, results: list[SearchResult], *, context: SelectionContext | None = None
     ) -> SelectionResult:
         ctx = context or SelectionContext()
+        if (
+            getattr(ctx, "context_token_budget", None) is not None
+            and not self._has_custom_rendered_token_cost
+        ):
+            return _uncertain(
+                "context_token_budget requires an explicit rendered_token_cost callback; "
+                "the default metadata estimate cannot verify the budget"
+            )
         spec = self._context_task_spec(ctx)
         if not isinstance(spec, TaskSpec):
             return _uncertain("TaskSpec provider did not return a TaskSpec")
@@ -122,6 +135,11 @@ class GoalAwareSetSelector(SetSelector):
     ) -> tuple[bool, str]:
         """Recheck the final set and, when supplied, its compiled resource IDs."""
 
+        if context.context_token_budget is not None and not self._has_custom_rendered_token_cost:
+            return (
+                False,
+                "uncertain: context_token_budget requires an explicit rendered_token_cost callback",
+            )
         spec = self._context_task_spec(context)
         if not isinstance(spec, TaskSpec):
             return False, "TaskSpec provider did not return a TaskSpec"
@@ -311,7 +329,16 @@ class GoalAwareSetSelector(SetSelector):
         visit(0, ())
 
         if best is not None:
-            status = "node budget reached; best feasible set found, optimality unproven" if truncated else "optimum proven"
+            objective_scope = (
+                "custom rendered_token_cost"
+                if self._has_custom_rendered_token_cost
+                else "metadata token proxy"
+            )
+            status = (
+                f"node budget reached; best feasible set found, optimality unproven for configured objective ({objective_scope})"
+                if truncated
+                else f"optimum proven for configured objective ({objective_scope})"
+            )
             return SelectionResult(
                 _ordered(best),
                 f"goal-aware exact selected {len(best)} resource(s) after {nodes} node(s); {status}",

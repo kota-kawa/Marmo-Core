@@ -18,6 +18,7 @@ context.all_of / context.one_of、call_preconditions、permissions、source_evid
 語彙を固定する場合は TaskSpec と各契約に `vocabulary_version` と SHA-256 の
 `vocabulary_hash` を両方指定する。不一致や片側だけの指定は unknown とする。
 両側とも省略した場合は語の完全一致だけを使い、公開オントロジーの検証済みとは扱わない。
+hash が一致しても、action/entity がその語彙の登録語であるかを照合する処理は未実装である。
 `call_preconditions` が残る資源も、実行時の根拠を検証できるまでは unknown とする。
 
 ```python
@@ -32,7 +33,7 @@ spec = TaskSpec.from_mapping({
 })
 selector = GoalAwareSetSelector(lambda goal: spec, strategy="exact")
 # registry と llm は既存の ResourceRegistry / LLMProvider を用意する。
-kernel = Kernel(registry, llm, selector=selector, context_token_budget=2048)
+kernel = Kernel(registry, llm, selector=selector)
 ```
 
 上の固定 provider は API の例であり、全ての依頼に同じ spec を使う実運用の例ではない。
@@ -45,8 +46,12 @@ kernel = Kernel(registry, llm, selector=selector, context_token_budget=2048)
 検索スコアの総和を報酬にせず、要求を満たす集合から権限露出・描画量・費用などを減らす。
 共有依存を二度加点しない。`rendered_token_cost` は選択集合全体の描画量を返す callback で、
 実モデルの入力課金数を保証する API ではない。最適性は探索が完了した候補範囲だけの性質である。
+さらに最適性は設定した callback に対してだけ成立する。既定 proxy を使う場合、
+実本文や Tool schema の描画量について最適とは主張しない。
 `SelectionContext.context_token_budget` はこの callback の返す量に対するハード制約である。
 既定 callback はメタデータ由来の代理値なので、実際の描画に合う callback を渡す必要がある。
+このため予算を設定する場合は `rendered_token_cost` の明示を必須とし、省略時は uncertain とする。
+Kernel は資源本文に合う callback を自動生成しない。上の最小例は文脈予算を設定していない。
 
 `selected` は観測した契約の下で充足集合を作れるという意味で、タスク成功ではない。
 許可された代替があれば権限追加を求めず、権限だけで充足可能になる場合に `escalate` を返す。
@@ -76,6 +81,8 @@ TaskSpec は検索前に一度だけ解決して snapshot に保存する。権�
 現時点では後段の脱落に対し実行を停止する。代替集合を探索して再コンパイルする一般的な
 回復経路、データ受け渡しを含む任意の呼び出し前条件の実行時証明は未完成である。
 新しい契約・実行経路を完全に検証するまで研究全体を完了と扱わない。
+検索で候補に入らなかった宣言済み依存先を ID で最大128件まで補充する、比較方式共通の
+経路も未実装である。現在は候補内に閉包を作れなければ unknown / abstain とする。
 
 既存の Selector と compiler の既定挙動は変えない。モデルの指示遵守、宣言の真偽、
 実際のタスク完了、プロバイダの課金トークン上界は別に評価する。

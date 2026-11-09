@@ -218,6 +218,25 @@ class RoutingContractMatchingTests(unittest.TestCase):
         self.assertEqual(result.status, "abstain")
         self.assertIn("uncertain", result.reason)
 
+    def test_malformed_affordance_invalidates_otherwise_matching_contract(self) -> None:
+        spec = _task(_requirement("read"))
+        resource = _result(
+            _definition(
+                "tool.read",
+                contract=_contract(
+                    (
+                        _affordance("read"),
+                        {"action": "archive", "entity_type": "document", "supported_scope": "global", "mode": "perform"},
+                    )
+                ),
+            )
+        )
+        selection = _selector(spec).select(
+            [resource], context=SelectionContext(task="read")
+        )
+        self.assertEqual(selection.status, "abstain")
+        self.assertIn("unknown", selection.reason)
+
     def test_call_preconditions_are_not_assumed_without_runtime_evidence(self) -> None:
         spec = _task(_requirement("read"))
         resource = _result(
@@ -593,6 +612,20 @@ class GoalAwareSetSelectorTests(unittest.TestCase):
         self.assertEqual(selection.status, "selected")
         self.assertEqual(selection.results[0].resource.metadata.id, "tool.compact")
 
+    def test_context_token_budget_requires_an_explicit_renderer_callback(self) -> None:
+        spec = _task(_requirement("read"))
+        result = _result(_definition("tool.read", affordances=(_affordance("read"),)))
+        selector = GoalAwareSetSelector(lambda _task: spec, strategy="exact")
+        context = SelectionContext(task="read", context_token_budget=100)
+
+        selection = selector.select([result], context=context)
+        valid, reason = selector.validate_selection([result], context=context)
+
+        self.assertEqual(selection.status, "abstain")
+        self.assertIn("explicit rendered_token_cost", selection.reason)
+        self.assertFalse(valid)
+        self.assertIn("uncertain", reason)
+
     def test_low_relevance_dependency_is_retained_but_low_relevance_root_is_not(self) -> None:
         spec = _task(_requirement("read"))
         instructions = _result(
@@ -654,11 +687,14 @@ class GoalAwareSetSelectorTests(unittest.TestCase):
         self.assertIn("uncertain", none_found.reason)
 
         satisfiable = _task(_requirement("read"))
-        one_found = _selector(satisfiable, max_nodes=1).select(
+        one_found = GoalAwareSetSelector(
+            lambda _task: satisfiable, strategy="exact", max_nodes=1
+        ).select(
             [one_candidate], context=SelectionContext(task="read")
         )
         self.assertEqual(one_found.status, "selected")
         self.assertIn("optimality unproven", one_found.reason)
+        self.assertIn("metadata token proxy", one_found.reason)
 
     def test_validate_selection_rechecks_compiled_ids_and_trimmed_resources(self) -> None:
         spec = _task(_requirement("read"))
@@ -784,6 +820,7 @@ class GoalAwareSetSelectorTests(unittest.TestCase):
         actual = selector.select(candidates, context=context)
         self.assertEqual(actual.status, "selected")
         self.assertEqual({item.resource.metadata.id for item in actual.results}, expected)
+        self.assertIn("custom rendered_token_cost", actual.reason)
 
     def test_partition_and_duplicate_invariance_preserve_coverage_and_prefix_objective(self) -> None:
         spec = _task(_requirement("create"), _requirement("send"))

@@ -296,7 +296,12 @@ class ResourceContract:
         if isinstance(raw_affordances, Sequence) and not isinstance(raw_affordances, (str, bytes)):
             for index, raw_affordance in enumerate(raw_affordances):
                 if isinstance(raw_affordance, Mapping):
-                    affordances.append(Affordance.from_mapping(raw_affordance))
+                    affordance = Affordance.from_mapping(raw_affordance)
+                    affordances.append(affordance)
+                    unknown.extend(
+                        f"affordances[{index}]: {item}"
+                        for item in affordance.unknown_items
+                    )
                 else:
                     unknown.append(f"affordances[{index}] is malformed")
         else:
