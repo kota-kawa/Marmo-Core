@@ -47,6 +47,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Research opt-in `RelevanceUtility(cost)` for `GreedyConstrainedSetSelector`,
+  `BeamSearchSetSelector`, and `BranchAndBoundSetSelector` (`utility=`). Each
+  resource is worth its text relevance minus `cost`, so a solver no longer
+  fills every slot the limits allow and abstains when no unit has positive
+  utility. The default objective (summed composite scores) is unchanged.
+
 - `Kernel(candidate_pool=...)` makes the construction of the selector's
   candidate list a replaceable component (`CandidatePool`,
   `CandidatePoolRequest`). `KindBalancedCandidatePool` is the default and

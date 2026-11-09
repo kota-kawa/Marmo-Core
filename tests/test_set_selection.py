@@ -8,6 +8,7 @@ from marmo_core import (
     BranchAndBoundSetSelector,
     GreedyConstrainedSetSelector,
     BeamSearchSetSelector,
+    RelevanceUtility,
     RepairingSetSelector,
     ResourceDefinition,
     RuleBasedSetSelector,
@@ -399,6 +400,81 @@ class PermissionEscalationTests(unittest.TestCase):
                 self.assertEqual(selection.status, "selected")
                 self.assertEqual(_ids(selection), {"tool.cheap"})
 
+
+class RelevanceUtilityTests(unittest.TestCase):
+    """The opt-in objective u(i) = relevance(i) - cost."""
+
+    SOLVERS = PermissionEscalationTests.SOLVERS
+
+    def _solvers(self, cost: float = 0.3):
+        return [solver(utility=RelevanceUtility(cost)) for solver in self.SOLVERS]
+
+    def test_cost_must_be_a_relevance_value(self) -> None:
+        for cost in (-0.1, 1.5):
+            with self.assertRaises(ValueError):
+                RelevanceUtility(cost)
+
+    def test_a_missing_relevance_component_counts_as_zero(self) -> None:
+        result = SearchResult(_resource("tool.a"), 0.9, (), {})
+        self.assertAlmostEqual(RelevanceUtility(0.2)(result), -0.2)
+
+    def test_off_topic_candidates_abstain_without_a_threshold(self) -> None:
+        results = [_result(_resource(f"tool.{index}"), 0.5, relevance=0.2) for index in range(3)]
+        for selector in self._solvers():
+            with self.subTest(solver=type(selector).__name__):
+                selection = selector.select(results, context=SelectionContext())
+                self.assertEqual(selection.status, "abstain")
+                self.assertEqual(selection.results, ())
+            with self.subTest(solver=type(selector).__name__, objective="score"):
+                default = type(selector)().select(results, context=SelectionContext())
+                self.assertEqual(len(default.results), 3)
+
+    def test_only_resources_worth_their_cost_fill_the_set(self) -> None:
+        results = [
+            _result(_resource("tool.match"), 0.7, relevance=0.8),
+            _result(_resource("tool.weak"), 0.6, relevance=0.25),
+            _result(_resource("tool.noise"), 0.6, relevance=0.1),
+        ]
+        for selector in self._solvers():
+            with self.subTest(solver=type(selector).__name__):
+                self.assertEqual(_ids(selector.select(results, context=SelectionContext())), {"tool.match"})
+
+    def test_a_low_relevance_dependency_is_kept_when_the_unit_still_pays(self) -> None:
+        tool = _resource("tool.helper")
+        skill = _resource("skill.main", kind="skill", dependencies=["tool.helper"])
+        results = [_result(skill, 0.7, relevance=0.9), _result(tool, 0.5, relevance=0.1)]
+        for selector in self._solvers():
+            with self.subTest(solver=type(selector).__name__):
+                self.assertEqual(
+                    _ids(selector.select(results, context=SelectionContext())), {"skill.main", "tool.helper"}
+                )
+
+    def test_a_blocked_unit_worth_nothing_does_not_escalate(self) -> None:
+        gated = _resource("tool.gated", required_permissions=["pay.write"])
+        results = [_result(gated, 0.9, relevance=0.2)]
+        for selector in self._solvers():
+            with self.subTest(solver=type(selector).__name__):
+                self.assertEqual(selector.select(results, context=SelectionContext()).status, "abstain")
+
+    def test_a_shared_negative_dependency_is_counted_once(self) -> None:
+        # u = relevance - 0.5: a = 0.5, b = 0.45, d = -0.45. Unit {a, d} totals
+        # 0.05 and unit {b, d} totals 0.0, but once {a, d} is taken, b adds
+        # 0.45: the optimum is {a, b, d} at 0.5. A bound built from unit totals
+        # would prune b; a filter on unit totals would drop it outright.
+        # (Beam search never extends a state with an overlapping unit, under
+        # any objective, so it is not covered here.)
+        shared = _resource("tool.d")
+        first = _resource("skill.a", kind="skill", dependencies=["tool.d"])
+        second = _resource("agent.b", kind="agent", dependencies=["tool.d"])
+        results = [
+            _result(first, 0.8, relevance=1.0),
+            _result(second, 0.7, relevance=0.95),
+            _result(shared, 0.4, relevance=0.05),
+        ]
+        for solver in (GreedyConstrainedSetSelector, BranchAndBoundSetSelector):
+            with self.subTest(solver=solver.__name__):
+                selection = solver(utility=RelevanceUtility(0.5)).select(results, context=SelectionContext())
+                self.assertEqual(_ids(selection), {"skill.a", "agent.b", "tool.d"})
 
 if __name__ == "__main__":
     unittest.main()

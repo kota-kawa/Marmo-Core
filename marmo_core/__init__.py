@@ -167,6 +167,7 @@ from .retriever import LexicalRetriever, Retriever
 from .selector import (
     BranchAndBoundSetSelector,
     GreedyConstrainedSetSelector,
+    RelevanceUtility,
     RepairingSetSelector,
     RuleBasedSetSelector,
     SelectionContext,
@@ -354,6 +355,7 @@ __all__ = [
     "SafetyFinding",
     "SafetyInspector",
     "RuleBasedSetSelector",
+    "RelevanceUtility",
     "RepairingSetSelector",
     "TopKSetSelector",
     "SQLiteStateStore",

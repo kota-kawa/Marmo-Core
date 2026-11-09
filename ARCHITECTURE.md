@@ -40,7 +40,7 @@ Agent の 4 種別）を登録し、ゴールに対して必要なものだけ�
 | 検索 | `rerank.py` | `CrossEncoderProvider` ABC、`CrossEncoderRerankRetriever` | models, registry, retriever |
 | 検索 | `llm_routing.py` | `HydeRetriever`、`LLMRerankRetriever`、`LLMCatalogRetriever`、`LLMSetSelector` | llm, models, registry, retriever, selector |
 | 検索 | `candidate_pool.py` | `CandidatePool` ABC、`CandidatePoolRequest`、Kernel 既定の `KindBalancedCandidatePool`（policy の事前除外と kind 別の追加検索）、`RetrieverCandidatePool`（検索結果をそのまま渡す） | models, registry, retriever |
-| 選択 | `selector.py` | `SetSelector` ABC、`SelectionContext`、`RuleBasedSetSelector`（既定）、Greedy / Beam / BranchAndBound の制約付きソルバー、比較用の `TopKSetSelector` と `RepairingSetSelector`（上位 K 件・任意の選択結果に依存の追加・競合の除去・権限の確認をかける）、Kernel が全 Selector の結果にかける `_enforce_set_constraints` | models |
+| 選択 | `selector.py` | `SetSelector` ABC、`SelectionContext`、`RuleBasedSetSelector`（既定）、Greedy / Beam / BranchAndBound の制約付きソルバー（`utility=` で目的関数を差し替え。研究用の `RelevanceUtility`）、比較用の `TopKSetSelector` と `RepairingSetSelector`（上位 K 件・任意の選択結果に依存の追加・競合の除去・権限の確認をかける）、Kernel が全 Selector の結果にかける `_enforce_set_constraints` | models |
 | 選択 | `routing_contracts.py`、`sufficient_selector.py` | opt-in の TaskSpec・資源契約と GoalAwareSetSelector（要求被覆・権限・依存・集合描画量） | models, selector |
 | 選択 | `adaptive.py` | `CaseBasedRouter`、`RoutingCaseStore`（Kernel には組み込まれていない） | errors, models, registry, retriever, selector, semantic |
 | 選択 | `evaluator.py` | `ExecutionEvaluator`（監査ログ → `ResourceStats` 書き戻し。Kernel からは呼ばれない） | audit, models, registry |

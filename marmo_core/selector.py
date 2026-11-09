@@ -159,7 +159,9 @@ class GreedyConstrainedSetSelector(SetSelector):
     candidate pool* (a dependency the retriever did not surface makes the
     candidate infeasible — the selector only sees what layer 1 handed it),
     and closures are visited in descending **unit utility** (the summed
-    scores of the unit's members, matching the Σ u(i∈S) objective of §15.3)
+    member utilities, matching the Σ u(i∈S) objective of §15.3: composite
+    scores by default, or a custom ``utility`` such as ``RelevanceUtility``,
+    with which a unit that adds no positive utility is never picked)
     rather than per-candidate score: a specialist agent whose closure pulls
     in its tool and skill outranks a cheap standalone alternative, instead
     of being blocked by whichever single resource happened to score first.
@@ -175,8 +177,14 @@ class GreedyConstrainedSetSelector(SetSelector):
     → ``abstain``.
     """
 
-    def __init__(self, *, default_context: SelectionContext | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        default_context: SelectionContext | None = None,
+        utility: UtilityFunction | None = None,
+    ) -> None:
         self.default_context = default_context or SelectionContext()
+        self.utility = utility
 
     def select(
         self, results: list[SearchResult], *, context: SelectionContext | None = None
@@ -204,7 +212,8 @@ class GreedyConstrainedSetSelector(SetSelector):
         total_cost = Decimal(0)
         budget = Decimal(str(ctx.budget_cost)) if ctx.budget_cost is not None else None
         notes: list[str] = []
-        units, blocked = _build_units(candidates, pool, ctx, notes)
+        units, blocked = _build_units(candidates, pool, ctx, notes, self.utility)
+        value = _member_utility(self.utility)
 
         for unit_entry in units:
             cid = unit_entry.root
@@ -212,6 +221,9 @@ class GreedyConstrainedSetSelector(SetSelector):
                 continue
             unit = [pool[uid] for uid in unit_entry.ids if uid not in picked]
             if not unit:
+                continue
+            if self.utility is not None and sum(value(member) for member in unit) <= 0:
+                notes.append(f"{cid}: adds no positive utility")
                 continue
             if _conflicts(unit, picked):
                 notes.append(f"{cid}: conflicts with an already selected resource")
@@ -271,9 +283,16 @@ class BeamSearchSetSelector(SetSelector):
     or conflicts with a better combination of later units.
     """
 
-    def __init__(self, beam_width: int = 5, *, default_context: SelectionContext | None = None) -> None:
+    def __init__(
+        self,
+        beam_width: int = 5,
+        *,
+        default_context: SelectionContext | None = None,
+        utility: UtilityFunction | None = None,
+    ) -> None:
         self.beam_width = beam_width
         self.default_context = default_context or SelectionContext()
+        self.utility = utility
 
     def select(
         self, results: list[SearchResult], *, context: SelectionContext | None = None
@@ -293,7 +312,8 @@ class BeamSearchSetSelector(SetSelector):
             )
 
         notes: list[str] = []
-        units, blocked = _build_units(candidates, pool, ctx, notes)
+        units, blocked = _build_units(candidates, pool, ctx, notes, self.utility)
+        value = _member_utility(self.utility)
 
         # State: picked_ids -> (utility, cost, counts)
         beam: dict[frozenset[str], tuple[float, Decimal, dict[str, int]]] = {
@@ -334,8 +354,11 @@ class BeamSearchSetSelector(SetSelector):
                 if _conflicts(unit_members, picked_results):
                     continue
 
+                gain = sum(value(pool[uid]) for uid in unit_ids)
+                if self.utility is not None and gain <= 0:
+                    continue
                 new_ids = state_ids | frozenset(unit_ids)
-                new_util = state_util + sum(pool[uid].score for uid in unit_ids)
+                new_util = state_util + gain
                 new_cost = state_cost + unit_cost
                 new_counts = state_counts.copy()
                 for kind, extra in unit_counts.items():
@@ -350,7 +373,8 @@ class BeamSearchSetSelector(SetSelector):
             beam = next_beam
 
         best_state_ids = None
-        best_util = -1.0
+        # With a custom utility only a set worth more than nothing is chosen.
+        best_util = -1.0 if self.utility is None else 0.0
         best_cost = Decimal(0)
         for state_ids, (util, cost, _) in beam.items():
             if state_ids and util > best_util:
@@ -396,10 +420,15 @@ class BranchAndBoundSetSelector(SetSelector):
     """
 
     def __init__(
-        self, *, max_nodes: int = 100_000, default_context: SelectionContext | None = None
+        self,
+        *,
+        max_nodes: int = 100_000,
+        default_context: SelectionContext | None = None,
+        utility: UtilityFunction | None = None,
     ) -> None:
         self.max_nodes = max_nodes
         self.default_context = default_context or SelectionContext()
+        self.utility = utility
 
     def select(
         self, results: list[SearchResult], *, context: SelectionContext | None = None
@@ -419,13 +448,15 @@ class BranchAndBoundSetSelector(SetSelector):
             )
 
         notes: list[str] = []
-        ordered_units, blocked = _build_units(candidates, pool, ctx, notes)
+        ordered_units, blocked = _build_units(candidates, pool, ctx, notes, self.utility)
+        value = _member_utility(self.utility)
         # Admissible bound: the utility still reachable from unit i onward can
-        # never exceed the summed (full, non-overlap-corrected) utilities of
-        # the remaining units.
+        # never exceed the summed positive member utilities of the remaining
+        # units (members already picked, or with negative utility, only lower
+        # what a unit adds).
         suffix_bound = [0.0] * (len(ordered_units) + 1)
         for index in range(len(ordered_units) - 1, -1, -1):
-            suffix_bound[index] = suffix_bound[index + 1] + max(ordered_units[index].utility, 0.0)
+            suffix_bound[index] = suffix_bound[index + 1] + ordered_units[index].bound
 
         best_ids: tuple[str, ...] = ()
         best_utility = 0.0
@@ -477,7 +508,7 @@ class BranchAndBoundSetSelector(SetSelector):
                         picked[member.resource.metadata.id] = member
                     for kind, extra in new_counts.items():
                         counts[kind] += extra
-                    dfs(index + 1, picked, counts, cost + new_cost, utility + sum(m.score for m in new_members))
+                    dfs(index + 1, picked, counts, cost + new_cost, utility + sum(value(m) for m in new_members))
                     for member in new_members:
                         del picked[member.resource.metadata.id]
                     for kind, extra in new_counts.items():
@@ -691,6 +722,47 @@ def _repair_selection(
     return SelectionResult(ordered, reason)
 
 
+UtilityFunction = Callable[[SearchResult], float]
+"""Per-resource utility u(i) a constrained solver maximizes as Σ u(i∈S)."""
+
+
+class RelevanceUtility:
+    """Opt-in objective: u(i) = relevance(i) − ``cost`` (research).
+
+    The default objective sums composite scores, which are positive for
+    every candidate and are 55% priors (trust, side effect, latency, cost,
+    permission fit) rather than relevance; maximizing it fills every slot
+    the limits allow, and ``abstain`` comes only from a threshold. Here each
+    resource pays ``cost`` for its place in the context, so one adds utility
+    only when its text relevance exceeds that cost, a dependency costs the
+    set what its own relevance does not cover, and a solver abstains when no
+    unit has a positive total. A missing relevance component counts as 0.
+
+    ``cost`` is in relevance units and has no default: like
+    ``min_relevance``, the right value depends on the catalog and is meant
+    to be tuned on held-out goals.
+    """
+
+    def __init__(self, cost: float) -> None:
+        if not 0.0 <= cost <= 1.0:
+            raise ValueError("cost must be between 0 and 1")
+        self.cost = cost
+
+    def __call__(self, result: SearchResult) -> float:
+        return float(result.components.get("relevance", 0.0)) - self.cost
+
+    def __repr__(self) -> str:
+        return f"RelevanceUtility(cost={self.cost!r})"
+
+
+def _member_utility(utility: UtilityFunction | None) -> UtilityFunction:
+    return utility if utility is not None else _composite_score
+
+
+def _composite_score(result: SearchResult) -> float:
+    return result.score
+
+
 @dataclass(frozen=True)
 class _Unit:
     """A candidate plus its dependency closure inside the candidate pool."""
@@ -699,6 +771,8 @@ class _Unit:
     root: str
     ids: tuple[str, ...]
     missing_permissions: frozenset[str] = frozenset()
+    # Sum of the members' positive utilities: what the unit can add at most.
+    bound: float = 0.0
 
 
 def _build_units(
@@ -706,13 +780,17 @@ def _build_units(
     pool: Mapping[str, SearchResult],
     ctx: SelectionContext,
     notes: list[str],
+    utility: UtilityFunction | None = None,
 ) -> tuple[list[_Unit], list[_Unit]]:
     """Split candidates into permission-feasible and permission-blocked units.
 
     Both lists are in descending unit utility. A candidate whose closure
-    leaves the pool is in neither and is recorded in ``notes``.
+    leaves the pool is in neither and is recorded in ``notes``. With a
+    custom ``utility``, a unit that can add nothing (no positive member) is
+    in neither either, and a blocked unit must have a positive total.
     """
 
+    value = _member_utility(utility)
     granted = set(ctx.granted_permissions)
     units: list[_Unit] = []
     blocked: list[_Unit] = []
@@ -726,8 +804,20 @@ def _build_units(
         if ctx.enforce_permissions:
             for uid in unit_ids:
                 missing_permissions |= set(pool[uid].resource.metadata.required_permissions) - granted
-        utility = sum(pool[uid].score for uid in unit_ids)
-        unit = _Unit(utility, cid, tuple(unit_ids), frozenset(missing_permissions))
+        member_values = [value(pool[uid]) for uid in unit_ids]
+        unit = _Unit(
+            sum(member_values),
+            cid,
+            tuple(unit_ids),
+            frozenset(missing_permissions),
+            bound=sum(max(item, 0.0) for item in member_values),
+        )
+        # A blocked unit must pay on its own to justify asking a human; a
+        # feasible one only needs a positive member, since a negative member
+        # it shares with an already picked unit costs nothing twice.
+        if utility is not None and (unit.utility if missing_permissions else unit.bound) <= 0:
+            notes.append(f"{cid}: unit utility {unit.utility:g} is not positive")
+            continue
         if missing_permissions:
             notes.append(f"{cid}: missing permissions {', '.join(sorted(missing_permissions))}")
             blocked.append(unit)
