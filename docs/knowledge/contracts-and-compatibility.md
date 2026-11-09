@@ -41,6 +41,13 @@ Marmo-Core は SemVer に従い、同一メジャー内で次の表面を壊さ�
 - 0.6.0: 関連度成分を相対正規化から絶対値へ。既存のしきい値は再校正が要る
   （ベンチマーク既定 0.55→0.35）。`RuleBasedSetSelector` が `min_relevance` を尊重する
   ようになった。
+- Unreleased: Kernel が Selector の種類にかかわらず、選択結果を依存閉包・衝突なしに
+  そろえる。依存先を候補プールかレジストリから補い、依存先が欠ける・activation で deny
+  される・上位と衝突するものを `skipped_resources` と `retrieve` 監査レコードの
+  `constraint_drops` に移す（`--strict` で失敗する）。Kernel の既定 compiler は
+  `ContextCompiler(preserve_dependencies=True)`。`compiler=` を渡せば従来の挙動になる。
+  Greedy / Beam / Branch-and-Bound は、権限待ちの単位が実行可能な集合のどの単位より
+  utility が高ければ escalate する。
 - Unreleased: timeout 後の自動 retry/fallback を停止。明示的に timeout を
   `RetryPolicy.retry_kinds` に指定しても、不明な副作用を重複させないため人の判断を求める。
   `timeout_mode="process"` は追加の選択肢で、既定は互換性のため `thread` のまま。

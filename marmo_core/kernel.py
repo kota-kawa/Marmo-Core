@@ -27,7 +27,6 @@ end up with weaker checks than the other.
 
 from __future__ import annotations
 
-from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from copy import copy
 from dataclasses import dataclass, replace as dataclass_replace
@@ -45,6 +44,7 @@ from .agent_runtime import (
 )
 from .audit import AuditLog
 from .budget import BudgetExceededError, BudgetLedger, BudgetedLLMProvider, TaskBudget
+from .candidate_pool import CandidatePool, CandidatePoolRequest, KindBalancedCandidatePool
 from .compiler import AgentInterface, ContextCompiler
 from .connectors import Connector, connector_tools
 from .errors import ProviderError, ResourceNotFoundError, SecretResolutionError, ToolInputError
@@ -73,6 +73,8 @@ from .selector import (
     RuleBasedSetSelector,
     SelectionContext,
     SetSelector,
+    _enforce_set_constraints,
+    _find_reference,
 )
 from .safety import redact_sensitive_arguments
 from .security import PromptInjectionInspector, label_untrusted_content
@@ -282,6 +284,7 @@ class Kernel:
         gateway: PolicyGateway | None = None,
         retriever: Retriever | None = None,
         selector: SetSelector | None = None,
+        candidate_pool: CandidatePool | None = None,
         activator: ResourceActivator | None = None,
         tool_runtime: ToolRuntime | None = None,
         agent_runtime: AgentRuntime | None = None,
@@ -388,9 +391,11 @@ class Kernel:
         else:
             self.agent_runtime = copy(agent_runtime)
             self.agent_runtime.backends = dict(agent_runtime.backends)
-        self.compiler = compiler or ContextCompiler(
-            preserve_dependencies=bool(getattr(self.selector, "requires_contract_verification", False))
-        )
+        # Dependency-preserving compilation for every selector: a resource
+        # whose prerequisite was skipped at activation or would be cut by the
+        # token budget is left out of the context instead of reaching the
+        # model without it.
+        self.compiler = compiler or ContextCompiler(preserve_dependencies=True)
         self.audit_log = audit_log or AuditLog()
         self.hitl = hitl or PendingHitlBroker()
         self.recovery = recovery or RecoveryManager()
@@ -399,6 +404,7 @@ class Kernel:
             self.planner = self._budgeted_planner(self.planner, llm)
         self.session_id = session_id
         self.top_k = top_k
+        self.candidate_pool = candidate_pool or KindBalancedCandidatePool()
         self.set_limits = dict(set_limits) if set_limits else None
         # Floor on the text-relevance component, passed to the selector: the
         # gate that keeps a resource matching nothing in the goal out of the
@@ -716,33 +722,6 @@ class Kernel:
 
     # -- execution loop --------------------------------------------------------
 
-    def _policy_feasible_candidates(
-        self, results: list[SearchResult], context: PolicyContext
-    ) -> list[SearchResult]:
-        """Drop lower-ranked candidates the Policy Gateway would deny outright.
-
-        The set selector may take several Tools per goal. A denied resource
-        that is the *best* match of its kind stays in the pool so the run can
-        report it as skipped (that tells the caller which permission is
-        missing); a denied resource that would only fill a spare slot is
-        left out, so widening the set never turns a clean read-only run into
-        a strict failure because an unrelated write tool was pulled in.
-
-        Contract-aware selection instead retains permission-only alternatives
-        at every rank and removes other denied candidates, including the first.
-        """
-
-        contract_routing = getattr(self.selector, "requires_contract_verification", False)
-        kept: list[SearchResult] = []
-        seen_kinds: set[str] = set()
-        for result in results:
-            kind = result.resource.metadata.kind
-            first_of_kind = kind not in seen_kinds
-            seen_kinds.add(kind)
-            if (first_of_kind and not contract_routing) or not self._selection_candidate_denied(result, context):
-                kept.append(result)
-        return kept
-
     def _selection_candidate_denied(self, result: SearchResult, context: PolicyContext) -> bool:
         """Keep discoverable permission alternatives for strict set selection.
 
@@ -760,6 +739,32 @@ class Kernel:
                 )),
             )
         return self.gateway.evaluate(result.resource, context, gate="activation").denied
+
+    def _dependency_resolver(
+        self, pool: list[SearchResult], context: PolicyContext
+    ) -> Callable[[str], SearchResult | str]:
+        """Resolve a declared dependency for ``_enforce_set_constraints``.
+
+        The candidate pool first, so a dependency keeps the score it was
+        ranked with, then the registry. A dependency the activation gate
+        would deny is unavailable: activating its dependent without it would
+        hand the model a resource whose prerequisite never loads.
+        """
+
+        def resolve(reference: str) -> SearchResult | str:
+            found = _find_reference(reference, pool)
+            if found is None:
+                try:
+                    definition = self.registry.get(reference)
+                except ResourceNotFoundError as exc:
+                    return f"is unavailable: {exc}"
+                found = SearchResult(definition, 0.0, ("added as a declared dependency",), {})
+            decision = self.gateway.evaluate(found.resource, context, gate="activation")
+            if decision.denied:
+                return f"is denied at activation: {decision.reason}"
+            return found
+
+        return resolve
 
     def _tool_message_content(self, value: Any, *, source: str) -> str:
         """Label one tool result for the model, capped so it cannot overflow it.
@@ -783,77 +788,30 @@ class Kernel:
         )
 
     def _candidate_pool(self, goal: str, context: PolicyContext) -> list[SearchResult]:
-        """Rank candidates for the goal, leaving every kind a fillable share.
+        """Hand the configured ``CandidatePool`` this goal's request.
 
-        Retrieval returns one globally ranked ``top_k``, so a kind holding
-        many entries -- a thousand-skill catalog next to ten Tools -- can take
-        every slot and leave the set selector nothing to fill its per-kind
-        limits with. The run then reports ``tool=0/3`` and the model answers
-        with no tools at all, which reads as a clean completion. The kinds
-        that come back short therefore get *one* extra search between them,
-        restricted to those kinds and limited per kind, over the same cached
-        index. One, not one per kind: with an embedding-backed or LLM-backed
-        retriever each search is a paid round trip on the same goal string.
-
-        Top-ups drop candidates the activation gate would deny (except for
-        permission-only denials under contract-aware selection), and respect
-        the selector's ``min_score`` floor when it has one: the point is to
-        give the selector something it can actually use, and reporting an
-        unrelated denied resource as "skipped" would turn a clean read-only
-        run into a strict failure. Kinds that surface on their own merit keep
-        the existing rule, where the best match is reported even when denied.
-
-        Filling the Tool slots does mean a goal can now be offered a Tool that
-        a crowded pool used to hide from it. That exposure is not new -- the
-        same Tool is selected today in any registry small enough not to crowd,
-        because no selector applies a relevance floor -- but the crowding was
-        masking it, so removing the crowding removes the mask. The activation
-        and execution gates, the HITL escalation for side-effecting resources,
-        ``set_limits``, and a selector ``min_score`` remain the controls.
+        The per-kind limits are the selector's defaults with ``set_limits`` on
+        top: topping up against ``set_limits`` alone would leave every kind
+        the caller did not mention starved. Contract-aware selection reports
+        no denied first-of-kind candidate, because it keeps permission-only
+        alternatives at every rank instead (``_selection_candidate_denied``).
         """
 
-        query = SearchQuery(
-            task=goal,
-            granted_permissions=tuple(context.granted_permissions),
-            top_k=self.top_k,
-        )
-        results = self._policy_feasible_candidates(self.retriever.search(self.registry, query), context)
-        # The selector starts from its own defaults and layers ``set_limits`` on
-        # top, so topping up against ``set_limits`` alone would leave every kind
-        # the caller did not mention starved -- the exact failure this guards.
         limits = dict(getattr(self.selector, "default_limits", None) or DEFAULT_SET_LIMITS)
         limits.update(self.set_limits or {})
-        counts = Counter(result.resource.metadata.kind for result in results)
-        seen = {result.resource.identity for result in results}
-        shortfalls = {
-            kind: limits[kind] - counts.get(kind, 0)
-            for kind in sorted(limits)
-            if limits[kind] - counts.get(kind, 0) > 0 and self.registry.count(kind)
-        }
-        if not shortfalls:
-            return results
-        floor = float(getattr(self.selector, "min_score", 0.0) or 0.0)
-        # Each starved kind gets its own depth to walk (candidates already in
-        # the pool, or denied at the activation gate, do not count against the
-        # shortfall), which is what the per-kind search gave it before.
-        topup = dataclass_replace(
-            query,
-            kinds=tuple(shortfalls),
-            per_kind_limits={kind: self.top_k for kind in shortfalls},
-            top_k=self.top_k * len(shortfalls),
+        return self.candidate_pool.build(
+            CandidatePoolRequest(
+                goal=goal,
+                registry=self.registry,
+                retriever=self.retriever,
+                granted_permissions=tuple(context.granted_permissions),
+                top_k=self.top_k,
+                per_kind_limits=limits,
+                min_score=float(getattr(self.selector, "min_score", 0.0) or 0.0),
+                is_denied=lambda result: self._selection_candidate_denied(result, context),
+                keep_best_denied_of_kind=not getattr(self.selector, "requires_contract_verification", False),
+            )
         )
-        for result in self.retriever.search(self.registry, topup):
-            kind = result.resource.kind
-            if shortfalls.get(kind, 0) <= 0 or result.resource.identity in seen:
-                continue
-            if result.score < floor:
-                continue
-            if self._selection_candidate_denied(result, context):
-                continue
-            seen.add(result.resource.identity)
-            results.append(result)
-            shortfalls[kind] -= 1
-        return results
 
     def _execute(self, state: TaskState) -> TaskResult:
         task_id = state.task_id
@@ -905,6 +863,7 @@ class Kernel:
             ),
         )
         results: list[SearchResult] = []
+        constraint_drops: tuple[dict[str, str], ...] = ()
         if state.snapshot and not state.snapshot.get("selection_pending", False):
             if getattr(self.selector, "requires_contract_verification", False):
                 if "routing_selection_budget_cost" not in state.snapshot:
@@ -922,6 +881,9 @@ class Kernel:
             candidate_count = len(results)
             catalog_nonempty = bool(self.registry.list())
             selected = self.selector.select(results, context=selection_context)
+            selected, constraint_drops = _enforce_set_constraints(
+                selected, self._dependency_resolver(results, context)
+            )
             if self.budget_ledger is not None:
                 selected_cost = sum(
                     (Decimal(str(item.resource.metadata.cost_estimate)) for item in selected.results),
@@ -957,6 +919,7 @@ class Kernel:
                 "selection_status": selected.status,
                 "selected": [result.resource.identity for result in selected.results],
                 "selection_reason": selected.reason,
+                **({"constraint_drops": list(constraint_drops)} if constraint_drops else {}),
             },
         )
         if selected.status == "escalate":
@@ -990,7 +953,7 @@ class Kernel:
         skills: list[LoadedSkill] = []
         tools: list[BoundTool] = []
         agents: list[BoundAgent] = []
-        skipped: list[dict[str, str]] = []
+        skipped: list[dict[str, str]] = [dict(item) for item in constraint_drops]
         for search_result in selected.results:
             definition = search_result.resource
             metadata = definition.metadata
@@ -2016,6 +1979,7 @@ class Kernel:
             gateway=self.gateway,
             retriever=copy(self.retriever),
             selector=copy(self.selector),
+            candidate_pool=self.candidate_pool,
             activator=self.activator,
             tool_runtime=self.tool_runtime,
             agent_runtime=child_agent_runtime,

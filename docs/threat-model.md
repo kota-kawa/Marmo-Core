@@ -26,6 +26,13 @@ destinations, execution permissions, persisted state, and audit integrity.
   a temporary candidate policy context relaxes required permissions for selection
   only. There is no separate discovery ACL. Hosts must exclude confidential
   resources from that registry; actual activation and execution remain gated.
+- After any set selector, the Kernel adds each selected resource's declared
+  dependencies from the candidate pool or the registry and drops a resource
+  whose dependency is missing or denied at activation, or that conflicts with a
+  higher-ranked member. An added dependency is not trusted because a selected
+  resource named it: it goes through the same activation gate, and the
+  dependency-preserving compiler keeps out a resource whose dependency was
+  skipped there. Dropped resources are reported as skipped.
 - When configured, a task budget is checked before Kernel-controlled model and
   Resource calls. The budget event log survives rollback, and resume rejects a
   different policy. External charges inside handlers rely on the Resource's

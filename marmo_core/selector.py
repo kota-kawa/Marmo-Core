@@ -29,7 +29,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from decimal import Decimal
 from dataclasses import dataclass, field
-from typing import Iterable, Mapping
+from typing import Callable, Iterable, Mapping
 
 from .models import KINDS, SearchResult, SelectionResult
 from .routing_contracts import TaskSpec
@@ -167,10 +167,12 @@ class GreedyConstrainedSetSelector(SetSelector):
     conflict-free against the picked set, and fits the count/per-kind/cost
     budgets.
 
-    Outcome mapping (§15.6): something picked → ``selected``; nothing
-    feasible but at least one candidate was blocked *only* by missing
-    permissions → ``escalate`` (a human can grant them); otherwise →
-    ``abstain``.
+    Outcome mapping (§15.6), shared by the beam and branch-and-bound
+    solvers: a unit blocked *only* by missing permissions escalates when
+    nothing else is feasible, or when its utility beats every unit in the
+    feasible set and it fits the budgets on its own (a human can grant the
+    permissions); otherwise something picked → ``selected``, nothing picked
+    → ``abstain``.
     """
 
     def __init__(self, *, default_context: SelectionContext | None = None) -> None:
@@ -197,37 +199,19 @@ class GreedyConstrainedSetSelector(SetSelector):
                 (), "no candidate met the minimum score and relevance thresholds", status="abstain"
             )
 
-        granted = set(ctx.granted_permissions)
         picked: dict[str, SearchResult] = {}
         counts: dict[str, int] = defaultdict(int)
         total_cost = Decimal(0)
         budget = Decimal(str(ctx.budget_cost)) if ctx.budget_cost is not None else None
         notes: list[str] = []
-        permission_blocked: list[str] = []
+        units, blocked = _build_units(candidates, pool, ctx, notes)
 
-        units: list[tuple[float, str, list[str]]] = []
-        for candidate in candidates:
-            cid = candidate.resource.metadata.id
-            unit_ids, missing_dependency = _closure(cid, pool)
-            if missing_dependency is not None:
-                notes.append(f"{cid}: dependency {missing_dependency} not in candidate pool")
-                continue
-            utility = sum(pool[uid].score for uid in unit_ids)
-            units.append((utility, cid, unit_ids))
-
-        for _, cid, unit_ids in sorted(units, key=lambda item: (-item[0], item[1])):
+        for unit_entry in units:
+            cid = unit_entry.root
             if cid in picked:
                 continue
-            unit = [pool[uid] for uid in unit_ids if uid not in picked]
+            unit = [pool[uid] for uid in unit_entry.ids if uid not in picked]
             if not unit:
-                continue
-            missing_permissions = set()
-            if ctx.enforce_permissions:
-                for member in unit:
-                    missing_permissions |= set(member.resource.metadata.required_permissions) - granted
-            if missing_permissions:
-                permission_blocked.append(cid)
-                notes.append(f"{cid}: missing permissions {', '.join(sorted(missing_permissions))}")
                 continue
             if _conflicts(unit, picked):
                 notes.append(f"{cid}: conflicts with an already selected resource")
@@ -260,6 +244,9 @@ class GreedyConstrainedSetSelector(SetSelector):
                 picked[member.resource.metadata.id] = member
             total_cost += unit_cost
 
+        escalation = _permission_escalation(set(picked), units, blocked, pool, ctx, notes)
+        if escalation is not None:
+            return escalation
         if picked:
             ordered = tuple(sorted(picked.values(), key=lambda r: (-r.score, r.resource.metadata.id)))
             reason = (
@@ -269,13 +256,6 @@ class GreedyConstrainedSetSelector(SetSelector):
             if notes:
                 reason += "; skipped: " + "; ".join(notes[:4])
             return SelectionResult(ordered, reason)
-        if permission_blocked:
-            reason = (
-                "feasible only with permissions that were not granted: "
-                + "; ".join(notes[:4])
-                + "; a human can grant them and re-run"
-            )
-            return SelectionResult((), reason, status="escalate")
         reason = "no feasible set under dependency, conflict, and budget constraints"
         if notes:
             reason += ": " + "; ".join(notes[:4])
@@ -312,21 +292,8 @@ class BeamSearchSetSelector(SetSelector):
                 (), "no candidate met the minimum score and relevance thresholds", status="abstain"
             )
 
-        granted = set(ctx.granted_permissions)
         notes: list[str] = []
-        permission_blocked: list[str] = []
-
-        units: list[tuple[float, str, list[str]]] = []
-        for candidate in candidates:
-            cid = candidate.resource.metadata.id
-            unit_ids, missing_dependency = _closure(cid, pool)
-            if missing_dependency is not None:
-                notes.append(f"{cid}: dependency {missing_dependency} not in candidate pool")
-                continue
-            utility = sum(pool[uid].score for uid in unit_ids)
-            units.append((utility, cid, unit_ids))
-
-        ordered_units = sorted(units, key=lambda item: (-item[0], item[1]))
+        units, blocked = _build_units(candidates, pool, ctx, notes)
 
         # State: picked_ids -> (utility, cost, counts)
         beam: dict[frozenset[str], tuple[float, Decimal, dict[str, int]]] = {
@@ -334,20 +301,11 @@ class BeamSearchSetSelector(SetSelector):
         }
         budget = Decimal(str(ctx.budget_cost)) if ctx.budget_cost is not None else None
 
-        for _, cid, unit_ids in ordered_units:
+        for unit_entry in units:
+            unit_ids = unit_entry.ids
             next_beam = dict(beam)
             unit_members = [pool[uid] for uid in unit_ids]
-
             unit_cost = _total_cost(unit_members)
-            unit_missing_perms = set()
-            if ctx.enforce_permissions:
-                for m in unit_members:
-                    unit_missing_perms |= set(m.resource.metadata.required_permissions) - granted
-
-            if unit_missing_perms:
-                permission_blocked.append(cid)
-                notes.append(f"{cid}: missing permissions {', '.join(sorted(unit_missing_perms))}")
-                continue
 
             unit_counts: dict[str, int] = defaultdict(int)
             for m in unit_members:
@@ -400,6 +358,9 @@ class BeamSearchSetSelector(SetSelector):
                 best_util = util
                 best_cost = cost
 
+        escalation = _permission_escalation(set(best_state_ids or ()), units, blocked, pool, ctx, notes)
+        if escalation is not None:
+            return escalation
         if best_state_ids:
             picked = [pool[uid] for uid in best_state_ids]
             ordered = tuple(sorted(picked, key=lambda r: (-r.score, r.resource.metadata.id)))
@@ -410,14 +371,6 @@ class BeamSearchSetSelector(SetSelector):
             if notes:
                 reason += "; skipped: " + "; ".join(notes[:4])
             return SelectionResult(ordered, reason)
-
-        if permission_blocked:
-            reason = (
-                "feasible only with permissions that were not granted: "
-                + "; ".join(notes[:4])
-                + "; a human can grant them and re-run"
-            )
-            return SelectionResult((), reason, status="escalate")
 
         reason = "no feasible set under dependency, conflict, and budget constraints"
         if notes:
@@ -465,37 +418,14 @@ class BranchAndBoundSetSelector(SetSelector):
                 (), "no candidate met the minimum score and relevance thresholds", status="abstain"
             )
 
-        granted = set(ctx.granted_permissions)
         notes: list[str] = []
-        permission_blocked: list[str] = []
-
-        units: list[tuple[float, str, list[str]]] = []
-        for candidate in candidates:
-            cid = candidate.resource.metadata.id
-            unit_ids, missing_dependency = _closure(cid, pool)
-            if missing_dependency is not None:
-                notes.append(f"{cid}: dependency {missing_dependency} not in candidate pool")
-                continue
-            missing_permissions = set()
-            if ctx.enforce_permissions:
-                for uid in unit_ids:
-                    missing_permissions |= (
-                        set(pool[uid].resource.metadata.required_permissions) - granted
-                    )
-            if missing_permissions:
-                permission_blocked.append(cid)
-                notes.append(f"{cid}: missing permissions {', '.join(sorted(missing_permissions))}")
-                continue
-            utility = sum(pool[uid].score for uid in unit_ids)
-            units.append((utility, cid, unit_ids))
-
-        ordered_units = sorted(units, key=lambda item: (-item[0], item[1]))
+        ordered_units, blocked = _build_units(candidates, pool, ctx, notes)
         # Admissible bound: the utility still reachable from unit i onward can
         # never exceed the summed (full, non-overlap-corrected) utilities of
         # the remaining units.
         suffix_bound = [0.0] * (len(ordered_units) + 1)
         for index in range(len(ordered_units) - 1, -1, -1):
-            suffix_bound[index] = suffix_bound[index + 1] + max(ordered_units[index][0], 0.0)
+            suffix_bound[index] = suffix_bound[index + 1] + max(ordered_units[index].utility, 0.0)
 
         best_ids: tuple[str, ...] = ()
         best_utility = 0.0
@@ -524,7 +454,7 @@ class BranchAndBoundSetSelector(SetSelector):
             nodes += 1
             if utility + suffix_bound[index] <= best_utility + 1e-12:
                 return
-            _, _, unit_ids = ordered_units[index]
+            unit_ids = ordered_units[index].ids
             new_ids = [uid for uid in unit_ids if uid not in picked]
             if new_ids:
                 new_members = [pool[uid] for uid in new_ids]
@@ -556,6 +486,9 @@ class BranchAndBoundSetSelector(SetSelector):
 
         dfs(0, {}, defaultdict(int), Decimal(0), 0.0)
 
+        escalation = _permission_escalation(set(best_ids), ordered_units, blocked, pool, ctx, notes)
+        if escalation is not None:
+            return escalation
         if best_ids:
             picked_results = [pool[uid] for uid in best_ids]
             ordered = tuple(sorted(picked_results, key=lambda r: (-r.score, r.resource.metadata.id)))
@@ -568,14 +501,6 @@ class BranchAndBoundSetSelector(SetSelector):
             if notes:
                 reason += "; skipped: " + "; ".join(notes[:4])
             return SelectionResult(ordered, reason)
-
-        if permission_blocked:
-            reason = (
-                "feasible only with permissions that were not granted: "
-                + "; ".join(notes[:4])
-                + "; a human can grant them and re-run"
-            )
-            return SelectionResult((), reason, status="escalate")
 
         reason = "no feasible set under dependency, conflict, and budget constraints"
         if notes:
@@ -764,6 +689,206 @@ def _repair_selection(
     if notes:
         reason += "; post-processing: " + "; ".join(notes[:4])
     return SelectionResult(ordered, reason)
+
+
+@dataclass(frozen=True)
+class _Unit:
+    """A candidate plus its dependency closure inside the candidate pool."""
+
+    utility: float
+    root: str
+    ids: tuple[str, ...]
+    missing_permissions: frozenset[str] = frozenset()
+
+
+def _build_units(
+    candidates: list[SearchResult],
+    pool: Mapping[str, SearchResult],
+    ctx: SelectionContext,
+    notes: list[str],
+) -> tuple[list[_Unit], list[_Unit]]:
+    """Split candidates into permission-feasible and permission-blocked units.
+
+    Both lists are in descending unit utility. A candidate whose closure
+    leaves the pool is in neither and is recorded in ``notes``.
+    """
+
+    granted = set(ctx.granted_permissions)
+    units: list[_Unit] = []
+    blocked: list[_Unit] = []
+    for candidate in candidates:
+        cid = candidate.resource.metadata.id
+        unit_ids, missing_dependency = _closure(cid, pool)
+        if missing_dependency is not None:
+            notes.append(f"{cid}: dependency {missing_dependency} not in candidate pool")
+            continue
+        missing_permissions: set[str] = set()
+        if ctx.enforce_permissions:
+            for uid in unit_ids:
+                missing_permissions |= set(pool[uid].resource.metadata.required_permissions) - granted
+        utility = sum(pool[uid].score for uid in unit_ids)
+        unit = _Unit(utility, cid, tuple(unit_ids), frozenset(missing_permissions))
+        if missing_permissions:
+            notes.append(f"{cid}: missing permissions {', '.join(sorted(missing_permissions))}")
+            blocked.append(unit)
+        else:
+            units.append(unit)
+    return sorted(units, key=_unit_order), sorted(blocked, key=_unit_order)
+
+
+def _unit_order(unit: _Unit) -> tuple[float, str]:
+    return (-unit.utility, unit.root)
+
+
+def _permission_escalation(
+    picked_ids: set[str],
+    units: list[_Unit],
+    blocked: list[_Unit],
+    pool: Mapping[str, SearchResult],
+    ctx: SelectionContext,
+    notes: list[str],
+) -> SelectionResult | None:
+    """Escalate when missing permissions keep out the best unit (§15.6).
+
+    With nothing feasible, any permission-blocked unit escalates. With a
+    feasible set, a blocked unit escalates only when its utility beats every
+    unit inside that set and it would fit the budgets on its own: the best
+    match needs a grant, so selecting the runner-up instead would report a
+    worse set as a clean success. A blocked unit that merely ranks below the
+    picked ones stays a skipped note.
+    """
+
+    if not blocked:
+        return None
+    if not picked_ids:
+        reason = (
+            "feasible only with permissions that were not granted: "
+            + "; ".join(notes[:4])
+            + "; a human can grant them and re-run"
+        )
+        return SelectionResult((), reason, status="escalate")
+    best_picked = max((unit.utility for unit in units if set(unit.ids) <= picked_ids), default=0.0)
+    for unit in blocked:
+        if unit.utility <= best_picked:
+            return None
+        if not _fits_alone(unit, pool, ctx):
+            continue
+        missing = tuple(sorted(unit.missing_permissions))
+        reason = (
+            f"{unit.root} outranks the feasible set (utility {unit.utility:g} > {best_picked:g}) "
+            f"but needs permissions that were not granted: {', '.join(missing)}; "
+            f"without them the set would be {', '.join(sorted(picked_ids))}; "
+            "a human can grant them and re-run"
+        )
+        return SelectionResult((), reason, status="escalate", missing_permissions=missing)
+    return None
+
+
+def _fits_alone(unit: _Unit, pool: Mapping[str, SearchResult], ctx: SelectionContext) -> bool:
+    """Could ``unit`` be selected on its own once its permissions are granted?"""
+
+    members = [pool[uid] for uid in unit.ids]
+    if len(members) > ctx.max_resources:
+        return False
+    if ctx.budget_cost is not None and _total_cost(members) > Decimal(str(ctx.budget_cost)):
+        return False
+    kind_counts: dict[str, int] = defaultdict(int)
+    for member in members:
+        kind_counts[member.resource.metadata.kind] += 1
+    if any(
+        ctx.per_kind_limits.get(kind) is not None and count > ctx.per_kind_limits[kind]
+        for kind, count in kind_counts.items()
+    ):
+        return False
+    return not _conflicts(members, {})
+
+
+def _enforce_set_constraints(
+    selection: SelectionResult,
+    resolve: Callable[[str], SearchResult | str],
+) -> tuple[SelectionResult, tuple[dict[str, str], ...]]:
+    """Make a selected set dependency-closed and conflict-free (F-RETR-04).
+
+    Not every selector reasons about dependencies and conflicts: the
+    rule-based default and the LLM selector do not, so the Kernel applies
+    this to every ``selected`` outcome. Members are visited in descending
+    score. Each is kept together with its transitive dependencies, found
+    first among the members already kept and otherwise through ``resolve``,
+    which returns the dependency as a ``SearchResult`` or a short reason it
+    is unavailable. A member is dropped, never silently, when a dependency
+    is unavailable or when its unit conflicts with what is already kept.
+
+    Returns the repaired selection and the dropped members as
+    ``{"resource": identity, "reason": ...}``. A set that loses every member
+    becomes ``abstain``; abstain and escalate pass through unchanged.
+    """
+
+    if selection.status != "selected" or not selection.results:
+        return selection, ()
+    selected_identities = {result.resource.identity for result in selection.results}
+    kept: dict[str, SearchResult] = {}
+    dropped: list[dict[str, str]] = []
+    added: list[str] = []
+    for member in sorted(selection.results, key=lambda r: (-r.score, r.resource.identity)):
+        if member.resource.identity in kept:
+            continue
+        unit, problem = _dependency_unit(member, kept, resolve)
+        if problem is None and _conflicts(unit, {r.resource.metadata.id: r for r in kept.values()}):
+            problem = "conflicts with a higher-ranked member of the set"
+        if problem is not None:
+            dropped.append({"resource": member.resource.identity, "reason": problem})
+            continue
+        for result in unit:
+            identity = result.resource.identity
+            if identity not in kept:
+                kept[identity] = result
+                if identity not in selected_identities:
+                    added.append(identity)
+
+    if not added and not dropped:
+        return selection, ()
+    notes = []
+    if added:
+        notes.append("added dependencies " + ", ".join(added))
+    notes.extend(f"dropped {item['resource']} ({item['reason']})" for item in dropped)
+    reason = f"{selection.reason}; constraint check: " + "; ".join(notes)
+    if not kept:
+        return SelectionResult((), reason, status="abstain"), tuple(dropped)
+    ordered = tuple(sorted(kept.values(), key=lambda r: (-r.score, r.resource.identity)))
+    return SelectionResult(ordered, reason, missing_permissions=selection.missing_permissions), tuple(dropped)
+
+
+def _dependency_unit(
+    member: SearchResult,
+    kept: Mapping[str, SearchResult],
+    resolve: Callable[[str], SearchResult | str],
+) -> tuple[list[SearchResult], str | None]:
+    """``member`` plus the transitive dependencies ``kept`` does not already hold."""
+
+    unit = [member]
+    stack = list(member.resource.metadata.dependencies)
+    while stack:
+        reference = stack.pop()
+        if _find_reference(reference, kept.values()) or _find_reference(reference, unit):
+            continue
+        resolved = resolve(reference)
+        if isinstance(resolved, str):
+            return [], f"dependency {reference} {resolved}"
+        if any(result.resource.identity == resolved.resource.identity for result in unit):
+            continue
+        unit.append(resolved)
+        stack.extend(resolved.resource.metadata.dependencies)
+    return unit, None
+
+
+def _find_reference(reference: str, results: Iterable[SearchResult]) -> SearchResult | None:
+    """The result a dependency reference names: ``id@version`` exactly, a bare ``id`` by id."""
+
+    for result in results:
+        metadata = result.resource.metadata
+        if reference == (result.resource.identity if "@" in reference else metadata.id):
+            return result
+    return None
 
 
 def _resource_cost(result: SearchResult) -> Decimal:

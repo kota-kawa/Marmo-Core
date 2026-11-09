@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The Kernel now makes every selected set dependency-closed and conflict-free,
+  whatever the selector. It adds declared dependencies from the candidate pool
+  or the registry, and drops a resource whose dependency is missing, ambiguous,
+  or denied at activation, or that conflicts with a higher-ranked member.
+  Dropped resources appear in `skipped_resources` (so `--strict` fails) and in
+  the `retrieve` audit record as `constraint_drops`. The default rule-based
+  selector and `LLMSetSelector` used to hand such sets to the model unchanged.
+  The Kernel's default compiler is now `ContextCompiler(preserve_dependencies=True)`
+  for every selector, so a resource whose dependency was skipped at activation
+  or would be cut by the token budget stays out of the context. Passing a
+  `compiler` keeps the previous behaviour available.
+
+- `GreedyConstrainedSetSelector`, `BeamSearchSetSelector`, and
+  `BranchAndBoundSetSelector` now escalate when a unit blocked only by missing
+  permissions has a higher utility than every unit in the feasible set and
+  would fit the budgets on its own. They used to escalate only when nothing
+  else was feasible, so a lower-ranked alternative was returned as a clean
+  `selected` result. The escalation carries the blocked unit's
+  `missing_permissions`. A blocked unit that ranks below the selected units is
+  still reported as skipped.
+
 - Semantic relevance is now cosine similarity clipped to [0, 1]. Negative
   cosines used to map to `(cosine + 1) / 2`, which ranked a cosine of -0.14
   above one of +0.14 in `HybridRetriever` and in `HierarchicalRetriever`'s
@@ -26,13 +47,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Kernel(candidate_pool=...)` makes the construction of the selector's
+  candidate list a replaceable component (`CandidatePool`,
+  `CandidatePoolRequest`). `KindBalancedCandidatePool` is the default and
+  keeps the Kernel's existing policy pre-filter and per-kind top-up.
+  `RetrieverCandidatePool` hands the retriever's ranking over unchanged, so
+  selectors can be compared through the Kernel without the top-up logic.
+
 - Research opt-in goal-aware routing contracts and selection distinguish task
   effects from supporting context, and do not reward redundant resources by
   summing retrieval scores. Unknown declarations fail closed.
 - `ContextCompiler(preserve_dependencies=True)` packs declared dependencies as
   complete units. Contract-aware Kernel routing verifies the activated payload
   and task sufficiency again before calling the model, including on resume.
-  Existing selector and compiler defaults are unchanged.
+  The `ContextCompiler` default is unchanged.
 
 - `TopKSetSelector` (global Top-K with optional dependency expansion,
   conflict dropping, and a permission check) and `RepairingSetSelector`

@@ -153,6 +153,12 @@ from .recovery import (
     RetryPolicy,
     compensation_for,
 )
+from .candidate_pool import (
+    CandidatePool,
+    CandidatePoolRequest,
+    KindBalancedCandidatePool,
+    RetrieverCandidatePool,
+)
 from .fusion import RRFRetriever
 from .vector_index import ExactVectorIndex, HNSWVectorIndex, VectorIndex
 from .registry import ResourceRegistry
@@ -232,6 +238,8 @@ __all__ = [
     "BranchAndBoundSetSelector",
     "CallbackHitlBroker",
     "CapabilityGraphRetriever",
+    "CandidatePool",
+    "CandidatePoolRequest",
     "CaseBasedRouter",
     "CaseMember",
     "ChatMessage",
@@ -279,6 +287,7 @@ __all__ = [
     "InjectedMemory",
     "JsonFileStateStore",
     "Kernel",
+    "KindBalancedCandidatePool",
     "LLMCatalogRetriever",
     "LLMPlanner",
     "LLMProvider",
@@ -334,6 +343,7 @@ __all__ = [
     "ResourceStats",
     "ResourceValidationError",
     "Retriever",
+    "RetrieverCandidatePool",
     "RetryPolicy",
     "RouteDecision",
     "RRFRetriever",
