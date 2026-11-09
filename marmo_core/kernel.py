@@ -73,6 +73,7 @@ from .selector import (
     RuleBasedSetSelector,
     SelectionContext,
     SetSelector,
+    _enforce_set_constraints,
 )
 from .safety import redact_sensitive_arguments
 from .security import PromptInjectionInspector, label_untrusted_content
@@ -388,9 +389,11 @@ class Kernel:
         else:
             self.agent_runtime = copy(agent_runtime)
             self.agent_runtime.backends = dict(agent_runtime.backends)
-        self.compiler = compiler or ContextCompiler(
-            preserve_dependencies=bool(getattr(self.selector, "requires_contract_verification", False))
-        )
+        # Dependency-preserving compilation for every selector: a resource
+        # whose prerequisite was skipped at activation or would be cut by the
+        # token budget is left out of the context instead of reaching the
+        # model without it.
+        self.compiler = compiler or ContextCompiler(preserve_dependencies=True)
         self.audit_log = audit_log or AuditLog()
         self.hitl = hitl or PendingHitlBroker()
         self.recovery = recovery or RecoveryManager()
@@ -761,6 +764,39 @@ class Kernel:
             )
         return self.gateway.evaluate(result.resource, context, gate="activation").denied
 
+    def _dependency_resolver(
+        self, pool: list[SearchResult], context: PolicyContext
+    ) -> Callable[[str], SearchResult | str]:
+        """Resolve a declared dependency for ``_enforce_set_constraints``.
+
+        The candidate pool first, so a dependency keeps the score it was
+        ranked with, then the registry. A dependency the activation gate
+        would deny is unavailable: activating its dependent without it would
+        hand the model a resource whose prerequisite never loads.
+        """
+
+        def resolve(reference: str) -> SearchResult | str:
+            found = next(
+                (
+                    result
+                    for result in pool
+                    if reference == (result.resource.identity if "@" in reference else result.resource.metadata.id)
+                ),
+                None,
+            )
+            if found is None:
+                try:
+                    definition = self.registry.get(reference)
+                except ResourceNotFoundError as exc:
+                    return f"is unavailable: {exc}"
+                found = SearchResult(definition, 0.0, ("added as a declared dependency",), {})
+            decision = self.gateway.evaluate(found.resource, context, gate="activation")
+            if decision.denied:
+                return f"is denied at activation: {decision.reason}"
+            return found
+
+        return resolve
+
     def _tool_message_content(self, value: Any, *, source: str) -> str:
         """Label one tool result for the model, capped so it cannot overflow it.
 
@@ -905,6 +941,7 @@ class Kernel:
             ),
         )
         results: list[SearchResult] = []
+        constraint_drops: tuple[dict[str, str], ...] = ()
         if state.snapshot and not state.snapshot.get("selection_pending", False):
             if getattr(self.selector, "requires_contract_verification", False):
                 if "routing_selection_budget_cost" not in state.snapshot:
@@ -922,6 +959,9 @@ class Kernel:
             candidate_count = len(results)
             catalog_nonempty = bool(self.registry.list())
             selected = self.selector.select(results, context=selection_context)
+            selected, constraint_drops = _enforce_set_constraints(
+                selected, self._dependency_resolver(results, context)
+            )
             if self.budget_ledger is not None:
                 selected_cost = sum(
                     (Decimal(str(item.resource.metadata.cost_estimate)) for item in selected.results),
@@ -957,6 +997,7 @@ class Kernel:
                 "selection_status": selected.status,
                 "selected": [result.resource.identity for result in selected.results],
                 "selection_reason": selected.reason,
+                **({"constraint_drops": list(constraint_drops)} if constraint_drops else {}),
             },
         )
         if selected.status == "escalate":
@@ -990,7 +1031,7 @@ class Kernel:
         skills: list[LoadedSkill] = []
         tools: list[BoundTool] = []
         agents: list[BoundAgent] = []
-        skipped: list[dict[str, str]] = []
+        skipped: list[dict[str, str]] = [dict(item) for item in constraint_drops]
         for search_result in selected.results:
             definition = search_result.resource
             metadata = definition.metadata

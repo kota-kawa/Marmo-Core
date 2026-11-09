@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The Kernel now makes every selected set dependency-closed and conflict-free,
+  whatever the selector. It adds declared dependencies from the candidate pool
+  or the registry, and drops a resource whose dependency is missing, ambiguous,
+  or denied at activation, or that conflicts with a higher-ranked member.
+  Dropped resources appear in `skipped_resources` (so `--strict` fails) and in
+  the `retrieve` audit record as `constraint_drops`. The default rule-based
+  selector and `LLMSetSelector` used to hand such sets to the model unchanged.
+  The Kernel's default compiler is now `ContextCompiler(preserve_dependencies=True)`
+  for every selector, so a resource whose dependency was skipped at activation
+  or would be cut by the token budget stays out of the context. Passing a
+  `compiler` keeps the previous behaviour available.
+
 - `GreedyConstrainedSetSelector`, `BeamSearchSetSelector`, and
   `BranchAndBoundSetSelector` now escalate when a unit blocked only by missing
   permissions has a higher utility than every unit in the feasible set and
@@ -41,7 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ContextCompiler(preserve_dependencies=True)` packs declared dependencies as
   complete units. Contract-aware Kernel routing verifies the activated payload
   and task sufficiency again before calling the model, including on resume.
-  Existing selector and compiler defaults are unchanged.
+  The `ContextCompiler` default is unchanged.
 
 - `TopKSetSelector` (global Top-K with optional dependency expansion,
   conflict dropping, and a permission check) and `RepairingSetSelector`

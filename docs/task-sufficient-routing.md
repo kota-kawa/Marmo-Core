@@ -67,7 +67,7 @@ Kernel の候補生成も、この opt-in では権限不足だけを理由に�
 ## 実際に渡す文脈の検査
 
 この Selector は `requires_contract_verification=True` を公開する。
-Kernel は既定 compiler を `ContextCompiler(preserve_dependencies=True)` とし、
+Kernel は（この Selector に限らず）既定 compiler を `ContextCompiler(preserve_dependencies=True)` とし、
 metadata と観測した context 依存を閉包単位で格納する。全4種類に適用し、
 依存する本文の部分切り捨てを完全な依存として扱わない。
 曖昧な版参照、欠落、循環、未知の契約は安全側に除外する。

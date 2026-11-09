@@ -76,14 +76,20 @@ Agent の 4 種別）を登録し、ゴールに対して必要なものだけ�
    検索は最大 2 回）。
    契約検証を要求する Selector では候補ごとの権限不足だけを一時的に緩めた policy 判定を
    行い、権限追加で利用可能になる下位候補も集合選択へ渡す。実際の権限は変更しない。
-4. **選択** `selector.select(results, context=SelectionContext)` → `audit("retrieve")`。
-   `escalate` なら `_pause`（selection ステージの `HitlRequest`）。
+4. **選択** `selector.select(results, context=SelectionContext)` の後、Selector の種類に
+   かかわらず `_enforce_set_constraints` で集合を依存閉包・衝突なしにそろえる。依存先は
+   候補プール、無ければレジストリから補い、activation gate で deny される依存先や
+   見つからない依存先を持つもの、上位と衝突するものは落として skipped と
+   `audit("retrieve")` の `constraint_drops` に残す。`escalate` なら `_pause`
+   （selection ステージの `HitlRequest`）。
 5. **Activation gate** `activator.activate` → `PolicyGateway.evaluate(gate="activation")`
    → `audit("policy")`。escalate は `_pause`、deny は skipped に入れて
    `recovery.classify_activation`。
 6. **コンテキスト構築** `compiler.compile(...)` → `audit("compile")`。Memory は
    `PromptInjectionInspector` を通し、検知すれば `audit("security")`。
-   `requires_contract_verification=True` の Selector では、依存保持 compiler が既定となり、
+   既定 compiler は依存保持（`ContextCompiler(preserve_dependencies=True)`）で、
+   activation で依存先が skipped になったものや、予算で閉包が分断されるものを文脈に入れない。
+   `requires_contract_verification=True` の Selector では、さらに
    活性化・コンパイル後の実集合と本文・schema を再検査する。不足時はモデルを呼ばず失敗する。
 7. **会話フレームの復元** `state.frame` から messages、実行済み呼び出し、修正回数などを
    戻す。`planner` があれば `_execute_plan` に分岐し、Plan の DAG を wave 単位で実行。

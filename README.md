@@ -71,7 +71,7 @@ flowchart TD
 ```
 
 1. **Retrieve.** A retriever ranks the registry against the goal. The default is an offline BM25F index; hybrid (embeddings), hierarchical, graph, and LLM-assisted retrievers are available.
-2. **Select a set.** A selector turns the ranked list into a set. It can return `selected`, `abstain`, or `escalate`, so "nothing fits" and "a person must grant this" are answers of their own.
+2. **Select a set.** A selector turns the ranked list into a set. It can return `selected`, `abstain`, or `escalate`, so "nothing fits" and "a person must grant this" are answers of their own. Whatever selector is used, the kernel then adds each selected resource's declared dependencies and drops a resource whose dependency is missing or denied, or that conflicts with a higher-ranked one, reporting it as skipped.
 3. **Gate, then compile.** Each selected resource passes the activation gate. Only what passes is compiled into the model's context.
 4. **Propose, gate, run.** The model proposes a call. The execution gate checks that exact operation, then the runtime validates the arguments, resolves secrets, and runs it. The result returns to the model marked as untrusted content.
 5. **Record.** Every step is written to the audit log and the state store.

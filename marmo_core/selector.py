@@ -29,7 +29,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from decimal import Decimal
 from dataclasses import dataclass, field
-from typing import Iterable, Mapping
+from typing import Callable, Iterable, Mapping
 
 from .models import KINDS, SearchResult, SelectionResult
 from .routing_contracts import TaskSpec
@@ -801,6 +801,94 @@ def _fits_alone(unit: _Unit, pool: Mapping[str, SearchResult], ctx: SelectionCon
     ):
         return False
     return not _conflicts(members, {})
+
+
+def _enforce_set_constraints(
+    selection: SelectionResult,
+    resolve: Callable[[str], SearchResult | str],
+) -> tuple[SelectionResult, tuple[dict[str, str], ...]]:
+    """Make a selected set dependency-closed and conflict-free (F-RETR-04).
+
+    Not every selector reasons about dependencies and conflicts: the
+    rule-based default and the LLM selector do not, so the Kernel applies
+    this to every ``selected`` outcome. Members are visited in descending
+    score. Each is kept together with its transitive dependencies, found
+    first among the members already kept and otherwise through ``resolve``,
+    which returns the dependency as a ``SearchResult`` or a short reason it
+    is unavailable. A member is dropped, never silently, when a dependency
+    is unavailable or when its unit conflicts with what is already kept.
+
+    Returns the repaired selection and the dropped members as
+    ``{"resource": identity, "reason": ...}``. A set that loses every member
+    becomes ``abstain``; abstain and escalate pass through unchanged.
+    """
+
+    if selection.status != "selected" or not selection.results:
+        return selection, ()
+    selected_identities = {result.resource.identity for result in selection.results}
+    kept: dict[str, SearchResult] = {}
+    dropped: list[dict[str, str]] = []
+    added: list[str] = []
+    for member in sorted(selection.results, key=lambda r: (-r.score, r.resource.identity)):
+        if member.resource.identity in kept:
+            continue
+        unit, problem = _dependency_unit(member, kept, resolve)
+        if problem is None and _conflicts(unit, {r.resource.metadata.id: r for r in kept.values()}):
+            problem = "conflicts with a higher-ranked member of the set"
+        if problem is not None:
+            dropped.append({"resource": member.resource.identity, "reason": problem})
+            continue
+        for result in unit:
+            identity = result.resource.identity
+            if identity not in kept:
+                kept[identity] = result
+                if identity not in selected_identities:
+                    added.append(identity)
+
+    if not added and not dropped:
+        return selection, ()
+    notes = []
+    if added:
+        notes.append("added dependencies " + ", ".join(added))
+    notes.extend(f"dropped {item['resource']} ({item['reason']})" for item in dropped)
+    reason = f"{selection.reason}; constraint check: " + "; ".join(notes)
+    if not kept:
+        return SelectionResult((), reason, status="abstain"), tuple(dropped)
+    ordered = tuple(sorted(kept.values(), key=lambda r: (-r.score, r.resource.identity)))
+    return SelectionResult(ordered, reason, missing_permissions=selection.missing_permissions), tuple(dropped)
+
+
+def _dependency_unit(
+    member: SearchResult,
+    kept: Mapping[str, SearchResult],
+    resolve: Callable[[str], SearchResult | str],
+) -> tuple[list[SearchResult], str | None]:
+    """``member`` plus the transitive dependencies ``kept`` does not already hold."""
+
+    unit = [member]
+    stack = list(member.resource.metadata.dependencies)
+    while stack:
+        reference = stack.pop()
+        if _find_reference(reference, kept.values()) or _find_reference(reference, unit):
+            continue
+        resolved = resolve(reference)
+        if isinstance(resolved, str):
+            return [], f"dependency {reference} {resolved}"
+        if any(result.resource.identity == resolved.resource.identity for result in unit):
+            continue
+        unit.append(resolved)
+        stack.extend(resolved.resource.metadata.dependencies)
+    return unit, None
+
+
+def _find_reference(reference: str, results: Iterable[SearchResult]) -> SearchResult | None:
+    """The result a dependency reference names: ``id@version`` exactly, a bare ``id`` by id."""
+
+    for result in results:
+        metadata = result.resource.metadata
+        if reference == (result.resource.identity if "@" in reference else metadata.id):
+            return result
+    return None
 
 
 def _resource_cost(result: SearchResult) -> Decimal:
