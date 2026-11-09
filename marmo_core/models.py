@@ -354,6 +354,7 @@ class SelectionResult:
     results: tuple[SearchResult, ...]
     reason: str
     status: str = "selected"
+    missing_permissions: tuple[str, ...] = ()
 
     @property
     def selected(self) -> bool:
@@ -371,6 +372,7 @@ class SelectionResult:
             "status": self.status,
             "reason": self.reason,
             "resources": [result.to_dict() for result in self.results],
+            **({"missing_permissions": list(self.missing_permissions)} if self.missing_permissions else {}),
         }
 
 

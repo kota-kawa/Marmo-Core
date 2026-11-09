@@ -27,6 +27,7 @@ from .activator import BoundTool, InjectedMemory, LoadedSkill
 from .llm import ChatMessage, LLMToolSpec, estimate_tokens
 from .models import ResourceDefinition, ResourceKind, ResourceMetadata, SearchResult
 from .security import label_untrusted_content
+from .routing_contracts import ResourceContract
 
 
 _BASE_SYSTEM_PROMPT = (
@@ -200,6 +201,7 @@ class _ExecutionUnit:
     kind: str
     priority: float
     index: int
+    definition: ResourceDefinition
     section: str = ""
     tool_spec: LLMToolSpec | None = None
     memory: InjectedMemory | None = None
@@ -214,11 +216,15 @@ class ContextCompiler:
         *,
         token_budget: int | None = None,
         selection_token_budget: int | None = None,
+        preserve_dependencies: bool = False,
     ) -> None:
         _validate_budget(token_budget, "token_budget")
         _validate_budget(selection_token_budget, "selection_token_budget")
+        if not isinstance(preserve_dependencies, bool):
+            raise TypeError("preserve_dependencies must be a bool")
         self.token_budget = token_budget
         self.selection_token_budget = selection_token_budget
+        self.preserve_dependencies = preserve_dependencies
 
     def compile_selection(
         self,
@@ -312,18 +318,25 @@ class ContextCompiler:
         _reject_duplicate_callables(units)
 
         included: list[_ExecutionUnit] = []
-        omitted: list[_ExecutionUnit] = []
-        for unit in sorted(units, key=lambda item: (-item.priority, item.index)):
-            trial = included + [unit]
-            if budget is None or _execution_tokens(goal, trial) <= budget:
-                included = trial
-                continue
-            if unit.memory is not None and budget is not None:
-                trimmed = _trim_memory_to_budget(goal, included, unit, budget)
-                if trimmed is not None:
-                    included.append(trimmed)
-                    continue
-            omitted.append(unit)
+        if self.preserve_dependencies:
+            closures = _dependency_closures(units)
+            memory_ids = {unit.identity for unit in units if unit.memory is not None}
+            protected_memory_ids = {
+                identity
+                for root_index, closure in closures.items()
+                if closure is not None
+                for identity in closure
+                if identity in memory_ids and identity != units[root_index].identity
+            }
+            included = _fit_execution_units_with_dependencies(
+                goal,
+                units,
+                budget,
+                closures,
+                protected_memory_ids,
+            )
+        else:
+            included = _fit_execution_units(goal, units, budget)
 
         system_prompt, messages, specs = _execution_payload(goal, included)
         estimated = _context_tokens(system_prompt, goal, specs)
@@ -436,6 +449,7 @@ def _execution_units(
                 ResourceKind.SKILL.value,
                 _priority(skill.definition, priorities),
                 index,
+                definition=skill.definition,
                 section=(
                     f"## Loaded skill: {skill.metadata.name} ({skill.metadata.identity})\n"
                     f"{skill.instructions}"
@@ -450,6 +464,7 @@ def _execution_units(
                 ResourceKind.MEMORY.value,
                 _priority(memory.definition, priorities),
                 index,
+                definition=memory.definition,
                 section=_memory_section(memory, memory.content),
                 memory=memory,
             )
@@ -462,6 +477,7 @@ def _execution_units(
                 ResourceKind.TOOL.value,
                 _priority(tool.definition, priorities),
                 index,
+                definition=tool.definition,
                 tool_spec=LLMToolSpec(
                     name=tool.metadata.id,
                     description=tool.metadata.description,
@@ -477,6 +493,7 @@ def _execution_units(
                 ResourceKind.AGENT.value,
                 _priority(agent.definition, priorities),
                 index,
+                definition=agent.definition,
                 tool_spec=LLMToolSpec(
                     name=agent.name,
                     description=(
@@ -488,6 +505,158 @@ def _execution_units(
         )
         index += 1
     return units
+
+
+def _fit_execution_units(
+    goal: str,
+    units: Sequence[_ExecutionUnit],
+    budget: int | None,
+) -> list[_ExecutionUnit]:
+    """Apply the legacy best-effort budget policy to independent units."""
+
+    included: list[_ExecutionUnit] = []
+    for unit in sorted(units, key=lambda item: (-item.priority, item.index)):
+        trial = included + [unit]
+        if budget is None or _execution_tokens(goal, trial) <= budget:
+            included = trial
+            continue
+        if unit.memory is not None and budget is not None:
+            trimmed = _trim_memory_to_budget(goal, included, unit, budget)
+            if trimmed is not None:
+                included.append(trimmed)
+    return included
+
+
+def _dependency_closures(
+    units: Sequence[_ExecutionUnit],
+) -> dict[int, tuple[str, ...] | None]:
+    """Resolve every resource's metadata and observed context dependency closure.
+
+    A missing, ambiguous, or version-mismatched reference invalidates that
+    callable's closure. Cycles are invalid too; there is no meaningful
+    dependency order that can satisfy a cyclic declaration.
+    """
+
+    by_identity: dict[str, list[_ExecutionUnit]] = {}
+    by_id: dict[str, list[_ExecutionUnit]] = {}
+    for unit in units:
+        by_identity.setdefault(unit.identity, []).append(unit)
+        by_id.setdefault(unit.definition.metadata.id, []).append(unit)
+
+    def resolve(reference: str) -> _ExecutionUnit | None:
+        matches = by_identity.get(reference, []) if "@" in reference else by_id.get(reference, [])
+        return matches[0] if len(matches) == 1 else None
+
+    def closure_for(root: _ExecutionUnit) -> tuple[str, ...] | None:
+        if len(by_identity.get(root.identity, [])) != 1:
+            return None
+        visiting: set[str] = set()
+        visited: set[str] = set()
+
+        def visit(unit: _ExecutionUnit) -> bool:
+            identity = unit.identity
+            if identity in visiting:
+                return False
+            if identity in visited:
+                return True
+            visiting.add(identity)
+            contract = ResourceContract.from_resource(unit.definition)
+            if "routing_contract" in unit.definition.extras and contract.unknown_items:
+                visiting.remove(identity)
+                return False
+            for reference in (*unit.definition.metadata.dependencies, *contract.context_all_of):
+                dependency = resolve(reference)
+                if dependency is None or not visit(dependency):
+                    visiting.remove(identity)
+                    return False
+            for alternatives in contract.context_one_of:
+                choices = []
+                for reference in alternatives:
+                    dependency = resolve(reference)
+                    if dependency is None:
+                        continue
+                    before = (visiting.copy(), visited.copy())
+                    if visit(dependency):
+                        closure_ids = visited.copy()
+                        members = [member for member in units if member.identity in closure_ids]
+                        choices.append((_execution_tokens("", members), tuple(sorted(closure_ids)), closure_ids))
+                    visiting.clear()
+                    visiting.update(before[0])
+                    visited.clear()
+                    visited.update(before[1])
+                if not choices:
+                    visiting.remove(identity)
+                    return False
+                visited.update(min(choices, key=lambda choice: (choice[0], choice[1]))[2])
+            visiting.remove(identity)
+            visited.add(identity)
+            return True
+
+        if not visit(root):
+            return None
+        # Use one concrete unit for each identity and keep source order stable.
+        identities = visited
+        return tuple(
+            unit.identity
+            for unit in sorted(units, key=lambda item: item.index)
+            if unit.identity in identities
+        )
+
+    closures: dict[int, tuple[str, ...] | None] = {}
+    for unit in units:
+        closures[unit.index] = closure_for(unit)
+    return closures
+
+
+def _fit_execution_units_with_dependencies(
+    goal: str,
+    units: Sequence[_ExecutionUnit],
+    budget: int | None,
+    closures: Mapping[int, tuple[str, ...] | None],
+    protected_memory_ids: set[str],
+) -> list[_ExecutionUnit]:
+    """Fit resource units with complete, untrimmed dependency closures."""
+
+    units_by_identity: dict[str, _ExecutionUnit] = {}
+    for unit in sorted(units, key=lambda item: item.index):
+        units_by_identity.setdefault(unit.identity, unit)
+
+    included: list[_ExecutionUnit] = []
+    included_ids: set[str] = set()
+    for unit in sorted(units, key=lambda item: (-item.priority, item.index)):
+        if unit.identity in included_ids:
+            continue
+
+        closure = closures.get(unit.index)
+        if closure is None:
+            continue
+        if len(closure) > 1 or unit.kind in (ResourceKind.TOOL.value, ResourceKind.AGENT.value):
+            additions = [
+                units_by_identity[identity]
+                for identity in closure
+                if identity not in included_ids
+            ]
+            trial = included + additions
+            if budget is None or _execution_tokens(goal, trial) <= budget:
+                included = trial
+                included_ids.update(item.identity for item in additions)
+            continue
+
+        trial = included + [unit]
+        if budget is None or _execution_tokens(goal, trial) <= budget:
+            included.append(unit)
+            included_ids.add(unit.identity)
+            continue
+        if (
+            unit.memory is not None
+            and budget is not None
+            and unit.identity not in protected_memory_ids
+        ):
+            trimmed = _trim_memory_to_budget(goal, included, unit, budget)
+            if trimmed is not None:
+                included.append(trimmed)
+                included_ids.add(unit.identity)
+    return included
 
 
 def _execution_payload(
@@ -551,6 +720,7 @@ def _trim_memory_to_budget(
             unit.kind,
             unit.priority,
             unit.index,
+            definition=unit.definition,
             section=_memory_section(memory, content),
             memory=memory,
             trimmed=True,

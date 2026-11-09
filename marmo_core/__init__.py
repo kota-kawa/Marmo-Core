@@ -164,6 +164,11 @@ from .selector import (
     SetSelector,
     BeamSearchSetSelector,
 )
+from .routing_contracts import (
+    Affordance, AllOf, OneOf, Provenance, Requirement, ResourceContract, TaskSpec,
+    TruthValue, match_requirement,
+)
+from .sufficient_selector import GoalAwareSetSelector
 from .semantic import (
     EmbeddingProvider,
     HashingEmbeddingProvider,
@@ -198,6 +203,9 @@ from .state import (
 from .tool_runtime import ToolResult, ToolRuntime, validate_arguments
 
 __all__ = [
+    "Affordance", "AllOf", "OneOf", "Provenance", "Requirement",
+    "ResourceContract", "TaskSpec", "TruthValue", "match_requirement",
+    "GoalAwareSetSelector",
     "Activation",
     "ActivationError",
     "AgentExecutionBackend",

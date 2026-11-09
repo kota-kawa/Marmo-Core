@@ -20,6 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Research opt-in goal-aware routing contracts and selection distinguish task
+  effects from supporting context, and do not reward redundant resources by
+  summing retrieval scores. Unknown declarations fail closed.
+- `ContextCompiler(preserve_dependencies=True)` packs declared dependencies as
+  complete units. Contract-aware Kernel routing verifies the activated payload
+  and task sufficiency again before calling the model, including on resume.
+  Existing selector and compiler defaults are unchanged.
+
 - `BedrockLLMProvider` and `--llm bedrock` use the existing OpenAI-compatible
   Chat Completions implementation with `BEDROCK_API_KEY` (or
   `AWS_BEARER_TOKEN_BEDROCK`). Defaults to gpt-oss-120b in us-east-1; model,

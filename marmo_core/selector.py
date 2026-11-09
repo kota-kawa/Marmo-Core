@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from typing import Iterable, Mapping
 
 from .models import KINDS, SearchResult, SelectionResult
+from .routing_contracts import TaskSpec
 
 
 # One Memory, Skill, and Agent keep the compiled context small, but real goals
@@ -60,6 +61,8 @@ class SelectionContext:
     min_score: float = 0.0
     min_relevance: float = 0.0
     enforce_permissions: bool = True
+    task_spec: TaskSpec | None = None
+    context_token_budget: int | None = None
 
 
 class SetSelector(ABC):

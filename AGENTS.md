@@ -12,6 +12,8 @@ Marmo-Core は、Object Routing を実装する公開 Python ライブラリで�
 
 ## ドキュメントの参照先
 
+- `docs/task-sufficient-routing.md`／研究用の要求充足・集合選択・最終文脈検査の契約と制限／GoalAwareSetSelector と依存保持 compiler を利用・変更するとき。
+
 各行は「パス／内容の区分／いつ参照するか、または何に使わないか」の型で書く。
 
 - `README.md`／公開向けの概要・インストール・Quickstart・CLI と `.env` の使い方／利用者視点の説明を確認・修正するとき。内部設計の正本としては扱わず、実装との差分が見つかった場合は公開向け説明として修正する。
