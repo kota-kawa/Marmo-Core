@@ -74,6 +74,7 @@ from .selector import (
     SelectionContext,
     SetSelector,
     _enforce_set_constraints,
+    _find_reference,
 )
 from .safety import redact_sensitive_arguments
 from .security import PromptInjectionInspector, label_untrusted_content
@@ -751,14 +752,7 @@ class Kernel:
         """
 
         def resolve(reference: str) -> SearchResult | str:
-            found = next(
-                (
-                    result
-                    for result in pool
-                    if reference == (result.resource.identity if "@" in reference else result.resource.metadata.id)
-                ),
-                None,
-            )
+            found = _find_reference(reference, pool)
             if found is None:
                 try:
                     definition = self.registry.get(reference)
