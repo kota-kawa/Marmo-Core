@@ -39,7 +39,8 @@ Agent の 4 種別）を登録し、ゴールに対して必要なものだけ�
 | 検索 | `hierarchy.py` | `HierarchicalRetriever`、`GroupingStrategy`（namespace / provider / permission / embedding） | models, registry, retriever, semantic |
 | 検索 | `rerank.py` | `CrossEncoderProvider` ABC、`CrossEncoderRerankRetriever` | models, registry, retriever |
 | 検索 | `llm_routing.py` | `HydeRetriever`、`LLMRerankRetriever`、`LLMCatalogRetriever`、`LLMSetSelector` | llm, models, registry, retriever, selector |
-| 選択 | `selector.py` | `SetSelector` ABC、`SelectionContext`、`RuleBasedSetSelector`（既定）、Greedy / Beam / BranchAndBound の制約付きソルバー、比較用の `TopKSetSelector` と `RepairingSetSelector`（上位 K 件・任意の選択結果に依存の追加・競合の除去・権限の確認をかける） | models |
+| 検索 | `candidate_pool.py` | `CandidatePool` ABC、`CandidatePoolRequest`、Kernel 既定の `KindBalancedCandidatePool`（policy の事前除外と kind 別の追加検索）、`RetrieverCandidatePool`（検索結果をそのまま渡す） | models, registry, retriever |
+| 選択 | `selector.py` | `SetSelector` ABC、`SelectionContext`、`RuleBasedSetSelector`（既定）、Greedy / Beam / BranchAndBound の制約付きソルバー、比較用の `TopKSetSelector` と `RepairingSetSelector`（上位 K 件・任意の選択結果に依存の追加・競合の除去・権限の確認をかける）、Kernel が全 Selector の結果にかける `_enforce_set_constraints` | models |
 | 選択 | `routing_contracts.py`、`sufficient_selector.py` | opt-in の TaskSpec・資源契約と GoalAwareSetSelector（要求被覆・権限・依存・集合描画量） | models, selector |
 | 選択 | `adaptive.py` | `CaseBasedRouter`、`RoutingCaseStore`（Kernel には組み込まれていない） | errors, models, registry, retriever, selector, semantic |
 | 選択 | `evaluator.py` | `ExecutionEvaluator`（監査ログ → `ResourceStats` 書き戻し。Kernel からは呼ばれない） | audit, models, registry |
@@ -70,7 +71,8 @@ Agent の 4 種別）を登録し、ゴールに対して必要なものだけ�
    があれば `hitl.request` を呼び、`_execute` を最大 `max_hitl_rounds` 回繰り返す。
 2. `_execute` は `status=running` と trace_id を記録し、人間の承認と付与済み権限を
    `PolicyContext` に合流させる。
-3. **検索** `_candidate_pool`: `retriever.search(registry, SearchQuery)` の結果から、
+3. **検索** `_candidate_pool` が `CandidatePoolRequest` を組み、`candidate_pool.build` に渡す。
+   既定の `KindBalancedCandidatePool`（`candidate_pool.py`）は `retriever.search(registry, SearchQuery)` の結果から、
    activation gate で deny されるものを除く（ただし各 kind の首位は残す）。件数が
    足りない kind があれば、kind 限定の追加検索を **1 回だけ** 行う（1 ゴールあたり
    検索は最大 2 回）。
@@ -200,6 +202,7 @@ Agent 委譲を許し、その子からさらに Agent を呼ぶには明示的�
 | 拡張 | 実装するもの | Kernel に渡す場所 |
 |---|---|---|
 | Retriever | `Retriever.search(registry, query)` | `retriever=` |
+| 候補プール | `CandidatePool.build(CandidatePoolRequest)`（既定は `KindBalancedCandidatePool`、検索結果をそのまま渡す `RetrieverCandidatePool`） | `candidate_pool=` |
 | Selector | `SetSelector.select(results, *, context)`（任意で `default_limits`、`min_score`） | `selector=` |
 | LLM | `LLMProvider.complete(messages, tools)` | 位置引数 `llm` |
 | 埋め込み | `EmbeddingProvider.embed(texts)` | `HybridRetriever` / `HierarchicalRetriever` / `CaseBasedRouter` 経由 |

@@ -47,6 +47,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Kernel(candidate_pool=...)` makes the construction of the selector's
+  candidate list a replaceable component (`CandidatePool`,
+  `CandidatePoolRequest`). `KindBalancedCandidatePool` is the default and
+  keeps the Kernel's existing policy pre-filter and per-kind top-up.
+  `RetrieverCandidatePool` hands the retriever's ranking over unchanged, so
+  selectors can be compared through the Kernel without the top-up logic.
+
 - Research opt-in goal-aware routing contracts and selection distinguish task
   effects from supporting context, and do not reward redundant resources by
   summing retrieval scores. Unknown declarations fail closed.

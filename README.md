@@ -43,7 +43,7 @@ For each goal, the kernel searches a registry, selects resources, checks policy 
 | **600+ unit tests** | Run in CI on Python 3.10 to 3.14 with `ResourceWarning` treated as an error. Provider responses are replayed through an injectable transport, so the suite needs no API key. |
 | **99.3% less context** | 223,775 tokens of whole-catalog metadata against 1,472 tokens for the routed top 5, measured on 1,000 resources. |
 | **7 ms search** | Mean warm latency of the pure-Python BM25F retriever over 1,000 resources (p95 15 ms). |
-| **14 extension points** | Retriever, set selector, LLM, embeddings, policy, human approval, planner, state store, and others can be replaced without changing the kernel. |
+| **15 extension points** | Retriever, candidate pool, set selector, LLM, embeddings, policy, human approval, planner, state store, and others can be replaced without changing the kernel. |
 | **11 decision records** | Each major design choice is written down with the alternatives that were rejected. |
 
 The figures come from the result files committed under `benchmarks/results/`. Latency depends on the machine.
