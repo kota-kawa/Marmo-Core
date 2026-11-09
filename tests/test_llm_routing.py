@@ -406,6 +406,43 @@ class LLMSetSelectorTests(unittest.TestCase):
         self.assertEqual(selection.status, "abstain")
         self.assertEqual(selector.failures, 1)
 
+    def test_hiding_constraints_removes_dependency_conflict_and_permission_facts(self) -> None:
+        class RecordingLLM(MockLLMProvider):
+            def __init__(self, script):
+                super().__init__(script=script)
+                self.seen: list[str] = []
+
+            def complete(self, messages, tools=()):
+                self.seen.extend(message.content for message in messages)
+                return super().complete(messages, tools)
+
+        pool = [
+            _candidate("tool.a", 0.9, dependencies=["skill.a"], conflicts_with=["tool.b"], required_permissions=["db.write"]),
+            _candidate("skill.a", 0.5, kind="skill"),
+        ]
+        context = SelectionContext(task="t", granted_permissions=("db.read",))
+        shown = RecordingLLM([_set_reply("selected", ["tool.a"])])
+        LLMSetSelector(shown).select(pool, context=context)
+        hidden = RecordingLLM([_set_reply("selected", ["tool.a"])])
+        selection = LLMSetSelector(hidden, show_constraints=False).select(pool, context=context)
+        shown_text = "\n".join(shown.seen)
+        hidden_text = "\n".join(hidden.seen)
+        for fact in ("requires=[skill.a]", "conflicts=[tool.b]", "permissions=[db.write]", "granted permissions"):
+            self.assertIn(fact, shown_text)
+            self.assertNotIn(fact, hidden_text)
+        self.assertIn("id=tool.a", hidden_text)
+        self.assertEqual(selection.status, "selected")
+
+    def test_hidden_and_shown_prompts_do_not_share_cache_entries(self) -> None:
+        cache: dict[str, str] = {}
+        pool = [_candidate("tool.a")]
+        context = SelectionContext(task="t")
+        LLMSetSelector(MockLLMProvider(script=[_set_reply("selected", ["tool.a"])]), cache=cache).select(pool, context=context)
+        LLMSetSelector(
+            MockLLMProvider(script=[_set_reply("abstain", [])]), cache=cache, show_constraints=False
+        ).select(pool, context=context)
+        self.assertEqual(len(cache), 2)
+
     def test_selected_with_no_valid_ids_abstains(self) -> None:
         llm = MockLLMProvider(script=[_set_reply("selected", ["tool.ghost"])])
         selection = LLMSetSelector(llm).select(

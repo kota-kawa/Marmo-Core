@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 
 from marmo_core import (
+    EmbeddingProvider,
     EmbeddingClusterGrouping,
     HashingEmbeddingProvider,
     HierarchicalRetriever,
@@ -192,7 +193,13 @@ class HierarchicalRetrieverTests(unittest.TestCase):
         self.assertEqual(domains, {"invoicing", "deploy"})
 
     def test_hybrid_base_supplies_routing_embeddings(self) -> None:
-        base = HybridRetriever(HashingEmbeddingProvider(dimensions=64), semantic_weight=0.5)
+        class LetterCounts(EmbeddingProvider):
+            # Non-negative vectors, so query-centroid cosines are positive; signed
+            # feature hashing can make even the matching group's cosine negative.
+            def embed(self, texts):
+                return [[float(text.lower().count(letter)) for letter in "abcdefghijklmnopqrstuvwxyz"] for text in texts]
+
+        base = HybridRetriever(LetterCounts(), semantic_weight=0.5)
         retriever = HierarchicalRetriever(base, NamespaceGrouping(), route_k=1)
         self.assertIs(retriever.embedding_provider, base.embedding_provider)
         decisions = retriever.route(

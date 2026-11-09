@@ -419,6 +419,24 @@ _SET_SELECT_SYSTEM = (
     'dropped"}'
 )
 
+# The same task without the dependency / conflict / permission facts, for
+# measuring what the constraint information itself contributes. Only the
+# count and budget limits stay, because they bound the reply's size.
+_SET_SELECT_SYSTEM_NO_CONSTRAINTS = (
+    "You select the set of resources an AI agent kernel should activate for "
+    "a task. Find the candidates whose name and description accomplish the "
+    "task. Do NOT minimize the set: include every candidate that is relevant "
+    "to the task, across all kinds — the relevant memory (context), skill "
+    "(procedure), tool, and agent all belong in the set when the per-kind "
+    "limits allow them. Respect the per-kind limits, max resources, and cost "
+    "budget.\n"
+    "Reply with a single JSON object and nothing else:\n"
+    '{"status": "selected", "ids": [...], "reason": "..."} — ids are the '
+    "exact strings after 'id=' (never positions or names).\n"
+    '{"status": "abstain", "ids": [], "reason": "..."} — no candidate '
+    "matches the task."
+)
+
 
 class LLMSetSelector(_LLMFailureTracker, SetSelector):
     """案C applied to the second layer: one LLM call picks the resource set.
@@ -427,6 +445,11 @@ class LLMSetSelector(_LLMFailureTracker, SetSelector):
     shown the same information the solvers get — candidate metadata with
     dependencies, conflicts, permissions, and cost, plus the context's
     constraints — and must return a set or abstain/escalate (§15.6).
+
+    ``show_constraints=False`` removes the dependency, conflict, and
+    permission facts (and the instructions about them) from the prompt, so
+    the selector chooses from names, descriptions, kinds, and costs alone.
+    It exists to measure what the constraint information contributes.
 
     The reply is deliberately **not** repaired against the constraints:
     whether the LLM respects dependency closure, conflict exclusion, and
@@ -442,10 +465,12 @@ class LLMSetSelector(_LLMFailureTracker, SetSelector):
         llm: LLMProvider,
         *,
         cache: MutableMapping[str, str] | None = None,
+        show_constraints: bool = True,
     ) -> None:
         super().__init__()
         self.llm = llm
         self.cache = cache if cache is not None else {}
+        self.show_constraints = show_constraints
 
     def select(
         self, results: list[SearchResult], *, context: SelectionContext | None = None
@@ -482,17 +507,18 @@ class LLMSetSelector(_LLMFailureTracker, SetSelector):
         self, ctx: SelectionContext, candidates: list[SearchResult]
     ) -> tuple[str, list[str], str] | None:
         prompt = self._prompt(ctx, candidates)
+        system = _SET_SELECT_SYSTEM if self.show_constraints else _SET_SELECT_SYSTEM_NO_CONSTRAINTS
         # The system prompt is part of the key: prompt-wording changes must
         # not replay replies produced under the old instructions.
         key = hashlib.sha256(
-            json.dumps([_SET_SELECT_SYSTEM, prompt], ensure_ascii=False).encode("utf-8")
+            json.dumps([system, prompt], ensure_ascii=False).encode("utf-8")
         ).hexdigest()
         cached = self.cache.get(key)
         if cached is None:
             try:
                 response = self.llm.complete(
                     [
-                        ChatMessage(role="system", content=_SET_SELECT_SYSTEM),
+                        ChatMessage(role="system", content=system),
                         ChatMessage(role="user", content=prompt),
                     ]
                 )
@@ -514,13 +540,14 @@ class LLMSetSelector(_LLMFailureTracker, SetSelector):
             or "(none)"
         )
         budget = f"{ctx.budget_cost:g}" if ctx.budget_cost is not None else "(none)"
-        lines = [
-            f"Task: {ctx.task}",
-            "",
-            "Constraints:",
-            f"- granted permissions: {granted} — a candidate is choosable iff its "
-            "permissions=[...] list is a subset of these; permissions=[] means "
-            "it needs no permissions and is always choosable",
+        lines = [f"Task: {ctx.task}", "", "Constraints:"]
+        if self.show_constraints:
+            lines.append(
+                f"- granted permissions: {granted} — a candidate is choosable iff its "
+                "permissions=[...] list is a subset of these; permissions=[] means "
+                "it needs no permissions and is always choosable"
+            )
+        lines += [
             f"- per-kind limits: {limits}",
             f"- max resources: {ctx.max_resources}",
             f"- cost budget: {budget}",
@@ -534,11 +561,12 @@ class LLMSetSelector(_LLMFailureTracker, SetSelector):
                 f"- id={metadata.id} kind={metadata.kind} name={metadata.name}",
                 f"cost={metadata.cost_estimate:g}",
             ]
-            if metadata.dependencies:
-                parts.append("requires=[" + ", ".join(metadata.dependencies) + "]")
-            if metadata.conflicts_with:
-                parts.append("conflicts=[" + ", ".join(metadata.conflicts_with) + "]")
-            parts.append("permissions=[" + ", ".join(metadata.required_permissions) + "]")
+            if self.show_constraints:
+                if metadata.dependencies:
+                    parts.append("requires=[" + ", ".join(metadata.dependencies) + "]")
+                if metadata.conflicts_with:
+                    parts.append("conflicts=[" + ", ".join(metadata.conflicts_with) + "]")
+                parts.append("permissions=[" + ", ".join(metadata.required_permissions) + "]")
             lines.append(" ".join(parts) + f": {description}")
         return "\n".join(lines)
 
