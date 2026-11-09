@@ -408,8 +408,8 @@ class BranchAndBoundSetSelector(SetSelector):
     Depth-first include/exclude search over units (a candidate plus its
     dependency closure; union semantics, so members shared between units are
     counted once — the same family of sets the greedy solver can reach) with
-    an admissible upper bound: current utility plus the summed utilities of
-    the units not yet branched on. Subtrees that cannot beat the incumbent
+    an admissible upper bound: current utility plus, for each unit not yet
+    branched on, the sum of its positive member utilities. Subtrees that cannot beat the incumbent
     are pruned. Within the node budget the returned set is the exact
     maximizer of Σ u(i∈S) under the dependency-closure, conflict,
     permission, and budget constraints the approximate solvers enforce; the

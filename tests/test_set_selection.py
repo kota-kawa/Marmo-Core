@@ -456,6 +456,41 @@ class RelevanceUtilityTests(unittest.TestCase):
             with self.subTest(solver=type(selector).__name__):
                 self.assertEqual(selector.select(results, context=SelectionContext()).status, "abstain")
 
+    def test_a_unit_whose_dependency_costs_more_than_it_adds_is_left_out(self) -> None:
+        # u = relevance - 0.5: unit {a, d} totals 0.25; unit {b, e} has a
+        # positive member (b = 0.1) but totals -0.3, so adding it lowers the set.
+        a = _resource("skill.a", kind="skill", dependencies=["tool.d"])
+        d = _resource("tool.d")
+        b = _resource("agent.b", kind="agent", dependencies=["memory.e"])
+        e = _resource("memory.e", kind="memory")
+        results = [
+            _result(a, 0.8, relevance=0.95),
+            _result(b, 0.6, relevance=0.6),
+            _result(d, 0.4, relevance=0.3),
+            _result(e, 0.3, relevance=0.1),
+        ]
+        for selector in self._solvers(cost=0.5):
+            with self.subTest(solver=type(selector).__name__):
+                self.assertEqual(_ids(selector.select(results, context=SelectionContext())), {"skill.a", "tool.d"})
+
+    def test_a_unit_with_a_negative_total_alone_abstains(self) -> None:
+        b = _resource("agent.b", kind="agent", dependencies=["memory.e"])
+        e = _resource("memory.e", kind="memory")
+        results = [_result(b, 0.6, relevance=0.6), _result(e, 0.3, relevance=0.1)]
+        for selector in self._solvers(cost=0.5):
+            with self.subTest(solver=type(selector).__name__):
+                selection = selector.select(results, context=SelectionContext())
+                self.assertEqual(selection.status, "abstain")
+                self.assertEqual(selection.results, ())
+
+    def test_a_blocked_unit_with_a_negative_total_does_not_escalate(self) -> None:
+        gated = _resource("agent.gated", kind="agent", dependencies=["memory.e"], required_permissions=["pay.write"])
+        e = _resource("memory.e", kind="memory")
+        results = [_result(gated, 0.6, relevance=0.6), _result(e, 0.3, relevance=0.1)]
+        for selector in self._solvers(cost=0.5):
+            with self.subTest(solver=type(selector).__name__):
+                self.assertEqual(selector.select(results, context=SelectionContext()).status, "abstain")
+
     def test_a_shared_negative_dependency_is_counted_once(self) -> None:
         # u = relevance - 0.5: a = 0.5, b = 0.45, d = -0.45. Unit {a, d} totals
         # 0.05 and unit {b, d} totals 0.0, but once {a, d} is taken, b adds
