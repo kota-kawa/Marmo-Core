@@ -69,7 +69,7 @@ class Requirement(RequirementExpression):
     """One typed capability requested by a task.
 
     ``None`` is allowed for fields extracted as unknown.  A requirement with
-    an unknown action, entity type, or mode cannot be proven true.
+    any unknown field in the five-part capability cannot be proven true.
     """
 
     action: str | None
@@ -99,8 +99,8 @@ class Requirement(RequirementExpression):
         for bad, label in (
             (bad_action or action is None, "action"),
             (bad_entity or entity_type is None, "entity_type"),
-            (bad_scope, "target_scope"),
-            (bad_output, "output_type"),
+            (bad_scope or target_scope is None, "target_scope"),
+            (bad_output or output_type is None, "output_type"),
             (bad_mode, "mode"),
         ):
             if bad:
@@ -231,7 +231,7 @@ class Affordance:
             (bad_action or action is None, "action"),
             (bad_entity or entity_type is None, "entity_type"),
             (bad_scope or scope is None, "supported_scope"),
-            (bad_output, "output_type"),
+            (bad_output or output_type is None, "output_type"),
             (mode not in SUPPORTED_MODES, "mode"),
             (_mapping_provenance_unknown(value, "provenance", provenance), "provenance"),
         ):
@@ -275,7 +275,11 @@ class ResourceContract:
             return cls(unknown_items=("routing_contract is missing or malformed",))
 
         unknown: list[str] = []
-        version = value.get("schema_version", 1)
+        for field in ("schema_version", "observed", "complete", "affordances", "context",
+                      "call_preconditions", "permissions", "source_evidence"):
+            if field not in value:
+                unknown.append(f"routing_contract {field} is missing")
+        version = value.get("schema_version")
         if type(version) is not int or version != 1:
             unknown.append(f"unsupported routing_contract schema_version: {version!r}")
         observed_value = value.get("observed", value.get("status") == "observed")
@@ -390,6 +394,10 @@ def match_requirement(requirement: Requirement, contract: ResourceContract, reso
     """
 
     if requirement.unknown_items:
+        return TruthValue.UNKNOWN
+    if any(value is None or not value.strip() for value in (
+        requirement.action, requirement.entity_type, requirement.target_scope, requirement.output_type
+    )):
         return TruthValue.UNKNOWN
     if requirement.mode not in SUPPORTED_MODES:
         return TruthValue.UNKNOWN

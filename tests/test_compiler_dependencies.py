@@ -72,6 +72,7 @@ class ContextCompilerDependencyTests(unittest.TestCase):
     def test_observed_context_dependencies_are_atomic(self) -> None:
         tool = _tool("tool.lookup")
         contract = {"schema_version": 1, "observed": True, "complete": True,
+                    "affordances": [], "permissions": [], "call_preconditions": [],
                     "source_evidence": [{"source": "fixture", "evidence": "requires procedure"}],
                     "context": {"all_of": ["skill.rules"]}}
         tool = BoundTool(ResourceDefinition(tool.definition.metadata,
@@ -86,6 +87,7 @@ class ContextCompilerDependencyTests(unittest.TestCase):
     def test_one_of_context_can_use_an_available_alternative(self) -> None:
         tool = _tool("tool.lookup")
         contract = {"schema_version": 1, "observed": True, "complete": True,
+                    "affordances": [], "permissions": [], "call_preconditions": [],
                     "source_evidence": [{"source": "fixture", "evidence": "requires procedure"}],
                     "context": {"one_of": [["missing", "skill.rules"]]}}
         tool = BoundTool(ResourceDefinition(tool.definition.metadata,

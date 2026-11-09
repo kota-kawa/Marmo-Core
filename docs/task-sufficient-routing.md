@@ -8,11 +8,14 @@ Memory・Skill・Tool・Agent の共通登録、検索から集合選択への2�
 
 `TaskSpec.from_mapping` は `requirements` 内の `all_of` / `one_of` を解釈する。
 要求は action、entity_type、target_scope、output_type、mode の型付き記述とする。
+5項目の欠落は wildcard とせず unknown とする。
 effect（実行）、information（情報提供）、context（手順・文脈）を区別し、
 送信を説明する Skill だけで送信処理を実行可能と判定しない。
 
 資源は任意の extras 項目 `routing_contract` に observed / complete、affordances、
 context.all_of / context.one_of、call_preconditions、permissions、source_evidence を記録する。
+schema_version=1 とこれらの構成要素は明示する。依存や権限が不要なら空の値を宣言し、
+未指定を空の宣言として補わない。
 出所がない宣言や未対応の形式は unknown であり、権限も能力も自動的には与えない。
 出所の記録は、宣言が真実である証明や、悪意ある登録に対する防御ではない。
 語彙を固定する場合は TaskSpec と各契約に `vocabulary_version` と SHA-256 の

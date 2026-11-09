@@ -140,6 +140,7 @@ class GoalAwareKernelTests(unittest.TestCase):
         results = []
         for action in ("read", "send"):
             contract = {"schema_version": 1, "observed": True, "complete": True,
+                        "context": {}, "permissions": [], "call_preconditions": [],
                         "source_evidence": evidence, "affordances": [{
                             "action": action, "entity_type": "message", "supported_scope": "workspace",
                             "output_type": "receipt", "mode": "effect", "provenance": evidence}]}
@@ -191,7 +192,8 @@ class GoalAwareKernelTests(unittest.TestCase):
         evidence = [{"source": "fixture", "evidence": "declared operation"}]
         def contract(action, mode):
             return {"schema_version": 1, "observed": True, "complete": True,
-                    "source_evidence": evidence, "affordances": [{
+                    "context": {}, "permissions": [], "call_preconditions": [],
+                        "source_evidence": evidence, "affordances": [{
                         "action": action, "entity_type": "message", "supported_scope": "workspace",
                         "output_type": "receipt", "mode": mode, "provenance": evidence}]}
         skill = definition("skill.procedure", "skill", instructions="how to send",

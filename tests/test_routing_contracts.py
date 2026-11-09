@@ -51,6 +51,23 @@ def _requirement(**overrides):
 
 
 class RoutingContractsTests(unittest.TestCase):
+    def test_missing_scope_output_or_contract_components_are_unknown(self) -> None:
+        contract = _contract()
+        for field in ("target_scope", "output_type"):
+            value = {"action": "read", "entity_type": "document", "target_scope": "workspace",
+                     "output_type": "text", "mode": "effect"}
+            del value[field]
+            requirement = Requirement.from_mapping(value)
+            self.assertTrue(requirement.unknown_items)
+            self.assertEqual(match_requirement(requirement, contract, "tool"), TruthValue.UNKNOWN)
+        self.assertEqual(match_requirement(Requirement("read", "document"), contract, "tool"), TruthValue.UNKNOWN)
+        for field in ("schema_version", "permissions", "context", "call_preconditions", "affordances"):
+            value = {"schema_version": 1, "observed": True, "complete": True,
+                     "affordances": [], "permissions": [], "context": {}, "call_preconditions": [],
+                     "source_evidence": [{"source": "test", "evidence": "declaration"}]}
+            del value[field]
+            self.assertTrue(ResourceContract.from_mapping(value).unknown_items, field)
+
     def test_scopes_are_containment_checked_and_unknown_is_preserved(self) -> None:
         contract = _contract()
         self.assertEqual(match_requirement(_requirement(), contract, "tool"), TruthValue.TRUE)

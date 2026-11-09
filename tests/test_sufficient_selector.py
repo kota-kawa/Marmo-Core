@@ -50,7 +50,7 @@ def _affordance(
     *,
     scope: str = "global",
     mode: str = "effect",
-    output_type: str | None = None,
+    output_type: str | None = "receipt",
 ) -> dict[str, str]:
     value = {
         "action": action,
@@ -124,9 +124,9 @@ def _requirement(
     action: str,
     entity_type: str = "document",
     *,
-    scope: str | None = None,
+    scope: str | None = "global",
     mode: str = "effect",
-    output_type: str | None = None,
+    output_type: str | None = "receipt",
 ) -> dict[str, object]:
     value: dict[str, object] = {
         "action": action,
@@ -160,7 +160,7 @@ def _selector(
 class RoutingContractMatchingTests(unittest.TestCase):
     def test_unknown_schema_provenance_scope_and_missing_fields_never_match(self) -> None:
         requirement = Requirement.from_mapping(
-            {"action": "send", "entity_type": "message", "target_scope": "region/east", "mode": "effect"}
+            {"action": "send", "entity_type": "message", "target_scope": "region/east", "output_type": "receipt", "mode": "effect"}
         )
         affordance = _affordance("send", "message", scope="region")
 
