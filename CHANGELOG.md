@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `GreedyConstrainedSetSelector`, `BeamSearchSetSelector`, and
+  `BranchAndBoundSetSelector` now escalate when a unit blocked only by missing
+  permissions has a higher utility than every unit in the feasible set and
+  would fit the budgets on its own. They used to escalate only when nothing
+  else was feasible, so a lower-ranked alternative was returned as a clean
+  `selected` result. The escalation carries the blocked unit's
+  `missing_permissions`. A blocked unit that ranks below the selected units is
+  still reported as skipped.
+
 - Semantic relevance is now cosine similarity clipped to [0, 1]. Negative
   cosines used to map to `(cosine + 1) / 2`, which ranked a cosine of -0.14
   above one of +0.14 in `HybridRetriever` and in `HierarchicalRetriever`'s

@@ -354,5 +354,51 @@ class RepairingSelectorTests(unittest.TestCase):
         self.assertEqual(selection.status, "escalate")
 
 
+class PermissionEscalationTests(unittest.TestCase):
+    """A permission-blocked best match escalates even when a runner-up is feasible."""
+
+    SOLVERS = (
+        GreedyConstrainedSetSelector,
+        BeamSearchSetSelector,
+        BranchAndBoundSetSelector,
+    )
+
+    def test_blocked_best_unit_escalates_instead_of_selecting_the_runner_up(self) -> None:
+        extract = _resource("tool.pdf-extract", required_permissions=["fs.write"])
+        skill = _resource("skill.pdf", kind="skill", dependencies=["tool.pdf-extract"])
+        other = _resource("skill.csv", kind="skill")
+        results = [_result(skill, 0.73), _result(other, 0.55), _result(extract, 0.46)]
+        for solver in self.SOLVERS:
+            with self.subTest(solver=solver.__name__):
+                selection = solver().select(results, context=SelectionContext())
+                self.assertEqual(selection.status, "escalate")
+                self.assertEqual(selection.results, ())
+                self.assertEqual(selection.missing_permissions, ("fs.write",))
+                self.assertIn("skill.pdf", selection.reason)
+                self.assertIn("skill.csv", selection.reason)
+
+    def test_blocked_unit_ranked_below_the_set_stays_a_skip(self) -> None:
+        best = _resource("tool.read")
+        gated = _resource("tool.write", required_permissions=["fs.write"])
+        results = [_result(best, 0.9), _result(gated, 0.4)]
+        for solver in self.SOLVERS:
+            with self.subTest(solver=solver.__name__):
+                selection = solver().select(results, context=SelectionContext())
+                self.assertEqual(selection.status, "selected")
+                self.assertEqual(_ids(selection), {"tool.read"})
+                self.assertIn("tool.write: missing permissions fs.write", selection.reason)
+
+    def test_blocked_unit_that_cannot_fit_on_its_own_does_not_escalate(self) -> None:
+        alone = _resource("tool.cheap")
+        gated = _resource("tool.costly", required_permissions=["fs.write"], cost_estimate=5.0)
+        results = [_result(gated, 0.9), _result(alone, 0.5)]
+        context = SelectionContext(budget_cost=1.0)
+        for solver in self.SOLVERS:
+            with self.subTest(solver=solver.__name__):
+                selection = solver().select(results, context=context)
+                self.assertEqual(selection.status, "selected")
+                self.assertEqual(_ids(selection), {"tool.cheap"})
+
+
 if __name__ == "__main__":
     unittest.main()
