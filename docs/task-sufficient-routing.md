@@ -45,6 +45,18 @@ kernel = Kernel(registry, llm, selector=selector)
 
 ## 集合選択
 
+`DependencyExpandedCandidatePool(max_candidates=128)` を Kernel の
+`candidate_pool=` に渡すと、検索候補に metadata.dependencies、観測契約の
+context.all_of と context.one_of の全候補を ID で補充する。選択や実行の許可を
+追加する API ではなく、追加候補の関連度は0のまま保つ。発見可能な registry を
+与えることは呼び出し元の責任で、candidate policy が拒否する資源・disabled・
+曖昧な版・存在しない参照は補充しない。欠落参照は `last_missing_references` で
+確認できる。上限超過時は途中の候補を完全な集合として返さず
+`CandidatePoolLimitError` とし、Kernel はTaskSpec providerと実行モデルを呼ばず
+失敗と監査記録を返す。内部検索器がモデルを使う場合、その検索費用は補充前に発生する。
+欠落参照が別の有効な選択肢に無関係な場合もあるため、欠落だけで全候補を
+不適切と決めない。宣言の正しさやカタログ全体での実行可能性を保証しない。
+
 `strategy="greedy"` は要求の被覆増分を用い、`strategy="exact"` はノード上限付き探索を行う。
 検索スコアの総和を報酬にせず、要求を満たす集合から権限露出・描画量・費用などを減らす。
 共有依存を二度加点しない。`rendered_token_cost` は選択集合全体の描画量を返す callback で、

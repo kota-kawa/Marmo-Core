@@ -47,7 +47,7 @@ from .budget import BudgetExceededError, BudgetLedger, BudgetedLLMProvider, Task
 from .candidate_pool import CandidatePool, CandidatePoolRequest, KindBalancedCandidatePool
 from .compiler import AgentInterface, ContextCompiler
 from .connectors import Connector, connector_tools
-from .errors import ProviderError, ResourceNotFoundError, SecretResolutionError, ToolInputError
+from .errors import CandidatePoolLimitError, ProviderError, ResourceNotFoundError, SecretResolutionError, ToolInputError
 from .execution_snapshot import (
     SnapshotMismatchError,
     activated_context_fingerprint,
@@ -617,11 +617,14 @@ class Kernel:
                 else:
                     with self.budget_ledger.bind(self._budget_task_id(state.task_id)):
                         result = self._execute(state)
-            except (BudgetExceededError, SnapshotMismatchError) as exc:
+            except (BudgetExceededError, SnapshotMismatchError, CandidatePoolLimitError) as exc:
                 current = self.state_store.load(state.task_id)
                 trace_id = current.trace_id or uuid.uuid4().hex
-                kind = "budget" if isinstance(exc, BudgetExceededError) else "snapshot"
-                event = "exceeded" if kind == "budget" else "mismatch"
+                if isinstance(exc, CandidatePoolLimitError):
+                    kind, event = "retrieve", "candidate_limit"
+                else:
+                    kind = "budget" if isinstance(exc, BudgetExceededError) else "snapshot"
+                    event = "exceeded" if kind == "budget" else "mismatch"
                 self.audit_log.append(kind, {"event": event, "detail": str(exc)}, trace_id=trace_id)
                 return self._finish(
                     current,
@@ -830,6 +833,12 @@ class Kernel:
         # Freeze the selected resource identities for every later resume. A
         # permission escalation happens before a set exists, so it can select
         # again after the operator grants a narrower permission set.
+        prefetched_results: list[SearchResult] | None = None
+        if (
+            getattr(self.candidate_pool, "preflight_before_task_spec", False)
+            and not (state.snapshot and not state.snapshot.get("selection_pending", False))
+        ):
+            prefetched_results = self._candidate_pool(goal, context)
         task_spec = None
         resolver = getattr(self.selector, "resolve_task_spec", None)
         if callable(resolver):
@@ -876,7 +885,7 @@ class Kernel:
             )
             selection_source = "saved_snapshot"
         else:
-            results = self._candidate_pool(goal, context)
+            results = prefetched_results if prefetched_results is not None else self._candidate_pool(goal, context)
             callable_candidates = any(result.resource.kind in ("tool", "agent") for result in results)
             candidate_count = len(results)
             catalog_nonempty = bool(self.registry.list())
