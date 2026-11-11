@@ -23,8 +23,10 @@ from dataclasses import dataclass, replace as dataclass_replace
 from typing import Callable, Mapping
 
 from .models import SearchQuery, SearchResult
+from .errors import CandidatePoolLimitError, ResourceNotFoundError
 from .registry import ResourceRegistry
 from .retriever import Retriever
+from .routing_contracts import ResourceContract
 
 
 @dataclass(frozen=True)
@@ -63,6 +65,84 @@ class RetrieverCandidatePool(CandidatePool):
 
     def build(self, request: CandidatePoolRequest) -> list[SearchResult]:
         return request.retriever.search(request.registry, _query(request))
+
+
+class DependencyExpandedCandidatePool(CandidatePool):
+    """Append discoverable declared dependencies to an inner pool.
+
+    All context alternatives are discovered; selection still chooses between
+    them and every execution gate still applies. Added resources have zero
+    relevance, so discovery does not reward dependency count. Missing, disabled,
+    ambiguous and policy-denied references remain unresolved, rather than making
+    an unrelated root invalidate the whole pool. Overflow raises explicitly;
+    callers must not interpret a truncated pool as a complete catalog.
+    """
+
+    preflight_before_task_spec = True
+
+    def __init__(self, inner: CandidatePool | None = None, *, max_candidates: int = 128) -> None:
+        if type(max_candidates) is not int or max_candidates < 1:
+            raise ValueError("max_candidates must be a positive integer")
+        self.inner = inner if inner is not None else RetrieverCandidatePool()
+        self.max_candidates = max_candidates
+        self.last_missing_references: tuple[str, ...] = ()
+        self.last_added_ids: tuple[str, ...] = ()
+
+    def build(self, request: CandidatePoolRequest) -> list[SearchResult]:
+        self.last_missing_references = ()
+        self.last_added_ids = ()
+        results: list[SearchResult] = []
+        seen: set[str] = set()
+        missing: list[str] = []
+        added: list[str] = []
+
+        def append(result: SearchResult, *, dependency: bool = False) -> None:
+            identity = result.resource.identity
+            if identity in seen:
+                return
+            if len(results) >= self.max_candidates:
+                self.last_missing_references = tuple(dict.fromkeys(missing))
+                self.last_added_ids = tuple(added)
+                raise CandidatePoolLimitError(
+                    f"declared candidate expansion exceeds max_candidates={self.max_candidates}; "
+                    "candidate coverage is incomplete"
+                )
+            seen.add(identity)
+            results.append(result)
+            if dependency:
+                added.append(identity)
+
+        for result in self.inner.build(request):
+            if not request.is_denied(result):
+                append(result)
+        index = 0
+        while index < len(results):
+            current = results[index]
+            index += 1
+            contract = ResourceContract.from_resource(current.resource)
+            references = list(current.resource.metadata.dependencies) + list(contract.context_all_of)
+            for alternatives in contract.context_one_of:
+                references.extend(alternatives)
+            for reference in dict.fromkeys(references):
+                try:
+                    definition = request.registry.get(reference)
+                except ResourceNotFoundError:
+                    missing.append(reference)
+                    continue
+                if definition.identity in seen:
+                    continue
+                dependency = SearchResult(
+                    resource=definition, score=0.0,
+                    reasons=(f"declared dependency of {current.resource.identity}",),
+                    components={"relevance": 0.0},
+                )
+                if request.is_denied(dependency):
+                    missing.append(reference)
+                    continue
+                append(dependency, dependency=True)
+        self.last_missing_references = tuple(dict.fromkeys(missing))
+        self.last_added_ids = tuple(added)
+        return results
 
 
 class KindBalancedCandidatePool(CandidatePool):

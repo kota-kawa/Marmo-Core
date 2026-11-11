@@ -47,6 +47,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Opt-in `DependencyExpandedCandidatePool` discovers declared metadata/context
+  dependencies and all context alternatives up to a configurable bound. It keeps
+  added relevance at zero, respects candidate policy denials, and reports overflow
+  as `CandidatePoolLimitError`; after initial retrieval, the Kernel detects that
+  before TaskSpec resolution or execution-model calls. An LLM-backed inner
+  retriever can itself incur model calls before expansion. Existing defaults
+  are unchanged.
+
 - `Kernel(candidate_pool=...)` makes the construction of the selector's
   candidate list a replaceable component (`CandidatePool`,
   `CandidatePoolRequest`). `KindBalancedCandidatePool` is the default and

@@ -39,6 +39,10 @@ class ResourceNotFoundError(MarmoError):
     """Raised when a requested resource is absent or ambiguous."""
 
 
+class CandidatePoolLimitError(MarmoError):
+    """Declared candidate expansion exceeded its configured discovery bound."""
+
+
 class ActivationError(MarmoError):
     """Raised when a resource entity cannot be resolved or activated."""
 

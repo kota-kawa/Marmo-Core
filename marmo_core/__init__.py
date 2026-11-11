@@ -54,6 +54,7 @@ from .connectors import (
 from .evaluator import ExecutionEvaluator, ExecutionOutcome, outcomes_from_audit
 from .errors import (
     ActivationError,
+    CandidatePoolLimitError,
     MarmoError,
     PackageCompatibilityError,
     PackageError,
@@ -154,6 +155,7 @@ from .recovery import (
     compensation_for,
 )
 from .candidate_pool import (
+    DependencyExpandedCandidatePool,
     CandidatePool,
     CandidatePoolRequest,
     KindBalancedCandidatePool,
@@ -339,11 +341,13 @@ __all__ = [
     "ResourceLoadError",
     "ResourceMetadata",
     "ResourceNotFoundError",
+    "CandidatePoolLimitError",
     "ResourceRegistry",
     "ResourceStats",
     "ResourceValidationError",
     "Retriever",
     "RetrieverCandidatePool",
+    "DependencyExpandedCandidatePool",
     "RetryPolicy",
     "RouteDecision",
     "RRFRetriever",
