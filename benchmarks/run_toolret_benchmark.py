@@ -3,8 +3,9 @@
 The other suites in this directory use corpora and labels written in this
 repository. This one runs Marmo-Core's first and second layers on ToolRet
 (ACL 2025 Findings; 35 public tool-use datasets, 7,961 queries, 44,453 tools,
-labels from the original datasets), so the numbers can be compared with
-published tool-retrieval results and are not tuned to our own scenarios.
+labels from the original datasets), so the numbers are not tuned to
+scenarios written here. The conversion and sampling are this script's own,
+so compare with published ToolRet results only after matching them.
 
 Layer 1 (ranking), with ToolRet's metrics:
   nDCG@10, Recall@10, Completeness@10 (every gold tool in the top 10), and
@@ -18,7 +19,7 @@ averaged per query (micro) and per subset (macro, ToolRet's convention).
 Usage:
     python3 benchmarks/run_toolret_benchmark.py --download
     python3 benchmarks/run_toolret_benchmark.py --per-subset 60 \\
-        --retrievers lexical,hybrid --embed-model sentence-transformers/all-MiniLM-L6-v2
+        --retrievers hybrid-0.5,lexical,llm:hybrid-0.5 --embed-model sentence-transformers/all-MiniLM-L6-v2
 
 The dataset is downloaded into benchmarks/data/toolret (git-ignored, not
 redistributed); dense runs cache document vectors under benchmarks/cache.
@@ -84,7 +85,7 @@ def load_cache(path: Path) -> dict:
 
 
 class CachedReplyDecomposer(QueryDecomposer):
-    """LLM decompositions replayed from ``--decompositions`` (task -> raw reply)."""
+    """LLM decompositions replayed from the decomposition cache (task -> raw reply)."""
 
     def __init__(self, replies: dict[str, str]) -> None:
         self.replies = replies
@@ -118,8 +119,6 @@ def build_retriever(name: str, provider, decompositions: dict | None = None):
         decomposer_name, _, fusion = prefix.partition("-")
         if decomposer_name == "clause":
             decomposer = ClauseQueryDecomposer()
-        elif decomposer_name == "clausenoand":
-            decomposer = ClauseQueryDecomposer(split_and=False)
         elif decomposer_name == "llm":
             decomposer = CachedReplyDecomposer(decompositions or {})
         else:
@@ -137,7 +136,7 @@ def build_retriever(name: str, provider, decompositions: dict | None = None):
     if name == "lexical":
         return LexicalRetriever()
     if name.startswith("hybrid"):
-        weight = float(name.split("-", 1)[1]) if "-" in name else 0.9
+        weight = float(name.split("-", 1)[1]) if "-" in name else 0.5
         return HybridRetriever(provider, semantic_weight=weight, candidate_pool=POOL, vector_index=ExactVectorIndex)
     if name == "dense":
         return HybridRetriever(provider, semantic_weight=1.0, candidate_pool=POOL, vector_index=ExactVectorIndex)
@@ -352,6 +351,7 @@ def main() -> None:
         help="ja: the Japanese translations of a test sample (run_toolret_llm_stages.py --stage translate-ja); "
         "en-translated: the same queries in English",
     )
+    parser.add_argument("--split", choices=["all", "dev", "test"], default="all", help="restrict the queries to one split")
     parser.add_argument("--output", default=str(Path(__file__).parent / "results" / "toolret.json"))
     args = parser.parse_args()
 
@@ -362,6 +362,8 @@ def main() -> None:
 
     tools = toolret.load_tools()
     queries = toolret.sample_queries(toolret.load_queries(), args.per_subset or None, seed=args.seed)
+    if args.split != "all":
+        queries = [query for query in queries if split_of(query.id) == args.split]
     if args.language != "en":
         translations = load_cache(TRANSLATION_CACHE)
         queries = [query for query in queries if query.id in translations]
@@ -380,6 +382,7 @@ def main() -> None:
         "queries": len(queries),
         "per_subset": args.per_subset,
         "language": args.language,
+        "split": args.split,
         "seed": args.seed,
         "embedding_model": args.embed_model if provider else None,
         "pool": POOL,

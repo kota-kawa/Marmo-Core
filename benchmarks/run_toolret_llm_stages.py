@@ -120,9 +120,12 @@ def main() -> None:
     parser.add_argument("--rerank-pool", type=int, default=30)
     parser.add_argument("--select-pool", type=int, default=20)
     parser.add_argument("--ja-per-subset", type=int, default=6, help="test-split queries per subset to translate")
+    parser.add_argument("--split", choices=["all", "dev", "test"], default="all", help="restrict the queries to one split")
     args = parser.parse_args()
 
     queries = toolret.sample_queries(toolret.load_queries(), args.per_subset or None, seed=args.seed)
+    if args.split != "all":
+        queries = [query for query in queries if split_of(query.id) == args.split]
     tasks = list(dict.fromkeys(query.query for query in queries))
     llm = ClaudeCLIProvider(args.model)
     lock = threading.Lock()
