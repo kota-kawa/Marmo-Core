@@ -922,6 +922,32 @@ def _closure(resource_id: str, pool: Mapping[str, SearchResult]) -> tuple[list[s
     return ordered, None
 
 
+def _misfit(
+    members: list[SearchResult],
+    picked: Mapping[str, SearchResult],
+    counts: Mapping[str, int],
+    total_cost: Decimal,
+    budget: Decimal | None,
+    ctx: SelectionContext,
+) -> str | None:
+    """Why ``members`` cannot join the selection, or None when they can."""
+
+    if _conflicts(members, picked):
+        return "conflicts with an already selected resource"
+    if len(picked) + len(members) > ctx.max_resources:
+        return f"would exceed max_resources={ctx.max_resources}"
+    if budget is not None and total_cost + _total_cost(members) > budget:
+        return f"would exceed budget_cost={ctx.budget_cost}"
+    extra: dict[str, int] = defaultdict(int)
+    for member in members:
+        extra[member.resource.metadata.kind] += 1
+    for kind, added in extra.items():
+        limit = ctx.per_kind_limits.get(kind)
+        if limit is not None and counts.get(kind, 0) + added > limit:
+            return f"per-kind limit for {kind} reached"
+    return None
+
+
 def _conflicts(unit: list[SearchResult], picked: Mapping[str, SearchResult]) -> bool:
     """True when the unit conflicts internally or with the picked set."""
 

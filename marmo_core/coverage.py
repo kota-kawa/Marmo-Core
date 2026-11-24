@@ -51,7 +51,7 @@ from .selector import (
     SelectionContext,
     SetSelector,
     _build_units,
-    _conflicts,
+    _misfit,
     _permission_escalation,
     _total_cost,
     _Unit,
@@ -138,7 +138,7 @@ class CoverageSetSelector(SetSelector):
                 members = [pool[uid] for uid in unit.ids if uid not in picked]
                 if not members:
                     continue
-                misfit = self._misfit(members, picked, counts, total_cost, budget, ctx)
+                misfit = _misfit(members, picked, counts, total_cost, budget, ctx)
                 if misfit is not None:
                     unfit[unit.root] = misfit
                     continue
@@ -178,7 +178,7 @@ class CoverageSetSelector(SetSelector):
                 members = [pool[uid] for uid in near.ids if uid not in picked]
                 if not members:
                     continue
-                misfit = self._misfit(members, picked, counts, total_cost, budget, ctx)
+                misfit = _misfit(members, picked, counts, total_cost, budget, ctx)
                 if misfit is not None:
                     unfit.setdefault(near.root, misfit)
                     continue
@@ -205,32 +205,6 @@ class CoverageSetSelector(SetSelector):
         if notes:
             reason += ": " + _first_notes(notes)
         return SelectionResult((), reason, status="abstain")
-
-    @staticmethod
-    def _misfit(
-        members: list[SearchResult],
-        picked: Mapping[str, SearchResult],
-        counts: Mapping[str, int],
-        total_cost: Decimal,
-        budget: Decimal | None,
-        ctx: SelectionContext,
-    ) -> str | None:
-        """Why ``members`` cannot join the selection, or None when they can."""
-
-        if _conflicts(members, picked):
-            return "conflicts with an already selected resource"
-        if len(picked) + len(members) > ctx.max_resources:
-            return f"would exceed max_resources={ctx.max_resources}"
-        if budget is not None and total_cost + _total_cost(members) > budget:
-            return f"would exceed budget_cost={ctx.budget_cost}"
-        extra: dict[str, int] = defaultdict(int)
-        for member in members:
-            extra[member.resource.metadata.kind] += 1
-        for kind, added in extra.items():
-            limit = ctx.per_kind_limits.get(kind)
-            if limit is not None and counts.get(kind, 0) + added > limit:
-                return f"per-kind limit for {kind} reached"
-        return None
 
 
 def _first_notes(notes: list[str], limit: int = 4) -> str:
