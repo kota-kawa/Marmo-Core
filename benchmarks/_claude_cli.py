@@ -38,7 +38,10 @@ class ClaudeCLIProvider(LLMProvider):
         command = [self.executable, "-p", "--model", self.model, "--no-session-persistence", "--tools", ""]
         if system:
             command += ["--system-prompt", system]
-        command.append(prompt)
+        # ``--tools`` takes a variadic value list, so a bare prompt after it is
+        # read as a tool name; ``--`` ends option parsing (also for prompts that
+        # start with a dash).
+        command += ["--", prompt]
         problem = ""
         for attempt in range(self.attempts):
             if attempt:
