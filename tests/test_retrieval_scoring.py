@@ -437,9 +437,6 @@ class BM25ParameterTests(unittest.TestCase):
             LexicalRetriever(b=1.5)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class BoundedTopKSearchTests(unittest.TestCase):
     """The pruned search must return exactly what scoring every match returns."""
@@ -535,10 +532,71 @@ class BoundedTopKSearchTests(unittest.TestCase):
                 with self.subTest(task=task, variant=variant):
                     expected = self._full_scan(retriever, registry, query)
                     actual = retriever.search(registry, query)
+                    self.assertEqual(self._view(actual), self._view(expected))
+
+    @staticmethod
+    def _view(results):
+        return [(r.resource.identity, r.score, r.reasons, dict(r.components)) for r in results]
+
+    def test_pruned_search_equals_full_scan_past_the_first_chunks(self) -> None:
+        """A catalog large enough that the stop rule decides, with policy terms that reorder ties."""
+
+        import random
+
+        rng = random.Random(11)
+        registry = ResourceRegistry()
+        for index in range(1500):
+            words = rng.sample(self.WORDS, 4)
+            registry.add(
+                _resource(
+                    f"res.{index}",
+                    "tool",
+                    " ".join(words) + " report",
+                    name=f"r{index}",
+                    cost_estimate=rng.choice((0.0, 0.0, 4.0)),
+                    stats={"success_rate": rng.choice((0.0, 0.5, 1.0))},
+                )
+            )
+        retriever = LexicalRetriever()
+        tasks = [
+            "send the report",
+            "weather report for the city calendar",
+            # The whole name text of res.42 appears in the task: an exact-name
+            # match (relevance 0.95) for a document the BM25 ratio ranks low.
+            "please use res.42 r42 to read the archive report with the meeting page summary chart",
+        ]
+        for task in tasks:
+            for top_k in (1, 10, 150):
+                query = SearchQuery(task=task, top_k=top_k)
+                with self.subTest(task=task, top_k=top_k):
                     self.assertEqual(
-                        [(r.resource.identity, r.score, r.reasons) for r in actual],
-                        [(r.resource.identity, r.score, r.reasons) for r in expected],
+                        self._view(retriever.search(registry, query)),
+                        self._view(self._full_scan(retriever, registry, query)),
                     )
+
+    def test_exact_name_matches_with_a_low_bm25_ratio_are_not_pruned(self) -> None:
+        filler = " ".join(word for word in self.WORDS if word not in {"weather", "report"})
+        registry = ResourceRegistry()
+        for index in range(100):
+            registry.add(_resource(f"strong.{index}", "tool", "weather report"))
+        for index in range(20):
+            # The task is a substring of the name text, so relevance is 0.95,
+            # while a long description keeps the BM25 ratio far below that.
+            registry.add(
+                _resource(f"named.{index}", "tool", "weather report " + (filler + " ") * 10, name="weather report digest")
+            )
+        # Enough mid-relevance documents to fill the first chunks, so the stop
+        # rule is checked before the named documents unless their bound
+        # accounts for the name match.
+        for index in range(348):
+            registry.add(_resource(f"medium.{index}", "tool", "weather invoice billing"))
+        for index in range(400):
+            registry.add(_resource(f"other.{index}", "tool", "report invoice billing"))
+        retriever = LexicalRetriever()
+        query = SearchQuery(task="weather report", top_k=120)
+        actual = retriever.search(registry, query)
+        self.assertEqual(self._view(actual), self._view(self._full_scan(retriever, registry, query)))
+        self.assertEqual(sum(1 for r in actual if r.resource.metadata.id.startswith("named.")), 20)
 
     def test_pruned_search_scores_a_fraction_of_a_large_catalog(self) -> None:
         registry = ResourceRegistry()
@@ -561,3 +619,7 @@ class BoundedTopKSearchTests(unittest.TestCase):
 
         self.assertEqual([r.resource.metadata.id for r in results], ["res.target"])
         self.assertLess(calls, 200)
+
+
+if __name__ == "__main__":
+    unittest.main()
