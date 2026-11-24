@@ -19,6 +19,7 @@ class V2ExampleAcceptanceTests(unittest.TestCase):
         "human_in_the_loop.py": "resumed in a fresh kernel",
         "planned_execution.py": "independent steps overlapped",
         "recovery_fallback.py": "fallback selected through the guarded path",
+        "tool_catalog_routing.py": "selected functions: book_hotel, search_flights, weather_forecast",
     }
 
     def test_v2_examples_run_from_a_clean_process(self) -> None:

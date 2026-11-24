@@ -249,7 +249,19 @@ All numbers are read from the JSON files committed in `benchmarks/results/`. [be
 | 10,063 resources, hybrid | p50 1,036 ms, Set F1 0.550 | p50 24 ms, Set F1 0.589, scanning 0.95% of the catalog |
 | 100,063 resources, lexical | p95 809 ms, Set F1 0.617 | p95 52 ms, Set F1 0.549 |
 
-At 100,000 resources the hierarchy trades some accuracy for the latency gain. The 1,000-skill corpus is third-party material and is not redistributed, so the first table needs that corpus to reproduce; the other two run from files in this repository.
+At 100,000 resources the hierarchy trades some accuracy for the latency gain. That table predates a change that stops lexical scoring once the top results are settled, with identical results: at the current defaults, flat lexical search over the same 100,063 resources now takes p50 15 ms / p95 101 ms, down from 40 ms / 839 ms ([before](benchmarks/results/scale-lexical-100000-before.json), [after](benchmarks/results/scale-lexical-100000-after.json)). The 1,000-skill corpus is third-party material and is not redistributed, so the first table needs that corpus to reproduce; the other two run from files in this repository.
+
+**Choosing tools from a large public catalog** ([ToolRet](benchmarks/README.md): 44,453 tools and 1,689 queries from 35 public tool-use datasets, 726 of them needing several tools; labels by the original authors; held-out test split):
+
+| | nDCG@10 | Completeness@10 | Set F1 |
+| --- | --- | --- | --- |
+| Hybrid search (BM25F + `all-MiniLM-L6-v2`), top result | 0.243 | 0.230 | 0.159 |
+| + LLM decomposition (`DecomposedRetriever`) | 0.266 | 0.244 | 0.176 (top result), 0.181 (`CoverageSetSelector`) |
+| + LLM re-ranking of the top 30 | **0.286** | **0.258** | — |
+| + LLM set selection (`LLMSetSelector`, top 20) | — | — | **0.243** |
+| Japanese goals over the same English catalog (206 queries): hybrid → + decomposition | 0.029 → 0.134 | 0.029 → 0.119 | 0.024 → 0.082 |
+
+The LLM steps used Claude Sonnet, one call each per goal. Decomposition and re-ranking improved on hybrid search, and LLM set selection on the top result of the same candidates, with 95% confidence (paired bootstrap). On all 3,920 test queries, decomposition gained +0.014 nDCG@10 and coverage selection +0.012 Set F1 over the top result (0.229 with `include_within=0.95`, against 0.234 for an oracle that knows the gold set size); on the smaller sample the coverage gain was within noise. The benchmark README has both runs and the methods that did not help.
 
 ## Lessons turned into guardrails
 
@@ -413,6 +425,45 @@ print(kernel.budget_status(result.task_id))
 ```
 
 The budget covers calls made through the Kernel and declared Resource estimates. Include any paid service a Tool or Agent calls in its estimate. Each model request receives the configured output-token ceiling, and the input-token ceiling is checked against an estimate of the serialized messages and tool schemas. Reported usage above either ceiling is recorded and stops further work; input estimation and provider usage reporting can still make actual charges exceed the reservation. A custom `LLMProvider` must implement `complete_bounded()` and set `supports_output_token_limit` to `True` to be used with a task budget. Resume with the same `TaskBudget` and state store.
+
+## Select tools from a large catalog
+
+If your agent already defines its tools as OpenAI, Anthropic, or MCP JSON, Marmo-Core can choose the few a request needs before you call the model. `function_tool_resources` imports the definitions, `DecomposedRetriever` searches the whole request and each of its sub-tasks, and `CoverageSetSelector` keeps one tool per sub-task and stops when another tool would add nothing.
+
+```python
+from marmo_core import (
+    CoverageSetSelector, DecomposedRetriever, LexicalRetriever, LLMQueryDecomposer,
+    OpenAICompatibleLLMProvider, ResourceRegistry, SearchQuery, SelectionContext,
+    function_tool_resources,
+)
+
+registry = ResourceRegistry()
+for definition in function_tool_resources(my_tools, namespace="crm"):  # list of OpenAI tool dicts
+    registry.add(definition)
+
+retriever = DecomposedRetriever(LexicalRetriever(), LLMQueryDecomposer(OpenAICompatibleLLMProvider()))
+goal = "Find the customer's last invoice and email them a payment reminder"
+candidates = retriever.search(registry, SearchQuery(task=goal, top_k=50))
+selection = CoverageSetSelector().select(
+    candidates, context=SelectionContext(task=goal, granted_permissions=("tools.crm",)),
+)
+names = {result.resource.metadata.name for result in selection.results}
+tools_for_this_request = [tool for tool in my_tools if tool["function"]["name"] in names]
+```
+
+Imported tools need the `tools.<namespace>` permission, so nothing activates by accident. The decomposer makes one model call per request; on failure it logs a warning and searches the whole request only. Its sub-tasks are written in English, so a Japanese request over English tool descriptions is ranked by them. [`examples/tool_catalog_routing.py`](examples/tool_catalog_routing.py) runs the same flow offline over 3,007 functions.
+
+`CoverageSetSelector` keeps the set small: one tool per sub-task and kind. If one more model call per request is acceptable, let the model choose from the top candidates instead. Passed to a `Kernel` as `selector=`, either selector's output is still made dependency-closed, conflict-free, and permission-checked:
+
+```python
+from marmo_core import LLMSetSelector
+
+selection = LLMSetSelector(OpenAICompatibleLLMProvider()).select(
+    candidates[:20], context=SelectionContext(task=goal, granted_permissions=("tools.crm",)),
+)
+```
+
+On the public ToolRet benchmark (44,453 tools), decomposition improved the ranking and `LLMSetSelector` chose the best sets (Set F1 0.243 against 0.18–0.19 for the rules). The ToolRet section of [benchmarks/README.md](benchmarks/README.md) has the numbers and the methods that did not help.
 
 ## Execution notes
 
@@ -688,7 +739,19 @@ Kernel の既定の Selector は、より単純な `RuleBasedSetSelector` です
 | 10,063 件、ハイブリッド | p50 1,036 ms、Set F1 0.550 | p50 24 ms、Set F1 0.589、走査はカタログの 0.95% |
 | 100,063 件、語彙検索 | p95 809 ms、Set F1 0.617 | p95 52 ms、Set F1 0.549 |
 
-100,000 件では、階層化はレイテンシと引き換えに精度が少し下がります。1,000 件の Skill コーパスはサードパーティの資産で再配布していないため、最初の表の再現にはそのコーパスが必要です。残りの二つはこのリポジトリのファイルだけで実行できます。
+100,000 件では、階層化はレイテンシと引き換えに精度が少し下がります。この表は、上位の結果が確定した時点で語彙検索の採点を打ち切る変更（結果は同一）より前の測定です。現行の既定値では、同じ 100,063 件に対する flat な語彙検索は p50 40 ms / p95 839 ms から p50 15 ms / p95 101 ms になりました（[変更前](benchmarks/results/scale-lexical-100000-before.json)、[変更後](benchmarks/results/scale-lexical-100000-after.json)）。1,000 件の Skill コーパスはサードパーティの資産で再配布していないため、最初の表の再現にはそのコーパスが必要です。残りの二つはこのリポジトリのファイルだけで実行できます。
+
+**大規模な公開カタログからのツール選択**（[ToolRet](benchmarks/README.md)：35 の公開データセットから集めたツール 44,453 件・クエリ 1,689 件、うち複数ツールが必要なもの 726 件。ラベルは元データセットの作成者によるもの。test 分割の値）:
+
+| | nDCG@10 | Completeness@10 | Set F1 |
+| --- | --- | --- | --- |
+| hybrid 検索（BM25F + `all-MiniLM-L6-v2`）、首位 | 0.243 | 0.230 | 0.159 |
+| ＋ LLM 分解（`DecomposedRetriever`） | 0.266 | 0.244 | 0.176（首位）、0.181（`CoverageSetSelector`） |
+| ＋ 上位 30 件の LLM 再ランク | **0.286** | **0.258** | — |
+| ＋ LLM による集合選択（`LLMSetSelector`、上位 20 件） | — | — | **0.243** |
+| 同じ英語カタログに日本語のゴール（206 件）: hybrid → ＋分解 | 0.029 → 0.134 | 0.029 → 0.119 | 0.024 → 0.082 |
+
+LLM の各段は Claude Sonnet で、ゴールごとに 1 回ずつ呼び出します。分解と再ランクは hybrid 検索に対して、LLM 集合選択は同じ候補の首位に対して、95% 信頼区間（対応のあるブートストラップ）で改善しました。test 分割の全件（3,920 件）では、分解で nDCG@10 が +0.014、被覆型の集合選択で首位比 Set F1 が +0.012 改善しました（`include_within=0.95` で 0.229。正解件数を知る oracle は 0.234）。小さい標本では被覆型の差は誤差の範囲でした。両方の結果と、効果がなかった手法はベンチマークの README にあります。
 
 ### 再発防止
 
@@ -852,6 +915,45 @@ print(kernel.budget_status(result.task_id))
 ```
 
 予算の対象は Kernel を通る呼び出しと Resource の宣言済み見積りです。Tool や Agent が有料サービスを使う場合、その費用を見積りに含めてください。各モデルリクエストには出力 token 上限を指定し、入力 token 上限はメッセージと Tool schema を含むシリアライズ済み入力の推定値で事前確認します。いずれかの上限を超える使用量が報告された場合は実額を記録して以後の処理を停止します。入力推定やプロバイダの使用量報告の誤差により、実際の費用が予約額を超える可能性は残ります。カスタム `LLMProvider` を予算付きで使うには `complete_bounded()` を実装し、`supports_output_token_limit` を `True` にしてください。再開時は同じ `TaskBudget` と state store を使います。
+
+### 大規模なツールカタログから選ぶ
+
+エージェントのツールを OpenAI、Anthropic、MCP の JSON で定義している場合、モデルを呼ぶ前に、そのリクエストに必要なツールだけを選べます。`function_tool_resources` で定義を取り込み、`DecomposedRetriever` でリクエスト全体と各下位タスクを検索し、`CoverageSetSelector` で下位タスクごとに 1 つのツールを選びます。追加しても被覆が増えないツールは選びません。
+
+```python
+from marmo_core import (
+    CoverageSetSelector, DecomposedRetriever, LexicalRetriever, LLMQueryDecomposer,
+    OpenAICompatibleLLMProvider, ResourceRegistry, SearchQuery, SelectionContext,
+    function_tool_resources,
+)
+
+registry = ResourceRegistry()
+for definition in function_tool_resources(my_tools, namespace="crm"):  # OpenAI 形式のツール定義のリスト
+    registry.add(definition)
+
+retriever = DecomposedRetriever(LexicalRetriever(), LLMQueryDecomposer(OpenAICompatibleLLMProvider()))
+goal = "顧客の最新の請求書を探して、支払いのリマインダーをメールで送って"
+candidates = retriever.search(registry, SearchQuery(task=goal, top_k=50))
+selection = CoverageSetSelector().select(
+    candidates, context=SelectionContext(task=goal, granted_permissions=("tools.crm",)),
+)
+names = {result.resource.metadata.name for result in selection.results}
+tools_for_this_request = [tool for tool in my_tools if tool["function"]["name"] in names]
+```
+
+取り込んだツールは `tools.<namespace>` 権限を必要とするため、許可なしには有効化されません。分解はリクエストごとに 1 回モデルを呼びます。失敗した場合は警告を出し、リクエスト全体だけで検索します。下位タスクは英語で書かれるため、英語のツール記述に対する日本語のリクエストも、下位タスクで順位づけされます。同じ流れを 3,007 件の関数でオフライン実行する例が [`examples/tool_catalog_routing.py`](examples/tool_catalog_routing.py) です。
+
+`CoverageSetSelector` は集合を小さく保ちます（下位タスクと種別ごとに 1 つ）。リクエストごとにもう 1 回モデルを呼べるなら、上位候補からモデルに選ばせる方法もあります。`Kernel` に `selector=` として渡せば、どちらの Selector の出力にも依存・競合・権限の制約がかかります。
+
+```python
+from marmo_core import LLMSetSelector
+
+selection = LLMSetSelector(OpenAICompatibleLLMProvider()).select(
+    candidates[:20], context=SelectionContext(task=goal, granted_permissions=("tools.crm",)),
+)
+```
+
+公開ベンチマーク ToolRet（44,453 ツール）では、分解で順位が改善し、`LLMSetSelector` が最も良い集合を選びました（Set F1 0.243、規則ベースは 0.18〜0.19）。数値と、効果がなかった手法は [benchmarks/README.md](benchmarks/README.md) の ToolRet 節にあります。
 
 ### 実行時の注意
 

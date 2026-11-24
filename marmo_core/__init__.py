@@ -162,6 +162,14 @@ from .candidate_pool import (
     RetrieverCandidatePool,
 )
 from .fusion import RRFRetriever
+from .coverage import CoverageSetSelector
+from .function_tools import function_tool_resources
+from .decomposition import (
+    ClauseQueryDecomposer,
+    DecomposedRetriever,
+    LLMQueryDecomposer,
+    QueryDecomposer,
+)
 from .vector_index import ExactVectorIndex, HNSWVectorIndex, VectorIndex
 from .registry import ResourceRegistry
 from .rerank import CrossEncoderProvider, CrossEncoderRerankRetriever
@@ -351,6 +359,12 @@ __all__ = [
     "RetryPolicy",
     "RouteDecision",
     "RRFRetriever",
+    "ClauseQueryDecomposer",
+    "CoverageSetSelector",
+    "function_tool_resources",
+    "DecomposedRetriever",
+    "LLMQueryDecomposer",
+    "QueryDecomposer",
     "RoutingCase",
     "RoutingCaseStore",
     "RoutingDecision",

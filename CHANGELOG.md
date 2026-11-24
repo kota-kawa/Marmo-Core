@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `LexicalRetriever` scores matches in descending order of an upper bound on
+  their composite score and stops once the bound cannot reach the last result
+  it returns. The ranking, scores, and reasons are those of the full scan
+  (checked against it on 280 ToolRet queries and five query shapes, and by a
+  new equivalence test). On the 44,453-tool ToolRet corpus, full scoring of
+  every document that shares a query term was 90% of the search time; a query
+  now fully scores about 1% of its matches, and warm latency fell from
+  p50 85.8 ms / p95 512 ms / mean 143 ms to 36.6 ms / 262 ms / 82.7 ms.
+
 - The Kernel now makes every selected set dependency-closed and conflict-free,
   whatever the selector. It adds declared dependencies from the candidate pool
   or the registry, and drops a resource whose dependency is missing, ambiguous,
@@ -46,6 +55,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   transient errors only.
 
 ### Added
+
+- Opt-in multi-intent retrieval: `DecomposedRetriever` splits a goal into
+  sub-tasks with a `QueryDecomposer`, searches the goal and every sub-task with
+  an inner retriever, and fuses the rankings (default `fusion="blend"`:
+  `(goal relevance + 0.25 x best sub-task relevance) / 1.25`). Each result
+  carries its relevance to every sub-task as `facet.<i>` components. The goal's
+  share is discounted by how many of its terms the catalog contains at all, so
+  a Japanese goal over English tool descriptions is ranked by its (English)
+  sub-tasks instead of by the few names and numbers it shares with the
+  catalog (ToolRet, Japanese goals: nDCG@10 0.029 without decomposition,
+  0.057 without the discount, 0.134 with it; English unchanged). The share is
+  lexical, so pass `discount_unknown_terms=False` when a multilingual
+  embedding model already reads the goal.
+  `LLMQueryDecomposer` makes one model call per goal and names implicit
+  prerequisites; on failure it logs a warning and searches the goal only.
+  `ClauseQueryDecomposer` is a rule-based baseline: on ToolRet it did not
+  improve the ranking (no significant difference over hybrid search, lower
+  over BM25 alone) and is not recommended.
+- Opt-in `CoverageSetSelector` chooses a set that covers the goal's facets
+  (greedy facility location, counted per resource kind) and stops when another
+  unit would add less than `min_gain` (default 0.1), so the set size follows
+  the goal instead of a count limit. Without facet components it takes the
+  best unit of each kind that clears `min_gain`. `include_within` also keeps
+  near-ties of the top candidate for callers who would rather pass a model
+  several near-equivalent tools (ToolRet, all 3,920 test queries: Set F1 of the
+  top result 0.208, coverage 0.219, with `include_within=0.95` chosen on dev
+  0.229). One more model call with `LLMSetSelector` chose better sets
+  than either rule on ToolRet (0.243). Dependency closure, conflicts, permissions, budgets, and the
+  abstain / escalate outcomes match `GreedyConstrainedSetSelector`.
+- `function_tool_resources()` imports OpenAI, Anthropic, and MCP
+  function-calling definitions as Tool resources (community trust, external
+  side effect, and a `tools.<namespace>` permission by default; a name with no
+  ASCII letters or digits gets a stable hashed id), and
+  `examples/tool_catalog_routing.py` narrows 3,007 functions to the three a
+  goal needs, offline.
+- `benchmarks/run_toolret_benchmark.py` evaluates routing on the public ToolRet
+  benchmark (44,453 tools, multi-tool gold sets; downloaded on demand, not
+  redistributed; parquet reading needs the new benchmark-only
+  `benchmark-toolret` extra, `pyarrow`), with dev/test splits and paired
+  bootstrap intervals. Results
+  are in `benchmarks/results/toolret.json` and the ToolRet section of
+  `benchmarks/README.md`.
 
 - Opt-in `DependencyExpandedCandidatePool` discovers declared metadata/context
   dependencies and all context alternatives up to a configurable bound. It keeps
