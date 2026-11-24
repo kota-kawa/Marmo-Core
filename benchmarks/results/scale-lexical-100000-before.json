@@ -1,0 +1,290 @@
+{
+  "corpus_size": 100063,
+  "scale_size": 100000,
+  "scenarios": 34,
+  "pool": 50,
+  "route_k": 3,
+  "min_score": 0.45,
+  "min_relevance": 0.35,
+  "selector": "greedy",
+  "retrievers": {
+    "lexical": {
+      "set_precision": 0.633,
+      "set_recall": 0.575,
+      "set_f1": 0.595,
+      "set_exact_match": 0.5,
+      "dependency_closure_rate": 1.0,
+      "conflict_free_rate": 1.0,
+      "policy_feasible_rate": 1.0,
+      "status_accuracy": 0.794,
+      "abstain_escalate_accuracy": 1.0,
+      "coverage": 0.676,
+      "latency_ms_mean": 148.423,
+      "mistakes": [
+        {
+          "task": "bill our clients for last month and get the paperwork out",
+          "selected": [],
+          "gold": [
+            "agent.invoicing.specialist",
+            "memory.invoicing.context",
+            "skill.invoicing.procedure",
+            "tool.invoicing.workbench"
+          ]
+        },
+        {
+          "task": "customers keep leaving after the first month, figure out why and stop it",
+          "selected": [],
+          "gold": [
+            "agent.retention.specialist",
+            "memory.retention.context",
+            "skill.retention.procedure",
+            "tool.retention.workbench"
+          ]
+        },
+        {
+          "task": "check whether attackers could break into our code and report the holes",
+          "selected": [],
+          "gold": [
+            "agent.secaudit.specialist",
+            "memory.secaudit.context",
+            "skill.secaudit.procedure",
+            "tool.secaudit.workbench"
+          ]
+        },
+        {
+          "task": "ship the new version to live users carefully and be ready to undo it",
+          "selected": [],
+          "gold": [
+            "agent.deploy.specialist",
+            "memory.deploy.context",
+            "skill.deploy.procedure",
+            "tool.deploy.workbench"
+          ]
+        },
+        {
+          "task": "production broke last night, run the cleanup and write up what went wrong",
+          "selected": [],
+          "gold": [
+            "agent.incident.specialist",
+            "memory.incident.context",
+            "skill.incident.procedure",
+            "tool.incident.workbench"
+          ]
+        },
+        {
+          "task": "sketch how our app's storage layer should be structured",
+          "selected": [],
+          "gold": [
+            "agent.dbdesign.specialist",
+            "memory.dbdesign.context",
+            "skill.dbdesign.procedure",
+            "tool.dbdesign.workbench"
+          ]
+        },
+        {
+          "task": "stretch one long article into a month of smaller content pieces",
+          "selected": [
+            "tool.travel-moderation.archival-19.quickdraft"
+          ],
+          "gold": [
+            "agent.contentmkt.specialist",
+            "memory.contentmkt.context",
+            "skill.contentmkt.procedure",
+            "tool.contentmkt.workbench"
+          ]
+        },
+        {
+          "task": "go through this supplier agreement and flag anything risky before we sign",
+          "selected": [
+            "tool.travel-procurement.archival-19.quickdraft"
+          ],
+          "gold": [
+            "agent.contracts.specialist",
+            "memory.contracts.context",
+            "skill.contracts.procedure",
+            "tool.contracts.workbench"
+          ]
+        },
+        {
+          "task": "sort the pile of customer complaints so the urgent ones get handled first",
+          "selected": [
+            "tool.travel-onboarding.archival-19.quickdraft"
+          ],
+          "gold": [
+            "agent.support.specialist",
+            "memory.support.context",
+            "skill.support.procedure",
+            "tool.support.workbench"
+          ]
+        },
+        {
+          "task": "the nightly job that moves data between systems needs to be rebuilt properly",
+          "selected": [
+            "agent.etl.specialist",
+            "skill.etl.procedure",
+            "tool.etl.workbench"
+          ],
+          "gold": [
+            "agent.etl.specialist",
+            "memory.etl.context",
+            "skill.etl.procedure",
+            "tool.etl.workbench"
+          ]
+        },
+        {
+          "task": "translate and localize the product strings into Japanese and German",
+          "selected": [
+            "tool.travel-catalog.archival-19.quickdraft"
+          ],
+          "gold": [
+            "agent.l10n.specialist",
+            "memory.l10n.context",
+            "skill.l10n.procedure",
+            "tool.l10n.workbench"
+          ]
+        },
+        {
+          "task": "make the app speak other languages, starting with Japanese",
+          "selected": [],
+          "gold": [
+            "agent.l10n.specialist",
+            "memory.l10n.context",
+            "skill.l10n.procedure",
+            "tool.l10n.workbench"
+          ]
+        },
+        {
+          "task": "run a security audit of the release and then execute the production deployment with a canary rollout",
+          "selected": [
+            "agent.deploy.specialist",
+            "memory.deploy.context",
+            "skill.deploy.procedure",
+            "tool.deploy.workbench"
+          ],
+          "gold": [
+            "agent.deploy.specialist",
+            "agent.secaudit.specialist",
+            "memory.deploy.context",
+            "memory.secaudit.context",
+            "skill.deploy.procedure",
+            "skill.secaudit.procedure",
+            "tool.deploy.workbench",
+            "tool.secaudit.workbench"
+          ]
+        },
+        {
+          "task": "bill the monthly customer invoices and analyze which invoiced customers are churning",
+          "selected": [
+            "agent.invoicing.specialist",
+            "memory.invoicing.context",
+            "skill.invoicing.procedure",
+            "tool.invoicing.workbench"
+          ],
+          "gold": [
+            "agent.invoicing.specialist",
+            "agent.retention.specialist",
+            "memory.invoicing.context",
+            "memory.retention.context",
+            "skill.invoicing.procedure",
+            "skill.retention.procedure",
+            "tool.invoicing.workbench",
+            "tool.retention.workbench"
+          ]
+        },
+        {
+          "task": "repurpose the whitepaper into blog posts and localize them into Japanese",
+          "selected": [
+            "agent.contentmkt.specialist",
+            "memory.contentmkt.context",
+            "skill.contentmkt.procedure",
+            "tool.contentmkt.workbench"
+          ],
+          "gold": [
+            "agent.contentmkt.specialist",
+            "agent.l10n.specialist",
+            "memory.contentmkt.context",
+            "memory.l10n.context",
+            "skill.contentmkt.procedure",
+            "skill.l10n.procedure",
+            "tool.contentmkt.workbench",
+            "tool.l10n.workbench"
+          ]
+        },
+        {
+          "task": "bill our clients for last month and get the paperwork out",
+          "expected_status": "selected",
+          "status": "abstain",
+          "status_ok": false
+        },
+        {
+          "task": "customers keep leaving after the first month, figure out why and stop it",
+          "expected_status": "selected",
+          "status": "abstain",
+          "status_ok": false
+        },
+        {
+          "task": "check whether attackers could break into our code and report the holes",
+          "expected_status": "selected",
+          "status": "abstain",
+          "status_ok": false
+        },
+        {
+          "task": "ship the new version to live users carefully and be ready to undo it",
+          "expected_status": "selected",
+          "status": "abstain",
+          "status_ok": false
+        },
+        {
+          "task": "production broke last night, run the cleanup and write up what went wrong",
+          "expected_status": "selected",
+          "status": "escalate",
+          "status_ok": false
+        },
+        {
+          "task": "sketch how our app's storage layer should be structured",
+          "expected_status": "selected",
+          "status": "abstain",
+          "status_ok": false
+        },
+        {
+          "task": "make the app speak other languages, starting with Japanese",
+          "expected_status": "selected",
+          "status": "abstain",
+          "status_ok": false
+        }
+      ],
+      "latency_ms_p50": 40.021,
+      "latency_ms_p95": 838.977,
+      "warmup_seconds": 5.3,
+      "retrieval_gold_recall": 0.608,
+      "pool_tokens_mean": 3411.6,
+      "standard": {
+        "set_precision": 0.542,
+        "set_recall": 0.531,
+        "set_f1": 0.536,
+        "set_exact_match": 0.5,
+        "dependency_closure_rate": 1.0,
+        "conflict_free_rate": 1.0,
+        "policy_feasible_rate": 1.0,
+        "status_accuracy": 0.75,
+        "abstain_escalate_accuracy": 1.0,
+        "coverage": 0.607
+      },
+      "cross_domain": {
+        "set_precision": 1.0,
+        "set_recall": 0.75,
+        "set_f1": 0.833,
+        "set_exact_match": 0.5,
+        "dependency_closure_rate": 1.0,
+        "conflict_free_rate": 1.0,
+        "policy_feasible_rate": 1.0,
+        "status_accuracy": 1.0,
+        "abstain_escalate_accuracy": 0.0,
+        "coverage": 1.0
+      }
+    }
+  },
+  "marmo_core_version": "0.6.0",
+  "marmo_core_commit": "59275d58",
+  "generated_at": "2026-11-24T01:19:10+00:00"
+}
