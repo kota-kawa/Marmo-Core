@@ -248,8 +248,12 @@ class DecomposedRetriever(Retriever):
     of them; the discount left English nDCG@10 unchanged and raised Japanese
     nDCG@10 from 0.057 to 0.134 (``benchmarks/README.md``). The index is the
     inner retriever's own when it is, or wraps, a ``LexicalRetriever``;
-    otherwise one is built per registry content revision.
-    ``last_goal_weight`` holds the most recent ``a``.
+    otherwise one is built per registry content revision. The share is
+    lexical: with a multilingual embedding model behind ``HybridRetriever``
+    the goal's relevance can be sound in any language, so turn the discount
+    off there. It is not applied when ``facet_weight`` is 0.
+    ``last_goal_weight`` holds the ``a`` of the most recent search (1.0 when
+    it was not decomposed or not blended).
 
     Every result records its relevance to each list as ``facet.0`` (the goal)
     to ``facet.<n>`` (sub-task n), 0.0 where it was not retrieved for that
@@ -293,18 +297,20 @@ class DecomposedRetriever(Retriever):
     def search(self, registry: ResourceRegistry, query: SearchQuery) -> list[SearchResult]:
         subtasks = self.decomposer.decompose(query.task) if query.task.strip() else []
         self.last_subtasks = subtasks
+        self.last_goal_weight = 1.0
         if not subtasks:
             return self.inner.search(registry, query)
         widened = replace(query, top_k=max(query.top_k, self.depth), per_kind_limits={}, min_score=0.0)
         lists = [self.inner.search(registry, widened)]
         lists += [self.inner.search(registry, replace(widened, task=subtask)) for subtask in subtasks]
         if self.fusion == "blend":
-            self.last_goal_weight = self._known_term_share(registry, query.task) if self.discount_unknown_terms else 1.0
+            # With no weight on the sub-tasks there is nothing to hand the ranking to.
+            if self.discount_unknown_terms and self.facet_weight > 0.0:
+                self.last_goal_weight = self._known_term_share(registry, query.task)
             fused = blend_facet_rankings(lists, self.facet_weight, goal_weight=self.last_goal_weight)
         else:
             fused = rrf_facet_rankings(lists, self.goal_weight, self.rrf_k)
         return self._limits.apply_limits([result for result in fused if result.score >= query.min_score], query)
-
 
     def _known_term_share(self, registry: ResourceRegistry, task: str) -> float:
         """Share of the goal's distinct terms that occur anywhere in the catalog."""

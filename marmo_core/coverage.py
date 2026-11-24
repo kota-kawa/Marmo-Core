@@ -153,11 +153,11 @@ class CoverageSetSelector(SetSelector):
                 f"(coverage={objective:.3f}, cost={total_cost:g}) with dependency closure, conflict and budget constraints"
             )
             if notes:
-                reason += "; skipped: " + "; ".join(notes[:4])
+                reason += "; skipped: " + _first_notes(notes)
             return SelectionResult(ordered, reason)
         reason = "no feasible set under dependency, conflict, and budget constraints"
         if notes:
-            reason += ": " + "; ".join(notes[:4])
+            reason += ": " + _first_notes(notes)
         return SelectionResult((), reason, status="abstain")
 
     @staticmethod
@@ -185,6 +185,11 @@ class CoverageSetSelector(SetSelector):
             if limit is not None and counts.get(kind, 0) + added > limit:
                 return f"per-kind limit for {kind} reached"
         return None
+
+
+def _first_notes(notes: list[str], limit: int = 4) -> str:
+    text = "; ".join(notes[:limit])
+    return text + (f"; and {len(notes) - limit} more" if len(notes) > limit else "")
 
 
 def _gain(

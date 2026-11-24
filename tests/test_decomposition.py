@@ -235,6 +235,36 @@ class DecomposedRetrieverTests(unittest.TestCase):
         english.search(registry, SearchQuery(task="reserve a hotel room", top_k=2))
         self.assertEqual(english.last_goal_weight, 1.0)
 
+    def test_the_share_comes_from_the_inner_lexical_index(self) -> None:
+        registry = self._registry()
+        inner = LexicalRetriever()
+        retriever = DecomposedRetriever(inner, _Fixed(["book a flight", "reserve a hotel"]))
+        retriever.search(registry, SearchQuery(task="x flights near Lisbon", top_k=3))
+        self.assertIn(registry, inner._index_cache)
+        self.assertNotIn(registry, retriever._limits._index_cache)
+        self.assertAlmostEqual(retriever.last_goal_weight, 1 / 4)  # x of x, flights, near, lisbon
+        retriever.decomposer = _Fixed([])
+        retriever.search(registry, SearchQuery(task="flights", top_k=3))
+        self.assertEqual(retriever.last_goal_weight, 1.0)
+
+    def test_no_sub_task_weight_means_no_discount(self) -> None:
+        registry = self._registry()
+        goal = "予約して"
+        table = {goal: {"tool.flights": 0.9}, "book a flight": {"tool.flights": 1.0}}
+        retriever = DecomposedRetriever(_Table(table), _Fixed(["book a flight"]), facet_weight=0.0)
+        results = retriever.search(registry, SearchQuery(task=goal, top_k=1))
+        self.assertEqual(retriever.last_goal_weight, 1.0)
+        self.assertAlmostEqual(results[0].components["facet_blend"], 0.9)
+
+    def test_fused_ties_go_against_untrusted_resources(self) -> None:
+        registry = ResourceRegistry()
+        registry.add(_resource("tool.a", "x", trust_level="untrusted"))
+        registry.add(_resource("tool.b", "x"))
+        table = {"goal": {"tool.a": 0.5, "tool.b": 0.5}, "sub": {"tool.a": 0.5, "tool.b": 0.5}}
+        retriever = DecomposedRetriever(_Table(table), _Fixed(["sub"]), discount_unknown_terms=False)
+        results = retriever.search(registry, SearchQuery(task="goal", top_k=2))
+        self.assertEqual([r.resource.metadata.id for r in results], ["tool.b", "tool.a"])
+
     def test_rrf_fusion_and_settings(self) -> None:
         registry = self._registry()
         retriever = DecomposedRetriever(_Table(self._table()), _Fixed(["book a flight", "reserve a hotel"]), fusion="rrf")
@@ -268,6 +298,23 @@ class CoverageSetSelectorTests(unittest.TestCase):
         self.assertEqual(
             sorted(r.resource.metadata.id for r in selection.results), ["memory.invoice-terms", "tool.invoice"]
         )
+
+    def test_without_facets_the_best_unit_of_each_kind_is_selected(self) -> None:
+        results = [
+            _result("tool.a", 0.9),
+            _result("tool.b", 0.85),
+            _result("skill.a", 0.6, kind="skill"),
+            _result("memory.a", 0.05, kind="memory"),
+        ]
+        selection = CoverageSetSelector().select(results, context=SelectionContext())
+        self.assertEqual(sorted(r.resource.metadata.id for r in selection.results), ["skill.a", "tool.a"])
+
+    def test_reasons_name_the_limit_that_kept_a_unit_out(self) -> None:
+        results = [_result("tool.a", 0.9, (0.9, 0.9, 0.0)), _result("tool.b", 0.8, (0.5, 0.0, 0.9))]
+        capped = CoverageSetSelector().select(results, context=SelectionContext(max_resources=1))
+        self.assertIn("tool.b: would exceed max_resources=1", capped.reason)
+        limited = CoverageSetSelector().select(results, context=SelectionContext(per_kind_limits={"tool": 1}))
+        self.assertIn("tool.b: per-kind limit for tool reached", limited.reason)
 
     def test_without_facets_one_best_unit_is_selected(self) -> None:
         results = [_result("tool.a", 0.9), _result("tool.b", 0.88), _result("tool.c", 0.2)]
