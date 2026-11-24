@@ -4,8 +4,8 @@ The constrained solvers in ``selector.py`` maximize Σ u(i∈S), the summed
 scores of the selected units. A sum rewards every additional relevant-looking
 member, so it cannot say how many resources a goal needs: two near-duplicate
 search tools add twice the utility of one, and the solvers keep adding until
-a count limit stops them. On ToolRet, a fixed top-3 averages Set F1 0.12
-while gold sets range from one to seven tools.
+a count limit stops them. On ToolRet, a fixed top-3 over BM25 averages Set
+F1 0.12 while gold sets range from one to seven tools.
 
 ``CoverageSetSelector`` instead maximizes a facility-location objective over
 the goal's facets (the ``facet.<i>`` relevance components that
@@ -18,11 +18,20 @@ counted per resource kind k, because the kinds play different parts (a
 Memory is context, a Skill a procedure, a Tool an action) and one does not
 make another redundant. A member adds value only for the facets it serves
 better than what of its kind is already selected, so a second tool for an
-already-covered sub-task adds nothing, and selection stops when the best feasible unit's marginal gain
-falls below ``min_gain``. F is monotone submodular, so greedy selection by
-marginal gain is the standard (1 - 1/e)-approximate maximizer under a
-cardinality limit. Units, feasibility, and the abstain / escalate outcomes
-are the same as for the greedy constrained solver: a candidate is taken
+already-covered sub-task adds nothing, and selection stops when the best
+feasible unit's marginal gain falls below ``min_gain``. F is monotone
+submodular, so greedy selection by marginal gain is the standard
+(1 - 1/e)-approximate maximizer under a cardinality limit alone; the
+guarantee does not cover the conflict, budget, and stopping rules.
+
+Measured on ToolRet (``benchmarks/README.md``), the gain over taking the top
+result comes mostly from the decomposed ranking: on it, coverage selection
+was within noise of the top result (Set F1 0.181 against 0.176) with smaller
+sets and more exact matches than a relative-relevance cut (0.189), and
+``LLMSetSelector`` chose better sets than either (0.243).
+
+Units, feasibility, and the abstain / escalate outcomes are the same as for
+the greedy constrained solver: a candidate is taken
 together with its dependency closure inside the pool, and conflicts,
 permissions, per-kind limits, ``max_resources``, and ``budget_cost`` are
 enforced.
@@ -62,6 +71,13 @@ class CoverageSetSelector(SetSelector):
 
     Without ``facet.<i>`` components there is one facet per kind, so it takes
     the best unit of each kind whose relevance clears ``min_gain``.
+
+    Coverage drops near-duplicates by design. When the caller would rather
+    hand a model several near-equivalent resources (three endpoints of the
+    same API, say), ``include_within`` also keeps, after the coverage pass,
+    every candidate whose relevance is at least that fraction of the
+    top-ranked candidate's, in rank order, as long as it fits the same
+    constraints.
     """
 
     def __init__(
@@ -69,14 +85,18 @@ class CoverageSetSelector(SetSelector):
         *,
         min_gain: float = 0.1,
         goal_weight: float = 1.0,
+        include_within: float | None = None,
         default_context: SelectionContext | None = None,
     ) -> None:
         if min_gain < 0.0:
             raise ValueError("min_gain must be non-negative")
         if goal_weight < 0.0:
             raise ValueError("goal_weight must be non-negative")
+        if include_within is not None and not 0.0 < include_within <= 1.0:
+            raise ValueError("include_within must be in (0, 1]")
         self.min_gain = min_gain
         self.goal_weight = goal_weight
+        self.include_within = include_within
         self.default_context = default_context or SelectionContext()
 
     def select(
@@ -141,6 +161,22 @@ class CoverageSetSelector(SetSelector):
                 for index, key in enumerate(facets):
                     covered[kind, index] = max(covered[kind, index], _facet_value(pool[uid], key))
             objective += best[0]
+
+        if self.include_within is not None and picked:
+            floor = self.include_within * float(candidates[0].components.get("relevance", 0.0))
+            by_root = {unit.root: unit for unit in units}
+            for candidate in candidates:
+                near = by_root.get(candidate.resource.metadata.id)
+                if near is None or float(candidate.components.get("relevance", 0.0)) < floor:
+                    continue
+                members = [pool[uid] for uid in near.ids if uid not in picked]
+                if not members or self._misfit(members, picked, counts, total_cost, budget, ctx) is not None:
+                    continue
+                for member in members:
+                    picked[member.resource.metadata.id] = member
+                    counts[member.resource.metadata.kind] += 1
+                    total_cost += _total_cost([member])
+                unfit.pop(near.root, None)
 
         notes.extend(f"{root}: {reason}" for root, reason in unfit.items() if root not in picked)
         escalation = _permission_escalation(set(picked), units, blocked, pool, ctx, notes)

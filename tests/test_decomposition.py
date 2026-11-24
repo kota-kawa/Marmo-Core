@@ -350,6 +350,22 @@ class CoverageSetSelectorTests(unittest.TestCase):
         gated = [_result("tool.a", 0.9, (0.9, 0.9, 0.0), required_permissions=["net"])]
         self.assertEqual(CoverageSetSelector().select(gated, context=SelectionContext()).status, "escalate")
 
+    def test_include_within_keeps_near_ties_of_the_top_candidate(self) -> None:
+        results = [
+            _result("tool.weather-now", 0.9, (0.9, 0.9)),
+            _result("tool.weather-hourly", 0.88, (0.88, 0.88)),
+            _result("tool.news", 0.5, (0.5, 0.5)),
+        ]
+        default = CoverageSetSelector().select(results, context=SelectionContext())
+        self.assertEqual([r.resource.metadata.id for r in default.results], ["tool.weather-now"])
+        near = CoverageSetSelector(include_within=0.95).select(results, context=SelectionContext())
+        self.assertEqual([r.resource.metadata.id for r in near.results], ["tool.weather-now", "tool.weather-hourly"])
+        capped = CoverageSetSelector(include_within=0.95).select(results, context=SelectionContext(max_resources=1))
+        self.assertEqual(len(capped.results), 1)
+        for value in (0.0, 1.5):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                CoverageSetSelector(include_within=value)
+
     def test_rejects_negative_settings(self) -> None:
         with self.assertRaises(ValueError):
             CoverageSetSelector(min_gain=-0.1)
