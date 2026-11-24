@@ -79,8 +79,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the goal instead of a count limit. Without facet components it takes the
   best unit of each kind that clears `min_gain`. `include_within` also keeps
   near-ties of the top candidate for callers who would rather pass a model
-  several near-equivalent tools (ToolRet test Set F1 0.181 -> 0.189 at 0.95,
-  chosen on dev). One more model call with `LLMSetSelector` chose better sets
+  several near-equivalent tools (ToolRet, all 3,920 test queries: Set F1 of the
+  top result 0.208, coverage 0.219, with `include_within=0.95` chosen on dev
+  0.229). One more model call with `LLMSetSelector` chose better sets
   than either rule on ToolRet (0.243). Dependency closure, conflicts, permissions, budgets, and the
   abstain / escalate outcomes match `GreedyConstrainedSetSelector`.
 - `function_tool_resources()` imports OpenAI, Anthropic, and MCP

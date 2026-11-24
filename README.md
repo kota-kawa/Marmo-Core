@@ -261,7 +261,7 @@ At 100,000 resources the hierarchy trades some accuracy for the latency gain. Th
 | + LLM set selection (`LLMSetSelector`, top 20) | — | — | **0.243** |
 | Japanese goals over the same English catalog (206 queries): hybrid → + decomposition | 0.029 → 0.134 | 0.029 → 0.119 | 0.024 → 0.082 |
 
-The LLM steps used Claude Sonnet, one call each per goal. Decomposition and re-ranking improved on hybrid search, and LLM set selection on the top result of the same candidates, with 95% confidence (paired bootstrap). Coverage selection did not significantly beat the top result once the ranking was decomposed; the benchmark README says which simpler rule did better and why.
+The LLM steps used Claude Sonnet, one call each per goal. Decomposition and re-ranking improved on hybrid search, and LLM set selection on the top result of the same candidates, with 95% confidence (paired bootstrap). On all 3,920 test queries, decomposition gained +0.014 nDCG@10 and coverage selection +0.012 Set F1 over the top result (0.229 with `include_within=0.95`, against 0.234 for an oracle that knows the gold set size); on the smaller sample the coverage gain was within noise. The benchmark README has both runs and the methods that did not help.
 
 ## Lessons turned into guardrails
 
@@ -751,7 +751,7 @@ Kernel の既定の Selector は、より単純な `RuleBasedSetSelector` です
 | ＋ LLM による集合選択（`LLMSetSelector`、上位 20 件） | — | — | **0.243** |
 | 同じ英語カタログに日本語のゴール（206 件）: hybrid → ＋分解 | 0.029 → 0.134 | 0.029 → 0.119 | 0.024 → 0.082 |
 
-LLM の各段は Claude Sonnet で、ゴールごとに 1 回ずつ呼び出します。分解と再ランクは hybrid 検索に対して、LLM 集合選択は同じ候補の首位に対して、95% 信頼区間（対応のあるブートストラップ）で改善しました。分解後の順位に対して、被覆型の集合選択は首位だけを選ぶ場合と有意差がありませんでした。より単純な規則が勝った理由はベンチマークの README にあります。
+LLM の各段は Claude Sonnet で、ゴールごとに 1 回ずつ呼び出します。分解と再ランクは hybrid 検索に対して、LLM 集合選択は同じ候補の首位に対して、95% 信頼区間（対応のあるブートストラップ）で改善しました。test 分割の全件（3,920 件）では、分解で nDCG@10 が +0.014、被覆型の集合選択で首位比 Set F1 が +0.012 改善しました（`include_within=0.95` で 0.229。正解件数を知る oracle は 0.234）。小さい標本では被覆型の差は誤差の範囲でした。両方の結果と、効果がなかった手法はベンチマークの README にあります。
 
 ### 再発防止
 
