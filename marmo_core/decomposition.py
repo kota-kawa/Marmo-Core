@@ -28,8 +28,9 @@ Two decomposers are provided:
   explicitly: separate sentences, numbered or bulleted lists, ``;`` and
   connectives such as "and then", "also", "after that", and the Japanese
   equivalents. It is a baseline, not a recommendation: it split 60% of
-  ToolRet's single-tool queries, and every fusion of its sub-tasks ranked
-  worse than the goal alone (``benchmarks/README.md``).
+  ToolRet's single-tool queries, and its sub-tasks did not improve the
+  ranking (no significant difference over hybrid search, lower over BM25
+  alone; ``benchmarks/README.md``).
 """
 
 from __future__ import annotations

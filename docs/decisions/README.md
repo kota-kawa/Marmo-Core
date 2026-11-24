@@ -17,6 +17,7 @@ Accepted / Superseded / Deprecated。
 | `0009-task-budget-reservations.md` | タスク予算を固定し、モデルと Resource の実行前に予約する | Accepted |
 | `0010-execution-snapshot.md` | 再開時は保存した選択 Resource と compiled context を検証して復元する | Accepted |
 | `0011-agent-execution-backends-and-structured-tasks.md` | Agent を backend で実行し、structured task は宣言 dependency の子 Kernel に委譲する | Accepted |
+| `0012-multi-intent-retrieval-and-coverage-selection.md` | 複数意図のゴールは分解して検索し、集合はファセット被覆の限界利得で選ぶ（opt-in、既定値は不変） | Accepted |
 
 ## 書き方
 

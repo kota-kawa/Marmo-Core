@@ -56,6 +56,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Opt-in multi-intent retrieval: `DecomposedRetriever` splits a goal into
+  sub-tasks with a `QueryDecomposer`, searches the goal and every sub-task with
+  an inner retriever, and fuses the rankings (default `fusion="blend"`:
+  `(goal relevance + 0.25 x best sub-task relevance) / 1.25`). Each result
+  carries its relevance to every sub-task as `facet.<i>` components. The goal's
+  share is discounted by how many of its terms the catalog contains at all, so
+  a Japanese goal over English tool descriptions is ranked by its (English)
+  sub-tasks instead of by the few names and numbers it shares with the
+  catalog (ToolRet, Japanese goals: nDCG@10 0.029 without decomposition,
+  0.057 without the discount, 0.134 with it; English unchanged). The share is
+  lexical, so pass `discount_unknown_terms=False` when a multilingual
+  embedding model already reads the goal.
+  `LLMQueryDecomposer` makes one model call per goal and names implicit
+  prerequisites; on failure it logs a warning and searches the goal only.
+  `ClauseQueryDecomposer` is a rule-based baseline: on ToolRet it did not
+  improve the ranking (no significant difference over hybrid search, lower
+  over BM25 alone) and is not recommended.
+- Opt-in `CoverageSetSelector` chooses a set that covers the goal's facets
+  (greedy facility location, counted per resource kind) and stops when another
+  unit would add less than `min_gain` (default 0.1), so the set size follows
+  the goal instead of a count limit. Without facet components it takes the
+  best unit of each kind that clears `min_gain`. `include_within` also keeps
+  near-ties of the top candidate for callers who would rather pass a model
+  several near-equivalent tools (ToolRet test Set F1 0.181 -> 0.189 at 0.95,
+  chosen on dev). One more model call with `LLMSetSelector` chose better sets
+  than either rule on ToolRet (0.243). Dependency closure, conflicts, permissions, budgets, and the
+  abstain / escalate outcomes match `GreedyConstrainedSetSelector`.
+- `function_tool_resources()` imports OpenAI, Anthropic, and MCP
+  function-calling definitions as Tool resources (community trust, external
+  side effect, and a `tools.<namespace>` permission by default; a name with no
+  ASCII letters or digits gets a stable hashed id), and
+  `examples/tool_catalog_routing.py` narrows 3,007 functions to the three a
+  goal needs, offline.
+- `benchmarks/run_toolret_benchmark.py` evaluates routing on the public ToolRet
+  benchmark (44,453 tools, multi-tool gold sets; downloaded on demand, not
+  redistributed), with dev/test splits and paired bootstrap intervals. Results
+  are in `benchmarks/results/toolret.json` and the ToolRet section of
+  `benchmarks/README.md`.
+
 - Opt-in `DependencyExpandedCandidatePool` discovers declared metadata/context
   dependencies and all context alternatives up to a configurable bound. It keeps
   added relevance at zero, respects candidate policy denials, and reports overflow

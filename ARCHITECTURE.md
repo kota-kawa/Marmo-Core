@@ -30,17 +30,20 @@ Agent の 4 種別）を登録し、ゴールに対して必要なものだけ�
 | レジストリ・ロード | `registry.py` | `ResourceRegistry`（`revision` と `content_revision`） | errors, models |
 | レジストリ・ロード | `markdown_skill.py` | `SKILL.md` フロントマター → Skill 定義 | models |
 | レジストリ・ロード | `package.py` | `marmo-package.json` / `.lock.json`、SemVer、`verify_local_package` | _version, errors |
+| レジストリ・ロード | `function_tools.py` | `function_tool_resources`（OpenAI / Anthropic / MCP 形式の関数定義を Tool resource に変換。既定は community・external・`tools.<namespace>` 権限） | models |
 | レジストリ・ロード | `loader.py` | ディレクトリ走査（`.json` / `.md`）、`load_registry`、`validate_resource_paths` | errors, markdown_skill, models, package, registry |
 | 検索 | `retriever.py` | `Retriever` ABC、BM25F 転置インデックスの `LexicalRetriever`、複合スコア | models, registry |
 | 検索 | `semantic.py` | `EmbeddingProvider` ABC、`HashingEmbeddingProvider`、`OpenAICompatibleEmbeddingProvider`、`HybridRetriever`（`vector_index=` で近傍探索を差し替え） | environment, errors, models, registry, retriever, secrets, vector_index |
 | 検索 | `vector_index.py` | `VectorIndex` ABC、`ExactVectorIndex`（numpy）、`HNSWVectorIndex`（usearch）。どちらも任意依存 | なし |
 | 検索 | `fusion.py` | `RRFRetriever`（2 つの検索器の順位を Reciprocal Rank Fusion で融合） | models, registry, retriever |
+| 検索 | `decomposition.py` | `QueryDecomposer` ABC、`LLMQueryDecomposer`（下位タスクと暗黙の前提手順を 1 回の LLM 呼び出しで得る）、比較用の `ClauseQueryDecomposer`、`DecomposedRetriever`（ゴールと各下位タスクを検索し、既定は関連度 blend で融合して `facet.<i>` 成分を付ける。ゴール側はカタログの索引にある語の割合で重み付けする） | budget, llm, llm_routing, models, registry, retriever |
 | 検索 | `graph_routing.py` | `CapabilityGraphRetriever`（依存・capability 名前空間で候補を拡張） | models, registry, retriever, semantic |
 | 検索 | `hierarchy.py` | `HierarchicalRetriever`、`GroupingStrategy`（namespace / provider / permission / embedding） | models, registry, retriever, semantic |
 | 検索 | `rerank.py` | `CrossEncoderProvider` ABC、`CrossEncoderRerankRetriever` | models, registry, retriever |
 | 検索 | `llm_routing.py` | `HydeRetriever`、`LLMRerankRetriever`、`LLMCatalogRetriever`、`LLMSetSelector` | llm, models, registry, retriever, selector |
 | 検索 | `candidate_pool.py` | `CandidatePool` ABC、`CandidatePoolRequest`、Kernel 既定の `KindBalancedCandidatePool`（policy の事前除外と kind 別の追加検索）、`RetrieverCandidatePool`（検索結果をそのまま渡す） | models, registry, retriever |
 | 選択 | `selector.py` | `SetSelector` ABC、`SelectionContext`、`RuleBasedSetSelector`（既定）、Greedy / Beam / BranchAndBound の制約付きソルバー、比較用の `TopKSetSelector` と `RepairingSetSelector`（上位 K 件・任意の選択結果に依存の追加・競合の除去・権限の確認をかける）、Kernel が全 Selector の結果にかける `_enforce_set_constraints` | models |
+| 選択 | `coverage.py` | `CoverageSetSelector`（`facet.<i>` 成分の facility-location 被覆を種別ごとに貪欲に最大化し、限界利得が `min_gain` 未満で止めて集合の大きさを決める。`include_within` で首位候補に近い候補も残せる。単位・制約・abstain / escalate は Greedy と共通） | decomposition, models, selector |
 | 選択 | `routing_contracts.py`、`sufficient_selector.py` | opt-in の TaskSpec・資源契約と GoalAwareSetSelector（要求被覆・権限・依存・集合描画量） | models, selector |
 | 選択 | `adaptive.py` | `CaseBasedRouter`、`RoutingCaseStore`（Kernel には組み込まれていない） | errors, models, registry, retriever, selector, semantic |
 | 選択 | `evaluator.py` | `ExecutionEvaluator`（監査ログ → `ResourceStats` 書き戻し。Kernel からは呼ばれない） | audit, models, registry |
@@ -202,6 +205,7 @@ Agent 委譲を許し、その子からさらに Agent を呼ぶには明示的�
 | 拡張 | 実装するもの | Kernel に渡す場所 |
 |---|---|---|
 | Retriever | `Retriever.search(registry, query)` | `retriever=` |
+| クエリ分解 | `QueryDecomposer.decompose(task)` | `DecomposedRetriever(inner, decomposer)` 経由で `retriever=` |
 | 候補プール | `CandidatePool.build(CandidatePoolRequest)`（既定は `KindBalancedCandidatePool`、検索結果をそのまま渡す `RetrieverCandidatePool`） | `candidate_pool=` |
 | Selector | `SetSelector.select(results, *, context)`（任意で `default_limits`、`min_score`） | `selector=` |
 | LLM | `LLMProvider.complete(messages, tools)` | 位置引数 `llm` |
