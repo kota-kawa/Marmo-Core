@@ -360,8 +360,22 @@ class CoverageSetSelectorTests(unittest.TestCase):
         self.assertEqual([r.resource.metadata.id for r in default.results], ["tool.weather-now"])
         near = CoverageSetSelector(include_within=0.95).select(results, context=SelectionContext())
         self.assertEqual([r.resource.metadata.id for r in near.results], ["tool.weather-now", "tool.weather-hourly"])
+        self.assertNotIn("tool.weather-hourly", near.reason)
         capped = CoverageSetSelector(include_within=0.95).select(results, context=SelectionContext(max_resources=1))
         self.assertEqual(len(capped.results), 1)
+        self.assertIn("tool.weather-hourly: would exceed max_resources=1", capped.reason)
+        exact = CoverageSetSelector(include_within=1.0).select(results, context=SelectionContext())
+        self.assertEqual(len(exact.results), 1)
+
+    def test_near_ties_bring_their_dependencies_but_not_blocked_units(self) -> None:
+        results = [
+            _result("tool.a", 0.9, (0.9, 0.9)),
+            _result("tool.b", 0.89, (0.89, 0.89), dependencies=["skill.b"]),
+            _result("skill.b", 0.2, (0.2, 0.2), kind="skill"),
+            _result("tool.c", 0.89, (0.89, 0.89), required_permissions=["net"]),
+        ]
+        selection = CoverageSetSelector(include_within=0.95).select(results, context=SelectionContext())
+        self.assertEqual(sorted(r.resource.metadata.id for r in selection.results), ["skill.b", "tool.a", "tool.b"])
         for value in (0.0, 1.5):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 CoverageSetSelector(include_within=value)

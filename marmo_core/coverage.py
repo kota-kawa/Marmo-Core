@@ -76,8 +76,10 @@ class CoverageSetSelector(SetSelector):
     hand a model several near-equivalent resources (three endpoints of the
     same API, say), ``include_within`` also keeps, after the coverage pass,
     every candidate whose relevance is at least that fraction of the
-    top-ranked candidate's, in rank order, as long as it fits the same
-    constraints.
+    top-ranked candidate's, in rank order, as long as its unit fits the same
+    constraints. The top-ranked candidate is the first one past the score
+    and relevance floors, whether or not it could be selected itself;
+    permission-blocked units are never added this way.
     """
 
     def __init__(
@@ -147,7 +149,7 @@ class CoverageSetSelector(SetSelector):
             if best_unit is None or best is None:
                 break
             if picked and best[0] < self.min_gain:
-                notes.append(f"{best_unit.root}: marginal coverage gain {best[0]:.3f} < {self.min_gain:g}")
+                unfit[best_unit.root] = f"marginal coverage gain {best[0]:.3f} < {self.min_gain:g}"
                 break
             for uid in best_unit.ids:
                 if uid in picked:
@@ -162,15 +164,21 @@ class CoverageSetSelector(SetSelector):
                     covered[kind, index] = max(covered[kind, index], _facet_value(pool[uid], key))
             objective += best[0]
 
-        if self.include_within is not None and picked:
-            floor = self.include_within * float(candidates[0].components.get("relevance", 0.0))
+        # A missing relevance component counts as 1.0 here as in the floors above.
+        top_relevance = float(candidates[0].components.get("relevance", 1.0))
+        if self.include_within is not None and picked and top_relevance > 0.0:
+            floor = self.include_within * top_relevance
             by_root = {unit.root: unit for unit in units}
             for candidate in candidates:
                 near = by_root.get(candidate.resource.metadata.id)
-                if near is None or float(candidate.components.get("relevance", 0.0)) < floor:
+                if near is None or float(candidate.components.get("relevance", 1.0)) < floor:
                     continue
                 members = [pool[uid] for uid in near.ids if uid not in picked]
-                if not members or self._misfit(members, picked, counts, total_cost, budget, ctx) is not None:
+                if not members:
+                    continue
+                misfit = self._misfit(members, picked, counts, total_cost, budget, ctx)
+                if misfit is not None:
+                    unfit.setdefault(near.root, misfit)
                     continue
                 for member in members:
                     picked[member.resource.metadata.id] = member
