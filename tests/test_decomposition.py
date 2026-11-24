@@ -132,6 +132,16 @@ class LLMQueryDecomposerTests(unittest.TestCase):
                 self.assertEqual(decomposer.failures, 1)
                 self.assertIsNotNone(decomposer.last_failure)
 
+    def test_unparseable_replies_are_not_cached(self) -> None:
+        llm = _Replying("Sure! Step one is to look up the id.")
+        cache: dict[str, str] = {}
+        decomposer = LLMQueryDecomposer(llm, cache=cache)
+        with self.assertLogs("marmo_core.llm_routing", level="WARNING"):
+            decomposer.decompose("do two things")
+        llm.reply = '["look up the id", "use the id"]'
+        self.assertEqual(decomposer.decompose("do two things"), ["look up the id", "use the id"])
+        self.assertEqual((llm.calls, list(cache)), (2, ["do two things"]))
+
     def test_parse_subtasks_rejects_non_string_arrays(self) -> None:
         self.assertIsNone(parse_subtasks('[1, 2]'))
         self.assertIsNone(parse_subtasks("no array here"))
@@ -230,6 +240,17 @@ class CoverageSetSelectorTests(unittest.TestCase):
         self.assertEqual(selection.status, "selected")
         self.assertEqual([r.resource.metadata.id for r in selection.results], ["tool.flights", "tool.hotel"])
 
+    def test_coverage_is_counted_per_kind(self) -> None:
+        results = [
+            _result("tool.invoice", 0.9, (0.9, 0.9)),
+            _result("memory.invoice-terms", 0.7, (0.7, 0.7), kind="memory"),
+            _result("tool.invoice-2", 0.85, (0.85, 0.85)),
+        ]
+        selection = CoverageSetSelector().select(results, context=SelectionContext())
+        self.assertEqual(
+            sorted(r.resource.metadata.id for r in selection.results), ["memory.invoice-terms", "tool.invoice"]
+        )
+
     def test_without_facets_one_best_unit_is_selected(self) -> None:
         results = [_result("tool.a", 0.9), _result("tool.b", 0.88), _result("tool.c", 0.2)]
         selection = CoverageSetSelector().select(results, context=SelectionContext())
@@ -253,6 +274,7 @@ class CoverageSetSelectorTests(unittest.TestCase):
         self.assertEqual(
             sorted(r.resource.metadata.id for r in selection.results), ["agent.trip", "tool.flights", "tool.hotel-2"]
         )
+        self.assertIn("tool.hotel: conflicts with an already selected resource", selection.reason)
 
     def test_limits_floors_and_permissions(self) -> None:
         results = [_result("tool.a", 0.9, (0.9, 0.9, 0.0)), _result("tool.b", 0.8, (0.5, 0.0, 0.9))]
@@ -269,9 +291,6 @@ class CoverageSetSelectorTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             CoverageSetSelector(goal_weight=-1.0)
 
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class KernelIntegrationTests(unittest.TestCase):
@@ -298,3 +317,7 @@ class KernelIntegrationTests(unittest.TestCase):
         retrieve = [record for record in kernel.audit_log.records if record.kind == "retrieve"][-1]
         self.assertEqual(sorted(retrieve.payload["selected"]), ["tool.flights@1.0.0", "tool.hotel@1.0.0"])
         self.assertEqual(llm.calls, 1)
+
+
+if __name__ == "__main__":
+    unittest.main()

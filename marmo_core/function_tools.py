@@ -24,6 +24,7 @@ needs a ``tool_implementations`` entry for its id.
 from __future__ import annotations
 
 from typing import Any, Iterable, Mapping, Sequence
+import hashlib
 import re
 
 from .models import ResourceDefinition
@@ -44,8 +45,9 @@ def function_tool_resources(
     """Tool resources for function-calling definitions, one per spec.
 
     Ids are ``tool.<namespace>.<function-name>`` (lower-cased, runs of other
-    characters folded to ``-``); two specs that fold to the same id raise
-    ``ValueError`` rather than shadowing each other. ``required_permissions``
+    characters folded to ``-``; a name with no ASCII letters or digits, such
+    as a Japanese one, becomes ``x`` plus a hash of it); two specs that fold
+    to the same id raise ``ValueError`` rather than shadowing each other. ``required_permissions``
     replaces the default ``("tools.<namespace>",)``.
     """
 
@@ -87,8 +89,8 @@ def function_tool_resources(
 def _unwrap(spec: Mapping[str, Any], position: int) -> tuple[str, str, Mapping[str, Any], Mapping[str, Any]]:
     if not isinstance(spec, Mapping):
         raise ValueError(f"tool spec #{position} is not an object")
-    body = spec.get("function") if isinstance(spec.get("function"), Mapping) else spec
-    assert isinstance(body, Mapping)
+    function = spec.get("function")
+    body: Mapping[str, Any] = function if isinstance(function, Mapping) else spec
     name = body.get("name")
     if not isinstance(name, str) or not name.strip():
         raise ValueError(f"tool spec #{position} has no name")
@@ -123,4 +125,7 @@ def schema_summary(schema: Mapping[str, Any]) -> str:
 
 
 def _slug(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", value.casefold()).strip("-") or "tools"
+    """ASCII slug; a name with no ASCII letters or digits gets a stable hash instead."""
+
+    slug = re.sub(r"[^a-z0-9]+", "-", value.casefold()).strip("-")
+    return slug or "x" + hashlib.sha1(value.encode("utf-8")).hexdigest()[:10]

@@ -12,11 +12,13 @@ the goal's facets (the ``facet.<i>`` relevance components that
 ``DecomposedRetriever`` attaches; without them the goal is one facet scored
 by ``relevance``):
 
-    F(S) = Σ_f w_f · max_{i ∈ S} r_f(i)
+    F(S) = Σ_k Σ_f w_f · max_{i ∈ S, kind(i) = k} r_f(i)
 
-A member adds value only for the facets it serves better than what is
-already selected, so a second tool for an already-covered sub-task adds
-nothing, and selection stops when the best feasible unit's marginal gain
+counted per resource kind k, because the kinds play different parts (a
+Memory is context, a Skill a procedure, a Tool an action) and one does not
+make another redundant. A member adds value only for the facets it serves
+better than what of its kind is already selected, so a second tool for an
+already-covered sub-task adds nothing, and selection stops when the best feasible unit's marginal gain
 falls below ``min_gain``. F is monotone submodular, so greedy selection by
 marginal gain is the standard (1 - 1/e)-approximate maximizer under a
 cardinality limit. Units, feasibility, and the abstain / escalate outcomes
@@ -53,6 +55,13 @@ class CoverageSetSelector(SetSelector):
     floors decide whether anything qualifies at all). ``goal_weight``
     weights the full goal's facet (``facet.0``) against the sub-task facets,
     which weigh 1.0 each.
+
+    Escalation uses the greedy solver's rule unchanged: a permission-blocked
+    unit escalates when its summed score beats every selected unit's, which
+    compares composite scores rather than coverage gains.
+
+    Without ``facet.<i>`` components there is one facet per kind, so it takes
+    the best unit of each kind whose relevance clears ``min_gain``.
     """
 
     def __init__(
@@ -87,13 +96,17 @@ class CoverageSetSelector(SetSelector):
         units, blocked = _build_units(candidates, pool, ctx, notes)
         facets = _facet_keys(candidates)
         weights = [self.goal_weight if key == f"{FACET_PREFIX}0" else 1.0 for key in facets]
-        covered = [0.0] * len(facets)
+        # Coverage is counted per kind: a Tool that serves a sub-task does not
+        # make the Skill that explains it, or the Memory that holds its context,
+        # redundant.
+        covered: dict[tuple[str, int], float] = defaultdict(float)
         picked: dict[str, SearchResult] = {}
         counts: dict[str, int] = defaultdict(int)
         total_cost = Decimal(0)
         budget = Decimal(str(ctx.budget_cost)) if ctx.budget_cost is not None else None
         objective = 0.0
 
+        unfit: dict[str, str] = {}
         while True:
             best: tuple[float, float, str] | None = None
             best_unit: _Unit | None = None
@@ -101,12 +114,12 @@ class CoverageSetSelector(SetSelector):
                 members = [pool[uid] for uid in unit.ids if uid not in picked]
                 if not members:
                     continue
-                if not self._fits(members, picked, counts, total_cost, budget, ctx):
+                misfit = self._misfit(members, picked, counts, total_cost, budget, ctx)
+                if misfit is not None:
+                    unfit[unit.root] = misfit
                     continue
-                gain = sum(
-                    weight * max(0.0, max(_facet_value(member, key) for member in members) - current)
-                    for key, weight, current in zip(facets, weights, covered)
-                )
+                unfit.pop(unit.root, None)
+                gain = _gain(members, facets, weights, covered)
                 # Ties go to the unit with the higher summed score, then id.
                 rank = (gain, unit.utility, unit.root)
                 if best is None or rank[:2] > best[:2] or (rank[:2] == best[:2] and rank[2] < best[2]):
@@ -123,9 +136,13 @@ class CoverageSetSelector(SetSelector):
                 picked[uid] = member
                 counts[member.resource.metadata.kind] += 1
                 total_cost += _total_cost([member])
-            covered = [max(current, *(_facet_value(pool[uid], key) for uid in best_unit.ids)) for key, current in zip(facets, covered)]
+            for uid in best_unit.ids:
+                kind = pool[uid].resource.metadata.kind
+                for index, key in enumerate(facets):
+                    covered[kind, index] = max(covered[kind, index], _facet_value(pool[uid], key))
             objective += best[0]
 
+        notes.extend(f"{root}: {reason}" for root, reason in unfit.items() if root not in picked)
         escalation = _permission_escalation(set(picked), units, blocked, pool, ctx, notes)
         if escalation is not None:
             return escalation
@@ -144,26 +161,45 @@ class CoverageSetSelector(SetSelector):
         return SelectionResult((), reason, status="abstain")
 
     @staticmethod
-    def _fits(
+    def _misfit(
         members: list[SearchResult],
         picked: Mapping[str, SearchResult],
         counts: Mapping[str, int],
         total_cost: Decimal,
         budget: Decimal | None,
         ctx: SelectionContext,
-    ) -> bool:
+    ) -> str | None:
+        """Why ``members`` cannot join the selection, or None when they can."""
+
+        if _conflicts(members, picked):
+            return "conflicts with an already selected resource"
         if len(picked) + len(members) > ctx.max_resources:
-            return False
+            return f"would exceed max_resources={ctx.max_resources}"
         if budget is not None and total_cost + _total_cost(members) > budget:
-            return False
+            return f"would exceed budget_cost={ctx.budget_cost}"
         extra: dict[str, int] = defaultdict(int)
         for member in members:
             extra[member.resource.metadata.kind] += 1
         for kind, added in extra.items():
             limit = ctx.per_kind_limits.get(kind)
             if limit is not None and counts.get(kind, 0) + added > limit:
-                return False
-        return not _conflicts(members, picked)
+                return f"per-kind limit for {kind} reached"
+        return None
+
+
+def _gain(
+    members: list[SearchResult], facets: list[str], weights: list[float], covered: Mapping[tuple[str, int], float]
+) -> float:
+    """Marginal coverage of adding ``members``: per kind and facet, the improvement over what is covered."""
+
+    best: dict[tuple[str, int], float] = {}
+    for member in members:
+        kind = member.resource.metadata.kind
+        for index, key in enumerate(facets):
+            value = _facet_value(member, key)
+            if value > best.get((kind, index), 0.0):
+                best[kind, index] = value
+    return sum(weights[index] * max(0.0, value - covered.get((kind, index), 0.0)) for (kind, index), value in best.items())
 
 
 def _facet_keys(results: list[SearchResult]) -> list[str]:

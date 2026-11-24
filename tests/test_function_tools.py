@@ -70,6 +70,12 @@ class FunctionToolResourcesTests(unittest.TestCase):
         results = LexicalRetriever().search(registry, SearchQuery(task="what is the weather in Paris", top_k=1))
         self.assertEqual([r.resource.metadata.id for r in results], ["tool.app.get-weather"])
 
+    def test_names_without_ascii_get_distinct_stable_ids(self) -> None:
+        first, second = function_tool_resources([{"name": "天気を調べる"}, {"name": "メールを送る"}], namespace="社内")
+        self.assertNotEqual(first.metadata.id, second.metadata.id)
+        self.assertEqual(first.metadata.id, function_tool_resources([{"name": "天気を調べる"}], namespace="社内")[0].metadata.id)
+        self.assertEqual(first.validate(), [])
+
     def test_invalid_or_colliding_specs_raise(self) -> None:
         with self.assertRaises(ValueError):
             function_tool_resources([{"description": "no name"}], namespace="app")

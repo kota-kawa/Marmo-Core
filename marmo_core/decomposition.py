@@ -18,14 +18,18 @@ sub-tasks without redundant members.
 
 Two decomposers are provided:
 
-- ``ClauseQueryDecomposer`` — zero-dependency rules for needs a goal states
-  explicitly: separate sentences, numbered or bulleted lists, ``;`` and
-  connectives such as "and then", "also", "after that", and the Japanese
-  equivalents. It never invents a sub-task the text does not state.
 - ``LLMQueryDecomposer`` — one LLM call that also names implicit
   prerequisites ("look up the show's id" before "get its cast"). It degrades
   to no decomposition on any failure, logged like the other LLM-assisted
-  layers.
+  layers. This is the one to use: on ToolRet it wrongly split 34% of the
+  single-tool queries, against 60% for the rules below, and the fusion gain
+  depends on how rarely a single need is split.
+- ``ClauseQueryDecomposer`` — zero-dependency rules for needs a goal states
+  explicitly: separate sentences, numbered or bulleted lists, ``;`` and
+  connectives such as "and then", "also", "after that", and the Japanese
+  equivalents. It is a baseline, not a recommendation: it split 60% of
+  ToolRet's single-tool queries, and every fusion of its sub-tasks ranked
+  worse than the goal alone (``benchmarks/README.md``).
 """
 
 from __future__ import annotations
@@ -104,8 +108,8 @@ class ClauseQueryDecomposer(QueryDecomposer):
     def decompose(self, task: str) -> list[str]:
         fragments: list[str] = []
         for sentence in _SENTENCE_RE.split(task):
-            for clause in _CONNECTIVE_RE.split(sentence or ""):
-                fragments.extend(self._split_and(clause or ""))
+            for clause in _CONNECTIVE_RE.split(sentence):
+                fragments.extend(self._split_and(clause))
         subtasks: list[str] = []
         seen: set[tuple[str, ...]] = set()
         for fragment in fragments:
@@ -152,8 +156,9 @@ class LLMQueryDecomposer(_LLMFailureTracker, QueryDecomposer):
     The reply must be a JSON array of strings; anything else, or a failed
     call, counts as a failure (logged once at WARNING, then DEBUG, with
     ``failures`` / ``last_failure`` on the instance) and yields no
-    decomposition, so retrieval falls back to the full goal. Replies are
-    cached per task in ``cache``.
+    decomposition, so retrieval falls back to the full goal. Replies that
+    parse are cached per task in ``cache``; failures are not, so they are
+    retried.
     """
 
     def __init__(
@@ -186,11 +191,12 @@ class LLMQueryDecomposer(_LLMFailureTracker, QueryDecomposer):
             except Exception as error:
                 self._record_failure("query decomposition", error)
                 return []
-            self.cache[task] = reply
         subtasks = parse_subtasks(reply)
         if subtasks is None:
+            # Not cached, so the next search asks again instead of replaying it.
             self._record_failure("query decomposition", ValueError(f"reply is not a JSON array of strings: {reply[:120]!r}"))
             return []
+        self.cache[task] = reply
         unique = list(dict.fromkeys(item for item in subtasks if tokenize(item)))
         return unique[: self.max_subtasks] if len(unique) > 1 else []
 
@@ -318,8 +324,13 @@ def blend_facet_rankings(lists: Sequence[Sequence[SearchResult]], facet_weight: 
         base_relevance = float(base.components.get("relevance", 0.0))
         score = base.score + RELEVANCE_WEIGHT * (blended - base_relevance)
         fused.append(_annotated(base, values, score, {"facet_blend": blended}))
-    fused.sort(key=lambda item: (-item.score, item.resource.metadata.id))
+    fused.sort(key=_fused_order)
     return fused
+
+
+def _fused_order(item: SearchResult) -> tuple[float, bool, str]:
+    # Untrusted resources lose ties, as in LexicalRetriever.
+    return (-item.score, item.resource.metadata.trust_level == "untrusted", item.resource.metadata.id)
 
 
 def rrf_facet_rankings(lists: Sequence[Sequence[SearchResult]], goal_weight: float, rrf_k: int = 60) -> list[SearchResult]:
@@ -338,5 +349,5 @@ def rrf_facet_rankings(lists: Sequence[Sequence[SearchResult]], goal_weight: flo
         base = max((r for r in results[identity] if r is not None), key=lambda r: r.score)
         score = value / ceiling if ceiling else 0.0
         fused.append(_annotated(base, relevances[identity], score, {"rrf": score}))
-    fused.sort(key=lambda item: (-item.score, item.resource.metadata.id))
+    fused.sort(key=_fused_order)
     return fused
