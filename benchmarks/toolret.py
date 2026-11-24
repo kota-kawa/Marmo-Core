@@ -14,7 +14,8 @@ the corpus aggregates sources under different licenses, and the dataset card
 states none), converts every tool document into a ``tool`` resource, and
 provides the ranking and set metrics. Data lives under
 ``benchmarks/data/toolret`` (git-ignored). Reading parquet needs ``pyarrow``
-(the ``benchmark`` extra).
+(the ``benchmark-toolret`` extra); dense retrieval needs ``fastembed`` (the
+``benchmark`` extra).
 
 Conversion keeps every resource's policy metadata identical (same trust,
 side effect, latency, cost, permissions), so the composite score orders
@@ -84,7 +85,7 @@ def _read_parquet(path: Path) -> list[dict[str, Any]]:
     try:
         import pyarrow.parquet as pq
     except ImportError as error:  # pragma: no cover - environment dependent
-        raise SystemExit("reading ToolRet needs pyarrow: pip install '.[benchmark]'") from error
+        raise SystemExit("reading ToolRet needs pyarrow: pip install '.[benchmark-toolret]'") from error
     return pq.read_table(path).to_pylist()
 
 

@@ -92,7 +92,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   goal needs, offline.
 - `benchmarks/run_toolret_benchmark.py` evaluates routing on the public ToolRet
   benchmark (44,453 tools, multi-tool gold sets; downloaded on demand, not
-  redistributed), with dev/test splits and paired bootstrap intervals. Results
+  redistributed; parquet reading needs the new benchmark-only
+  `benchmark-toolret` extra, `pyarrow`), with dev/test splits and paired
+  bootstrap intervals. Results
   are in `benchmarks/results/toolret.json` and the ToolRet section of
   `benchmarks/README.md`.
 

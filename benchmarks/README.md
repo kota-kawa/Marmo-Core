@@ -398,7 +398,8 @@ BGE を使った flat ANN の初回 index 構築は、埋め込み計算込み�
 ここまでの評価は、このリポジトリで作ったコーパスとラベルを使っています。`run_toolret_benchmark.py` は、第三者が作った公開ベンチマーク **ToolRet**（Shi et al., ACL 2025 Findings、"Retrieval Models Aren't Tool-Savvy"）で第1層と第2層を測ります。ToolRet は 35 の公開ツール利用データセットを統合したもので、ツール 44,453 件、クエリ 7,961 件です。ToolBench、ToolLens、Tool-Be-Honest、ReverseChain などは**複数ツールの正解集合**を持つため、「大規模カタログから、必要な組み合わせを過不足なく選べるか」を自作ラベルなしで測れます。
 
 ```bash
-python3 benchmarks/run_toolret_benchmark.py --download --retrievers lexical     # 取得と字句検索（pyarrow が必要: '.[benchmark]'）
+python -m pip install -e '.[benchmark,benchmark-toolret]'                       # fastembed と pyarrow（ベンチマーク専用）
+python3 benchmarks/run_toolret_benchmark.py --download --retrievers lexical     # 取得と字句検索
 python3 benchmarks/run_toolret_llm_stages.py --stage decompose                   # LLM 分解のキャッシュ作成（Claude Code CLI）
 python3 benchmarks/run_toolret_llm_stages.py --stage select --stage rerank       # LLM 集合選択・再ランクのキャッシュ作成
 python3 benchmarks/run_toolret_benchmark.py --per-subset 60 \
