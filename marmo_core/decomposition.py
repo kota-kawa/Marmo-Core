@@ -229,14 +229,27 @@ class DecomposedRetriever(Retriever):
 
     The default ``fusion="blend"`` ranks by the goal relevance plus
     ``facet_weight`` times the best sub-task relevance, normalized:
-    ``(g + w * max_n f_n) / (1 + w)``, swapped into the composite score the
-    way ``HybridRetriever`` swaps in its blended relevance, so the policy
+    ``(a * g + w * max_n f_n) / (a + w)``, swapped into the composite score
+    the way ``HybridRetriever`` swaps in its blended relevance, so the policy
     components still order ties. The goal keeps the lead and a resource that
-    serves one sub-task well moves up past ones that serve none. On ToolRet
-    (LLM sub-tasks over BM25, weight chosen on a dev split) this raised
-    held-out nDCG@10 from 0.201 to 0.221 and Completeness@10 from 0.193 to
-    0.211. ``fusion="rrf"`` is Reciprocal Rank Fusion instead, the goal's
-    list weighted ``goal_weight``; it was weaker on the same data.
+    serves one sub-task well moves up past ones that serve none. ``w`` = 0.25
+    was chosen on a ToolRet dev split. ``fusion="rrf"`` is Reciprocal Rank
+    Fusion instead, the goal's list weighted ``goal_weight``; it was weaker
+    on the same data.
+
+    ``a`` is the share of the goal's distinct terms that occur anywhere in the
+    catalog (``discount_unknown_terms=True``; 1.0 when off). Relevance is
+    measured against the terms a catalog knows, so a goal written in another
+    language than the catalog -- a Japanese request over English tool
+    descriptions -- scores its few known tokens (names, numbers) as strong
+    matches. Counting the unknown terms as unmatched hands the ranking to the
+    sub-tasks, which ``LLMQueryDecomposer`` writes in English. On ToolRet the
+    share averages 0.93 for English goals and 0.32 for Japanese translations
+    of them; the discount left English nDCG@10 unchanged and raised Japanese
+    nDCG@10 from 0.057 to 0.134 (``benchmarks/README.md``). The index is the
+    inner retriever's own when it is, or wraps, a ``LexicalRetriever``;
+    otherwise one is built per registry content revision.
+    ``last_goal_weight`` holds the most recent ``a``.
 
     Every result records its relevance to each list as ``facet.0`` (the goal)
     to ``facet.<n>`` (sub-task n), 0.0 where it was not retrieved for that
@@ -255,6 +268,7 @@ class DecomposedRetriever(Retriever):
         facet_weight: float = 0.25,
         goal_weight: float = 1.0,
         rrf_k: int = 60,
+        discount_unknown_terms: bool = True,
     ) -> None:
         if depth < 1:
             raise ValueError("depth must be at least 1")
@@ -271,7 +285,9 @@ class DecomposedRetriever(Retriever):
         self.facet_weight = facet_weight
         self.goal_weight = goal_weight
         self.rrf_k = rrf_k
+        self.discount_unknown_terms = discount_unknown_terms
         self.last_subtasks: list[str] = []
+        self.last_goal_weight = 1.0
         self._limits = LexicalRetriever()
 
     def search(self, registry: ResourceRegistry, query: SearchQuery) -> list[SearchResult]:
@@ -283,10 +299,29 @@ class DecomposedRetriever(Retriever):
         lists = [self.inner.search(registry, widened)]
         lists += [self.inner.search(registry, replace(widened, task=subtask)) for subtask in subtasks]
         if self.fusion == "blend":
-            fused = blend_facet_rankings(lists, self.facet_weight)
+            self.last_goal_weight = self._known_term_share(registry, query.task) if self.discount_unknown_terms else 1.0
+            fused = blend_facet_rankings(lists, self.facet_weight, goal_weight=self.last_goal_weight)
         else:
             fused = rrf_facet_rankings(lists, self.goal_weight, self.rrf_k)
         return self._limits.apply_limits([result for result in fused if result.score >= query.min_score], query)
+
+
+    def _known_term_share(self, registry: ResourceRegistry, task: str) -> float:
+        """Share of the goal's distinct terms that occur anywhere in the catalog."""
+
+        terms = set(tokenize(task))
+        if not terms:
+            return 1.0
+        owner = next(
+            (
+                candidate
+                for candidate in (self.inner, getattr(self.inner, "lexical", None))
+                if isinstance(candidate, LexicalRetriever)
+            ),
+            self._limits,
+        )
+        postings = owner._index_for(registry).postings
+        return sum(1 for term in terms if term in postings) / len(terms)
 
 
 FUSIONS = ("blend", "rrf")
@@ -311,8 +346,10 @@ def _annotated(result: SearchResult, relevances: list[float], score: float, extr
     return SearchResult(result.resource, max(0.0, min(1.0, score)), result.reasons, components)
 
 
-def blend_facet_rankings(lists: Sequence[Sequence[SearchResult]], facet_weight: float) -> list[SearchResult]:
-    """Rank by ``(goal relevance + w * best sub-task relevance) / (1 + w)``; ``lists[0]`` is the goal's."""
+def blend_facet_rankings(
+    lists: Sequence[Sequence[SearchResult]], facet_weight: float, *, goal_weight: float = 1.0
+) -> list[SearchResult]:
+    """Rank by ``(a * goal relevance + w * best sub-task relevance) / (a + w)``; ``lists[0]`` is the goal's."""
 
     relevances, results = _facet_table(lists)
     fused: list[SearchResult] = []
@@ -320,7 +357,8 @@ def blend_facet_rankings(lists: Sequence[Sequence[SearchResult]], facet_weight: 
         per_list = results[identity]
         base = per_list[0] or max((r for r in per_list if r is not None), key=lambda r: r.score)
         best_subtask = max(values[1:], default=0.0)
-        blended = (values[0] + facet_weight * best_subtask) / (1.0 + facet_weight)
+        total = goal_weight + facet_weight
+        blended = (goal_weight * values[0] + facet_weight * best_subtask) / total if total else 0.0
         base_relevance = float(base.components.get("relevance", 0.0))
         score = base.score + RELEVANCE_WEIGHT * (blended - base_relevance)
         fused.append(_annotated(base, values, score, {"facet_blend": blended}))

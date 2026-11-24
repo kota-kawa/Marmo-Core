@@ -89,7 +89,7 @@ def main() -> None:
     print(f"catalog: {len(TOOLS)} functions (~{all_tokens:,} tokens of definitions)")
     print(f"sub-tasks: {retriever.last_subtasks}")
     print(f"status: {selection.status}")
-    print("selected functions: " + ", ".join(tool["function"]["name"] for tool in chosen))
+    print("selected functions: " + ", ".join(sorted(tool["function"]["name"] for tool in chosen)))
     print(f"definitions sent to the model: ~{chosen_tokens:,} tokens ({100 * (1 - chosen_tokens / all_tokens):.2f}% fewer)")
     assert sorted(tool["function"]["name"] for tool in chosen) == ["book_hotel", "search_flights", "weather_forecast"]
 

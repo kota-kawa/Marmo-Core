@@ -205,7 +205,9 @@ class DecomposedRetrieverTests(unittest.TestCase):
         self.assertEqual(goal_only, ["tool.flights", "tool.flights-2", "tool.flights-3", "tool.noise"])
 
         inner = _Table(self._table())
-        retriever = DecomposedRetriever(inner, _Fixed(["book a flight", "reserve a hotel"]))
+        retriever = DecomposedRetriever(
+            inner, _Fixed(["book a flight", "reserve a hotel"]), discount_unknown_terms=False
+        )
         results = retriever.search(registry, query)
         self.assertEqual([r.resource.metadata.id for r in results][:2], ["tool.flights", "tool.flights-2"])
         self.assertIn("tool.hotel", [r.resource.metadata.id for r in results])
@@ -216,6 +218,22 @@ class DecomposedRetrieverTests(unittest.TestCase):
         self.assertEqual(hotel.components["relevance"], 1.0)
         self.assertAlmostEqual(hotel.components["facet_blend"], (0.6 + 0.25 * 1.0) / 1.25)
         self.assertEqual(retriever.last_subtasks, ["book a flight", "reserve a hotel"])
+
+    def test_goal_terms_the_catalog_never_uses_discount_the_goal(self) -> None:
+        registry = ResourceRegistry()
+        registry.add(_resource("tool.hotel", "reserve a hotel room"))
+        registry.add(_resource("tool.noise", "unrelated words"))
+        goal = "ホテルの部屋を予約して"  # no term of it occurs in the English catalog
+        table = {goal: {"tool.noise": 0.9, "tool.hotel": 0.1}, "reserve a hotel room": {"tool.hotel": 1.0}}
+        retriever = DecomposedRetriever(_Table(table), _Fixed(["reserve a hotel room"]))
+        results = retriever.search(registry, SearchQuery(task=goal, top_k=2))
+        self.assertEqual(retriever.last_goal_weight, 0.0)
+        self.assertEqual(results[0].resource.metadata.id, "tool.hotel")
+        undiscounted = DecomposedRetriever(_Table(table), _Fixed(["reserve a hotel room"]), discount_unknown_terms=False)
+        self.assertEqual(undiscounted.search(registry, SearchQuery(task=goal, top_k=2))[0].resource.metadata.id, "tool.noise")
+        english = DecomposedRetriever(_Table({"reserve a hotel room": {"tool.hotel": 1.0}}), _Fixed(["reserve a hotel room"]))
+        english.search(registry, SearchQuery(task="reserve a hotel room", top_k=2))
+        self.assertEqual(english.last_goal_weight, 1.0)
 
     def test_rrf_fusion_and_settings(self) -> None:
         registry = self._registry()
