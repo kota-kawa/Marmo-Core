@@ -170,6 +170,7 @@ class _Bm25Index:
             for token, frequency in counts.items():
                 self.postings[token].append((doc_index, frequency))
         self.average_length = (total_length / self.doc_count) if self.doc_count else 0.0
+        self.static_policy_scores = [_static_policy_score(definition) for definition in definitions]
 
     def refresh(self, definitions: list[ResourceDefinition]) -> None:
         """Adopt definition objects whose searchable text is unchanged.
@@ -183,6 +184,7 @@ class _Bm25Index:
 
         self.definitions = definitions
         self._normalized_texts = None
+        self.static_policy_scores = [_static_policy_score(definition) for definition in definitions]
 
     def normalized_text(self, doc_index: int) -> str:
         """Normalized full text of one document, tokenized once per index.
@@ -240,7 +242,13 @@ class _Bm25Index:
     def bm25_scores(self, query_tokens: Iterable[str]) -> dict[int, float]:
         """BM25 over documents containing at least one query token."""
 
+        return self.bm25_scores_and_matches(query_tokens)[0]
+
+    def bm25_scores_and_matches(self, query_tokens: Iterable[str]) -> tuple[dict[int, float], dict[int, int]]:
+        """BM25 over documents containing a query token, and how many distinct query tokens each contains."""
+
         scores: dict[int, float] = defaultdict(float)
+        matches: dict[int, int] = defaultdict(int)
         for token in set(query_tokens):
             postings = self.postings.get(token)
             if not postings:
@@ -251,7 +259,8 @@ class _Bm25Index:
                     self.doc_lengths[doc_index] / self.average_length if self.average_length else 1.0
                 )
                 scores[doc_index] += idf * (frequency * (self.k1 + 1.0)) / (frequency + self.k1 * length_norm)
-        return dict(scores)
+                matches[doc_index] += 1
+        return dict(scores), dict(matches)
 
 
 class LexicalRetriever(Retriever):
@@ -287,21 +296,19 @@ class LexicalRetriever(Retriever):
         keyword_tokens = set(token for keyword in query.keywords for token in _tokens(keyword))
 
         if task_tokens:
-            bm25 = index.bm25_scores(task_tokens)
+            bm25, matched_terms = index.bm25_scores_and_matches(task_tokens)
             reference_bm25 = index.reference_score(task_tokens)
-            candidate_indices: Iterable[int] = bm25.keys()
         else:
-            bm25 = {}
+            bm25, matched_terms = {}, {}
             reference_bm25 = 0.0
-            candidate_indices = range(index.doc_count)
 
         task_token_set = set(task_tokens)
         normalized_task = _normalize(query.task)
-        scored: list[SearchResult] = []
-        for doc_index in candidate_indices:
+
+        def score(doc_index: int) -> SearchResult | None:
             definition = index.definitions[doc_index]
             if not self._passes_filters(definition, index, doc_index, query):
-                continue
+                return None
             result = self._score(
                 definition=definition,
                 index=index,
@@ -313,13 +320,55 @@ class LexicalRetriever(Retriever):
                 bm25_score=bm25.get(doc_index, 0.0),
                 reference_bm25=reference_bm25,
             )
-            if result.score >= query.min_score:
-                scored.append(result)
-        scored.sort(
-            key=lambda item: (item.score, item.resource.metadata.trust_level != "untrusted", item.resource.metadata.id),
-            reverse=True,
-        )
-        return self.apply_limits(scored, query)
+            return result if result.score >= query.min_score else None
+
+        if not task_tokens:
+            scored = [result for result in map(score, range(index.doc_count)) if result is not None]
+            return self.apply_limits(sorted(scored, key=_rank_key, reverse=True), query)
+
+        # Score documents in descending order of an upper bound on their
+        # composite score and stop once the bound cannot reach the last
+        # result that would be returned. Relevance is the clamped BM25 ratio
+        # times (0.6 + 0.4 * coverage), and coverage cannot exceed the share
+        # of distinct query terms the document contains, except through the
+        # exact-name match, which is checked for every candidate -- so the
+        # bound is admissible and the returned ranking is the one a full
+        # scan produces. A 44k-tool catalog matches ~13k documents per query
+        # on average; full scoring of every one of them, reasons included,
+        # was 90% of the search time.
+        query_bound = 0.10 + (0.12 if (keyword_tokens or query.tags) else 0.0)
+        inverse_reference = 1.0 / reference_bm25 if reference_bm25 > 0 else 0.0
+        coverage_step = 0.4 / len(task_token_set)
+        static_scores = index.static_policy_scores
+        name_texts = index.name_texts
+        bounds: list[tuple[float, int]] = []
+        for doc_index, value in bm25.items():
+            ratio = value * inverse_reference
+            relevance_bound = (ratio if ratio < 1.0 else 1.0) * (0.6 + coverage_step * matched_terms[doc_index])
+            if relevance_bound < 0.95:
+                name_text = name_texts[doc_index]
+                if normalized_task in name_text or name_text in normalized_task:
+                    relevance_bound = 0.95
+            bounds.append(
+                (RELEVANCE_WEIGHT * relevance_bound + query_bound + static_scores[doc_index], doc_index)
+            )
+        bounds.sort(reverse=True)
+
+        # Chunks double, so the stopping checks sort O(log n) times.
+        scored = []
+        start, chunk = 0, max(64, query.top_k)
+        while start < len(bounds):
+            if start and len(scored) >= query.top_k:
+                kept = self.apply_limits(sorted(scored, key=_rank_key, reverse=True), query)
+                if len(kept) >= query.top_k and bounds[start][0] + 1e-9 < kept[-1].score:
+                    return kept
+            for _, doc_index in bounds[start : start + chunk]:
+                result = score(doc_index)
+                if result is not None:
+                    scored.append(result)
+            start += chunk
+            chunk *= 2
+        return self.apply_limits(sorted(scored, key=_rank_key, reverse=True), query)
 
     # -- index management ------------------------------------------------------
 
@@ -537,6 +586,29 @@ class LexicalRetriever(Retriever):
             if len(limited) >= query.top_k:
                 break
         return limited
+
+
+def _rank_key(item: SearchResult) -> tuple[float, bool, str]:
+    return (item.score, item.resource.metadata.trust_level != "untrusted", item.resource.metadata.id)
+
+
+def _static_policy_score(definition: ResourceDefinition) -> float:
+    """The composite-score terms that depend on the resource alone.
+
+    Trust, side effect, latency, cost, and success history, weighted as in
+    ``LexicalRetriever._score``. Used only as part of an upper bound, so it
+    has to be at least what ``_score`` adds for these terms.
+    """
+
+    metadata = definition.metadata
+    success = metadata.stats.success_rate if metadata.stats.success_rate is not None else 0.5
+    return (
+        0.10 * _TRUST_SCORE.get(metadata.trust_level, 0.0)
+        + 0.08 * _SIDE_EFFECT_SCORE.get(metadata.side_effect, 0.0)
+        + 0.05 * _LATENCY_SCORE.get(metadata.latency_class, 0.0)
+        + 0.05 * (1.0 / (1.0 + max(metadata.cost_estimate, 0.0)))
+        + 0.05 * success
+    )
 
 
 def _relevance(

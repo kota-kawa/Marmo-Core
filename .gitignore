@@ -8,8 +8,10 @@ skills/.repos.json
 !/resources/agents/
 !/resources/tools/
 
-# Generated benchmark corpora
+# Generated benchmark corpora, downloaded public benchmark data, and LLM/embedding caches
 benchmarks/corpus/scale_corpus_*.json
+benchmarks/data/
+benchmarks/cache/
 
 # Local environment files
 .env

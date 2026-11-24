@@ -439,3 +439,125 @@ class BM25ParameterTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BoundedTopKSearchTests(unittest.TestCase):
+    """The pruned search must return exactly what scoring every match returns."""
+
+    WORDS = (
+        "invoice billing customer report export calendar meeting schedule weather forecast city "
+        "file read write archive email send inbox search web page summary translate language "
+        "image resize photo database query table chart plot metrics alert deploy release"
+    ).split()
+
+    def _registry(self) -> ResourceRegistry:
+        import random
+
+        rng = random.Random(7)
+        registry = ResourceRegistry()
+        kinds = ("tool", "skill", "memory", "agent")
+        for index in range(400):
+            words = rng.sample(self.WORDS, rng.randint(2, 9))
+            overrides = {
+                "trust_level": rng.choice(("core", "verified", "community", "untrusted")),
+                "side_effect": rng.choice(("none", "read", "write", "external", "irreversible")),
+                "latency_class": rng.choice(("fast", "medium", "slow")),
+                "cost_estimate": rng.choice((0.0, 0.5, 3.0)),
+                "required_permissions": rng.choice(([], ["mail.send"], ["fs.write", "net"])),
+                "tags": rng.sample(("finance", "ops", "media", "comms"), rng.randint(0, 2)),
+                "stats": {"success_rate": rng.choice((0.0, 0.3, 0.9, 1.0))} if index % 3 else {},
+            }
+            name = "-".join(words[:2]) if index % 5 else f"r{index}"
+            registry.add(
+                _resource(f"res.{index}", kinds[index % 4], " ".join(words) * rng.randint(1, 3), name=name, **overrides)
+            )
+        return registry
+
+    @staticmethod
+    def _full_scan(retriever: LexicalRetriever, registry: ResourceRegistry, query: SearchQuery):
+        """The pre-pruning algorithm: score every document sharing a query term."""
+
+        from marmo_core.retriever import _normalize, _tokens
+
+        index = retriever._index_for(registry)
+        tokens = _tokens(query.task)
+        bm25 = index.bm25_scores(tokens)
+        reference = index.reference_score(tokens)
+        keyword_tokens = {token for keyword in query.keywords for token in _tokens(keyword)}
+        scored = []
+        for doc_index in bm25:
+            definition = index.definitions[doc_index]
+            if not retriever._passes_filters(definition, index, doc_index, query):
+                continue
+            result = retriever._score(
+                definition=definition,
+                index=index,
+                doc_index=doc_index,
+                query=query,
+                task_token_set=set(tokens),
+                keyword_tokens=keyword_tokens,
+                normalized_task=_normalize(query.task),
+                bm25_score=bm25[doc_index],
+                reference_bm25=reference,
+            )
+            if result.score >= query.min_score:
+                scored.append(result)
+        scored.sort(
+            key=lambda item: (item.score, item.resource.metadata.trust_level != "untrusted", item.resource.metadata.id),
+            reverse=True,
+        )
+        return retriever.apply_limits(scored, query)
+
+    def test_pruned_search_equals_full_scan(self) -> None:
+        registry = self._registry()
+        retriever = LexicalRetriever()
+        tasks = [
+            "send the monthly invoice report by email to the customer",
+            "weather forecast",
+            "resize the photo and plot a chart of the metrics then deploy the release",
+            "billing-customer",
+            "query the database table",
+        ]
+        variants = [
+            {"top_k": 1},
+            {"top_k": 5},
+            {"top_k": 80},
+            {"top_k": 10, "per_kind_limits": {"tool": 2, "skill": 1}},
+            {"top_k": 10, "min_score": 0.45},
+            {"top_k": 5, "keywords": ("report",)},
+            {"top_k": 5, "tags": ("finance",)},
+            {"top_k": 5, "granted_permissions": ("mail.send",)},
+            {"top_k": 5, "kinds": ("tool", "agent")},
+        ]
+        for task in tasks:
+            for variant in variants:
+                query = SearchQuery(task=task, **variant)
+                with self.subTest(task=task, variant=variant):
+                    expected = self._full_scan(retriever, registry, query)
+                    actual = retriever.search(registry, query)
+                    self.assertEqual(
+                        [(r.resource.identity, r.score, r.reasons) for r in actual],
+                        [(r.resource.identity, r.score, r.reasons) for r in expected],
+                    )
+
+    def test_pruned_search_scores_a_fraction_of_a_large_catalog(self) -> None:
+        registry = ResourceRegistry()
+        for index in range(3000):
+            registry.add(_resource(f"res.{index}", "tool", f"generic data utility number {index} for data"))
+        registry.add(_resource("res.target", "tool", "convert currency exchange rates for data"))
+        retriever = LexicalRetriever()
+        calls = 0
+        original = retriever._score
+
+        def counting(**kwargs):
+            nonlocal calls
+            calls += 1
+            return original(**kwargs)
+
+        retriever._score = counting  # type: ignore[method-assign]
+        # top_k=1: the filler documents tie with each other, so a deeper cut
+        # would have to score all of them to break the tie by id.
+        results = retriever.search(registry, SearchQuery(task="convert currency exchange rates for data", top_k=1))
+
+        self.assertEqual([r.resource.metadata.id for r in results], ["res.target"])
+        self.assertLess(calls, 200)

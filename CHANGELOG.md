@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `LexicalRetriever` scores matches in descending order of an upper bound on
+  their composite score and stops once the bound cannot reach the last result
+  it returns. The ranking, scores, and reasons are those of the full scan
+  (checked against it on 280 ToolRet queries and five query shapes, and by a
+  new equivalence test). On the 44,453-tool ToolRet corpus, full scoring of
+  every document that shares a query term was 90% of the search time; a query
+  now fully scores about 1% of its matches, and warm latency fell from
+  p50 85.8 ms / p95 512 ms / mean 143 ms to 36.6 ms / 262 ms / 82.7 ms.
+
 - The Kernel now makes every selected set dependency-closed and conflict-free,
   whatever the selector. It adds declared dependencies from the candidate pool
   or the registry, and drops a resource whose dependency is missing, ambiguous,
