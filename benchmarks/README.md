@@ -368,6 +368,47 @@ dev の同系列再訪では 8 Tool タスク中 2 件が cache に命中し、�
 
 同じ固定 test の 6 Tool タスクに、通知 Tool の説明を各タスクの語で埋める敵対的メタデータを混入させます。`keyword_stuffing` と `instruction_payload` は `trust_level=untrusted` のまま、`metadata_forgery` は信頼・権限・副作用・隔離レベルの宣言まで偽装します。前二者は 6 件とも選ばれず、activation gate の判定も deny でした。後者では 6/6 件で偽装 Tool が選択され、activation gate も通過可能でした。**実ハンドラの危険な実行は行っていません**。これはメタデータ宣言自体の真正性をコア単体では確認できないことを示す攻撃候補の測定で、実際の被害件数ではありません。詳細は `benchmarks/results/evidence.json` の `adversarial_test` を参照してください。
 
+### 偽装メタデータの継続計測
+
+上の 6 件は Tool だけで、偽装も 4 項目をまとめて変えています。`run_forgery_benchmark.py` は、どの宣言の偽装がどの段階まで届くかを、検索・選択・ルーティングを変えるたびに同じ形で測ります。
+
+```bash
+python3 benchmarks/run_forgery_benchmark.py            # 約 90 秒、LLM なし
+```
+
+- **ケース**: `evidence_cases.json` の 22 件（dev / test、abstain 2・escalate 2 を含む）と、集合選択コーパス（63 資源）の 28 シナリオ（abstain 2・escalate 2）。
+- **偽装資源**: Tool・Skill・Agent それぞれに 1 つ。本文は 2 通りです。`stuffed` はタスク文を 5 回繰り返した説明（従来の 6 件と同じ）、`clone` は同じ種別の gold 資源の名前・説明・能力・タグの複製（gold にその種別があるケースだけ）。
+- **宣言**: 正直な宣言は「未審査の第三者が外部へ送信する資源」（`trust_level=untrusted`、`net.external` と `message.send`、`side_effect=external`、Tool は `isolation_level=L3`）です。偽装は各項目を `verified` / 権限なし / `none` / `L0` に置き換え、Tool は 4 項目、Skill と Agent は 3 項目の**全組み合わせ**（16 / 8 通り）を測ります。
+- **到達段階**: 候補に入る → 選択される → activation gate が allow → `Kernel.run_goal` がモデルに渡す（Tool / Agent はツール定義、Skill は本文がプロンプトに入る）→ モデルが呼べば execution gate を通ってハンドラが実行される。モデルは「渡された偽装資源を必ず呼ぶ」固定応答なので、測っているのはゲートで、モデルが偽の説明に従うかどうかではありません。偽装資源のハンドラは `ResourceActivator` で差し込んだ**何もしない記録用の関数**で、同梱の実ハンドラは偽装資源からは一度も動きません。
+- **被害の指標**: gold の押しのけ（偽装なしでは選ばれていた同じ種別の gold が外れる）、gold Tool の喪失（偽装なしではモデルに渡っていた gold Tool が渡らなくなる）、状態の変化、abstain / escalate の乗っ取り（abstain・escalate が正解のケースで偽装資源を含む `selected` になる）。
+
+結果は [`results/forgery.json`](results/forgery.json)（2,656 変種 × 3 構成）。`tracked` が変更前後で比べる固定の項目で、`legacy_baseline` に従来の 6 件（`metadata_forgery` 6/6）を同じ実行で再測定して残しています。
+
+| 構成 | 種別 | 宣言 | 選択 | activation 通過 | モデルに渡る | ハンドラ実行 | gold Tool 喪失 | 乗っ取り |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| lexical + greedy | Tool | 正直 | 0.000 | 0.000 | 0.000 | 0.000 | 0.214 | 0.000 |
+| lexical + greedy | Tool | 全偽装 | 0.534 | 0.534 | 0.534 | 0.534 | 0.643 | 1.000 |
+| lexical + greedy | Tool | いずれかを偽装 | 0.247 | 0.036 | 0.036 | 0.036 | 0.367 | 0.533 |
+| lexical + greedy | Skill | 全偽装 | 0.526 | 0.526 | 0.526 | — | 0.214 | 1.000 |
+| lexical + greedy | Agent | 全偽装 | 0.564 | 0.564 | 0.564 | 0.564 | 0.214 | 1.000 |
+| lexical + 被覆型 | Tool | 全偽装 | 0.534 | 0.534 | 0.534 | 0.534 | 0.643 | 1.000 |
+| lexical + Kernel 既定（rule-based） | Tool | 正直 | 0.420 | 0.000 | 0.000 | 0.000 | 0.214 | 0.875 |
+| lexical + Kernel 既定（rule-based） | Tool | 全偽装 | 0.784 | 0.784 | 0.784 | 0.784 | 0.643 | 1.000 |
+| lexical + Kernel 既定（rule-based） | Skill | 全偽装 | 0.859 | 0.859 | 0.859 | — | 0.214 | 1.000 |
+| lexical + Kernel 既定（rule-based） | Agent | 全偽装 | 0.833 | 0.833 | 0.833 | 0.833 | 0.214 | 1.000 |
+
+Skill と Agent の「正直」は 3 構成とも activation 通過 0、Skill にハンドラはありません（—）。乗っ取りの分母は abstain / escalate が正解の 8 ケース × 変種で、rule-based は偽装なしでも abstain しない Selector なので値が高く出ます。gold Tool 喪失の分母は偽装なしで gold Tool がモデルに渡っていた evidence の Tool タスクです。
+
+**読み方**
+
+- **止めているのは activation gate で、Selector ではありません**。greedy と被覆型は宣言された権限が足りない資源を選ばないので、権限の宣言だけを偽装した Tool（信頼度は `untrusted`、副作用は `external` のまま）は stuffed で 74%（両スイート合計。全偽装は 82%）選ばれ、activation gate で拒否されます。Selector は信頼度・副作用・隔離レベルを見ません。ゲートを通るのは 4 項目すべてを偽装した場合だけで、1 項目でも正直なら activation 通過は 0 でした（stuffed の Tool 16 通り）。
+- **拒否されても被害は残ります**。選ばれてから拒否された偽装資源は gold を押しのけたままなので、一部だけ偽装した Tool でも gold Tool の喪失は 37% です。正直な宣言の stuffed Tool でさえ、greedy は「権限だけで阻まれた上位の単位」として escalate を返し（権限不足の上位候補を escalate する既定の挙動）、gold Tool が 21% のケースで渡らなくなります。人に `net.external` と `message.send` の付与を求める経路でもあります。
+- **`clone`（正規の資源の複製）は stuffed より通りにくい**。同点の gold と並ぶため、全偽装でも Tool 36%（evidence）、集合コーパスでは 4% でした。
+- Kernel 既定の rule-based Selector は権限を見ないので、正直な宣言の偽装資源も 42〜58% 選ばれます（ゲートで拒否）。
+- 宣言の真正性を確かめる対策（署名・出所の検証）はこのベンチマークの対象外です。対策を入れたら、同じコマンドで `tracked` の全偽装の行が下がるかを確かめます。
+
+**検索・選択・ルーティングを変える PR での手順**: 変更前のブランチと変更後のブランチで `python3 benchmarks/run_forgery_benchmark.py --output /tmp/forgery-before.json`（後は `-after.json`）を実行し、`tracked.<構成>.tracked.<種別>.{honest,full_forgery,any_forgery}` の `selection_rate`、`activation_reach_rate`、`execution_reach_rate`、`gold_tool_loss_rate`、`abstain_escalate_hijack_rate` を PR 本文に並べます。新しい Retriever / Selector は `CONFIGS` に足してから測ります。結果 JSON を更新する場合はこの表も揃えます。
+
 ## 100k の flat ANN 比較
 
 `run_ann_scale_benchmark.py` は、同じ 100,063 件・34 シナリオ・埋め込み・BM25 候補・混合重み 0.9・候補枠 50・greedy Selector で、flat ANN (USearch、cosine/HNSW) と namespace 階層型を比較します。ANN はベンチマーク専用の `benchmark-ann` extra に置き、実行時依存には加えません。

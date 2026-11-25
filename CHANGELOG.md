@@ -107,6 +107,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ASCII letters or digits gets a stable hashed id), and
   `examples/tool_catalog_routing.py` narrows 3,007 functions to the three a
   goal needs, offline.
+- `benchmarks/run_forgery_benchmark.py` tracks how far a resource with forged
+  declarations gets: for Tool, Skill, and Agent decoys, each forged
+  declaration (trust, permissions, side effect, isolation) and every
+  combination of them, it reports the selection rate, activation-gate pass
+  rate, whether `Kernel.run_goal` hands the decoy to the model, and whether a
+  call reaches an inert stand-in handler through the execution gate, plus
+  displaced gold resources and hijacked abstain/escalate decisions. The six
+  legacy cases (`metadata_forgery` 6/6) are re-measured as the baseline. With
+  the greedy selector a fully forged Tool reaches the model in 53% of its 88
+  task variants, and no partial forgery passes activation. See
+  `benchmarks/results/forgery.json` and `benchmarks/README.md`.
 - `benchmarks/run_toolret_benchmark.py` evaluates routing on the public ToolRet
   benchmark (44,453 tools, multi-tool gold sets; downloaded on demand, not
   redistributed; parquet reading needs the new benchmark-only
