@@ -287,6 +287,27 @@ class LockedCache(dict):
             return dict(self)
 
 
+class JobCache(dict):
+    """One job's view of a shared reply cache: reads through, keeps its own writes.
+
+    Non-empty replies are forwarded to the shared cache; an empty one (a
+    failed call) stays here, so the caller can retry or record it.
+    """
+
+    def __init__(self, shared: LockedCache) -> None:
+        super().__init__()
+        self.shared = shared
+        self.written: dict[str, str] = {}
+
+    def get(self, key, default=None):
+        return self.written.get(key, self.shared.get(key, default))
+
+    def __setitem__(self, key, value) -> None:
+        self.written[key] = value
+        if value != "":
+            self.shared[key] = value
+
+
 def load_locked(path: Path) -> LockedCache:
     cache = LockedCache()
     if path.exists():
@@ -363,23 +384,21 @@ def stage_methods(data: Data, queries: list, model: str, workers: int, methods: 
 
     def work(job) -> None:
         name, query, variant = job
-        selector = method_selectors(model, caches, llm)[name]
+        # The selector writes into a per-job view, so a failure is matched to
+        # this job's own reply key and never to another thread's.
+        view = JobCache(caches[name])
+        selector = method_selectors(model, {**caches, name: view}, llm)[name]
         selector.select(data.pool(query, variant), context=context(query, variant))
+        failed = [key for key, value in view.written.items() if value == ""]
+        if not failed:
+            return
         if isinstance(selector.last_failure, ModelRefusalError):
             # A refusal is the method's answer for this input, not a gap to
             # retry: store it so the selection replays as an abstention.
-            with LockedCache.lock:
-                for key, value in list(caches[name].items()):
-                    if value == "":
-                        dict.__setitem__(caches[name], key, REFUSED)
+            for key in failed:
+                caches[name][key] = REFUSED
             return
-        # A failed call is cached as an empty reply; drop it so a rerun retries.
-        with LockedCache.lock:
-            empty = [key for key, value in caches[name].items() if value == ""]
-            for key in empty:
-                dict.pop(caches[name], key, None)
-        if empty:
-            raise RuntimeError(f"{name} failed for {query.id}/{variant}: {selector.last_failure}")
+        raise RuntimeError(f"{name} failed for {query.id}/{variant}: {selector.last_failure}")
 
     run_jobs(jobs, work, {method_cache_path(name, model): caches[name] for name in methods}, workers)
 
