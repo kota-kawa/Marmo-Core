@@ -1,5 +1,7 @@
 # 0005. 集合選択の制約はソルバーで解き、LLM や検索時フィルタに委ねない
 
+[English](0005-constraints-solved-by-selector-not-llm.en.md)
+
 - 状態: Accepted
 - 日付: 2026-07-17
 - 根拠: `benchmarks/README.md`（集合選択、Policy アブレーション、B&B 比較）、`selector.py`

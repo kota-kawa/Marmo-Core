@@ -1,5 +1,7 @@
 # 0007. 実行時依存は最小限に保ち、追加はユーザーの確認を取る
 
+[English](0007-minimal-runtime-dependencies-with-user-approval.en.md)
+
 - 状態: Accepted
 - 日付: 2026-09-23
 - 根拠: `0001-single-runtime-dependency.md` を置き換える。`pyproject.toml`

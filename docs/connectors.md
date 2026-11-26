@@ -1,5 +1,7 @@
 # Built-in Connectors
 
+[日本語](connectors.ja.md)
+
 Marmo-Core includes standard-library-backed HTTP, filesystem, shell, and SQLite
 Connectors. Each operation is installed as a normal Tool resource, so it
 cannot bypass resource selection, activation and execution Policy gates,

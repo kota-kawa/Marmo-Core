@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from functools import partial
 from pathlib import Path
-from typing import Any, Callable, Iterator, Mapping
+from typing import Any, Callable, Iterator, Mapping, NoReturn
 import argparse
 import importlib
 import json
+import os
 import shlex
 import sys
 
@@ -20,6 +22,7 @@ from .formatting import (
     render_selected_set,
 )
 from .audit import AuditLog
+from .cli_locale import CLIInputError, JapaneseHelpFormatter, japanese_parser_error, translate
 from .connectors import (
     Connector,
     ConnectorConfig,
@@ -52,93 +55,134 @@ LLM_CHOICES = ("mock", "openai", "anthropic", "bedrock")
 RETRIEVER_CHOICES = ("lexical", "hyde")
 
 
+class _ArgumentParser(argparse.ArgumentParser):
+    language = "en"
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        if self.language == "ja":
+            kwargs["formatter_class"] = JapaneseHelpFormatter
+            kwargs["add_help"] = False
+        super().__init__(*args, **kwargs)
+        if self.language == "ja":
+            self.add_argument("-h", "--help", action="help", help=self.translate("show this help message and exit"))
+
+    def translate(self, message: str) -> str:
+        return translate(self.language, message)
+
+    def error(self, message: str) -> NoReturn:
+        if self.language == "ja":
+            self.print_usage(sys.stderr)
+            detail = japanese_parser_error(message)
+            self.exit(2, f"{self.prog}: 引数エラー。使用方法は --help を参照してください。\n  {detail}\n")
+        super().error(message)
+
+
+class _JapaneseArgumentParser(_ArgumentParser):
+    language = "ja"
+
+
 def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
+    language = os.getenv("MARMO_CLI_LANGUAGE", "en")
+    parser = build_parser(language=language)
+    _ = parser.translate
     args = parser.parse_args(argv)
     try:
         return args.func(args)
     except (MarmoError, ValueError, OSError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        if isinstance(exc, CLIInputError):
+            detail = _(exc.template).format(**exc.fields)
+        elif isinstance(exc, json.JSONDecodeError):
+            detail = _("invalid JSON: {detail}").format(detail=exc) if language == "ja" else str(exc)
+        elif isinstance(exc, ValueError):
+            detail = _(str(exc))
+        else:
+            detail = str(exc)
+        print(f"{_('error')}: {detail}", file=sys.stderr)
         return 2
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="marmo", description="Marmo-Core v1 unified resource CLI")
-    parser.add_argument("--version", action="version", version=f"marmo-core {__version__}")
+def build_parser(*, language: str = "en") -> _ArgumentParser:
+    parser_type = _JapaneseArgumentParser if language == "ja" else _ArgumentParser
+    _ = partial(translate, language)
+    parser = parser_type(prog="marmo", description=_("Marmo-Core v1 unified resource CLI"))
+    parser.set_defaults(language=language)
+    version_action = parser.add_argument("--version", action="version", version=f"marmo-core {__version__}")
+    if language == "ja":
+        version_action.help = "バージョンを表示して終了する"
     subparsers = parser.add_subparsers(required=True)
 
-    validate_parser = subparsers.add_parser("validate", help="validate local resource definition files")
+    validate_parser = subparsers.add_parser("validate", help=_("validate local resource definition files"))
     _add_path_arg(validate_parser)
-    validate_parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
+    validate_parser.add_argument("--json", action="store_true", help=_("emit machine-readable JSON"))
     validate_parser.set_defaults(func=_cmd_validate)
 
-    list_parser = subparsers.add_parser("list", help="list resources from local definition files")
+    list_parser = subparsers.add_parser("list", help=_("list resources from local definition files"))
     _add_path_arg(list_parser)
     _add_common_filters(list_parser)
     list_parser.add_argument("--format", choices=("table", "json"), default="table")
     list_parser.set_defaults(func=_cmd_list)
 
-    search_parser = subparsers.add_parser("search", help="search across Memory, Skill, Tool, and Agent resources")
+    search_parser = subparsers.add_parser("search", help=_("search across Memory, Skill, Tool, and Agent resources"))
     _add_path_arg(search_parser)
     _add_common_filters(search_parser)
-    search_parser.add_argument("--task", default="", help="natural-language task description")
-    search_parser.add_argument("--keyword", action="append", default=[], help="required keyword filter; repeatable")
-    search_parser.add_argument("--granted-permission", action="append", default=[], help="permission granted to the search context; repeatable")
-    search_parser.add_argument("--require-permissions", action="store_true", help="drop resources whose permissions are not fully granted")
-    search_parser.add_argument("--top-k", type=int, default=10, help="maximum number of search results to display")
-    search_parser.add_argument("--per-kind-limit", action="append", default=[], metavar="KIND=N", help="limit displayed results per kind; repeatable")
-    search_parser.add_argument("--set-limit", action="append", default=[], metavar="KIND=N", help="limit selected set per kind; repeatable")
-    search_parser.add_argument("--min-score", type=float, default=0.0, help="drop results below this score")
-    search_parser.add_argument("--no-set", action="store_true", help="do not print rule-based selected set")
+    search_parser.add_argument("--task", default="", help=_("natural-language task description"))
+    search_parser.add_argument("--keyword", action="append", default=[], help=_("required keyword filter; repeatable"))
+    search_parser.add_argument("--granted-permission", action="append", default=[], help=_("permission granted to the search context; repeatable"))
+    search_parser.add_argument("--require-permissions", action="store_true", help=_("drop resources whose permissions are not fully granted"))
+    search_parser.add_argument("--top-k", type=int, default=10, help=_("maximum number of search results to display"))
+    search_parser.add_argument("--per-kind-limit", action="append", default=[], metavar="KIND=N", help=_("limit displayed results per kind; repeatable"))
+    search_parser.add_argument("--set-limit", action="append", default=[], metavar="KIND=N", help=_("limit selected set per kind; repeatable"))
+    search_parser.add_argument("--min-score", type=float, default=0.0, help=_("drop results below this score"))
+    search_parser.add_argument("--no-set", action="store_true", help=_("do not print rule-based selected set"))
     search_parser.add_argument("--format", choices=("table", "json"), default="table")
     search_parser.set_defaults(func=_cmd_search)
 
-    inspect_parser = subparsers.add_parser("inspect", help="inspect one resource definition including v1 extras")
-    inspect_parser.add_argument("resource", help="resource id or id@version")
+    inspect_parser = subparsers.add_parser("inspect", help=_("inspect one resource definition including v1 extras"))
+    inspect_parser.add_argument("resource", help=_("resource id or id@version"))
     _add_path_arg(inspect_parser)
-    inspect_parser.add_argument("--version", help="version to inspect when resource id is ambiguous")
+    inspect_parser.add_argument("--version", help=_("version to inspect when resource id is ambiguous"))
     inspect_parser.add_argument("--format", choices=("text", "json"), default="text")
     inspect_parser.set_defaults(func=_cmd_inspect)
 
-    policy_parser = subparsers.add_parser("policy-check", help="evaluate a resource against the Policy Gateway")
-    policy_parser.add_argument("resource", help="resource id or id@version")
+    policy_parser = subparsers.add_parser("policy-check", help=_("evaluate a resource against the Policy Gateway"))
+    policy_parser.add_argument("resource", help=_("resource id or id@version"))
     _add_path_arg(policy_parser)
-    policy_parser.add_argument("--version", help="version to check when resource id is ambiguous")
+    policy_parser.add_argument("--version", help=_("version to check when resource id is ambiguous"))
     policy_parser.add_argument("--gate", choices=("activation", "execution", "output"), default="activation")
-    policy_parser.add_argument("--granted-permission", action="append", default=[], help="permission granted to the current context; repeatable")
-    policy_parser.add_argument("--max-cost", type=float, help="deny resources whose cost_estimate exceeds this value")
-    policy_parser.add_argument("--allow-trust-level", action="append", choices=TRUST_LEVELS, help="allowed trust level; repeatable")
-    policy_parser.add_argument("--allow-side-effect", action="append", choices=SIDE_EFFECTS, help="allowed side effect; repeatable")
+    policy_parser.add_argument("--granted-permission", action="append", default=[], help=_("permission granted to the current context; repeatable"))
+    policy_parser.add_argument("--max-cost", type=float, help=_("deny resources whose cost_estimate exceeds this value"))
+    policy_parser.add_argument("--allow-trust-level", action="append", choices=TRUST_LEVELS, help=_("allowed trust level; repeatable"))
+    policy_parser.add_argument("--allow-side-effect", action="append", choices=SIDE_EFFECTS, help=_("allowed side effect; repeatable"))
     policy_parser.add_argument(
         "--escalate-side-effect",
         action="append",
         choices=SIDE_EFFECTS,
-        help="side effect that requires human approval; repeatable",
+        help=_("side effect that requires human approval; repeatable"),
     )
-    policy_parser.add_argument("--human-approved", action="store_true", help="treat escalation-class risks as already approved")
-    policy_parser.add_argument("--dry-run", action="store_true", help="record that no side effects will be executed by this check")
+    policy_parser.add_argument("--human-approved", action="store_true", help=_("treat escalation-class risks as already approved"))
+    policy_parser.add_argument("--dry-run", action="store_true", help=_("record that no side effects will be executed by this check"))
     _add_isolation_args(policy_parser)
     policy_parser.add_argument(
         "--arguments",
         default="",
         metavar="JSON",
-        help="tool arguments to inspect at the execution gate",
+        help=_("tool arguments to inspect at the execution gate"),
     )
     _add_safety_args(policy_parser)
-    policy_parser.add_argument("--audit-log", help="append a hash-chained JSONL audit record to this path")
+    policy_parser.add_argument("--audit-log", help=_("append a hash-chained JSONL audit record to this path"))
     policy_parser.add_argument("--format", choices=("text", "json"), default="text")
     policy_parser.set_defaults(func=_cmd_policy_check)
 
     run_parser = subparsers.add_parser(
         "run",
-        help="run a goal through the guarded kernel loop with the mock LLM or a real provider (--llm)",
+        help=_("run a goal through the guarded kernel loop with the mock LLM or a real provider (--llm)"),
     )
-    run_parser.add_argument("--task", required=True, help="natural-language goal to execute")
+    run_parser.add_argument("--task", required=True, help=_("natural-language goal to execute"))
     run_parser.add_argument(
         "--llm",
         choices=LLM_CHOICES,
         default="mock",
-        help=(
+        help=_(
             "model that drives the run: 'mock' replays --tool-args offline (default); "
             "'openai' and 'anthropic' read OPENAI_MODEL/OPENAI_API_KEY or "
             "ANTHROPIC_MODEL/ANTHROPIC_API_KEY/ANTHROPIC_MAX_TOKENS; 'bedrock' reads "
@@ -149,28 +193,28 @@ def build_parser() -> argparse.ArgumentParser:
         "--retriever",
         choices=RETRIEVER_CHOICES,
         default="lexical",
-        help=(
+        help=_(
             "how resources are matched to the goal: 'lexical' is offline word matching (default); "
             "'hyde' first asks the --llm to restate the goal in the registry's English vocabulary, "
             "which lets goals written in other languages find English-documented resources"
         ),
     )
     _add_path_arg(run_parser)
-    run_parser.add_argument("--granted-permission", action="append", default=[], help="permission granted to the task context; repeatable")
-    run_parser.add_argument("--max-cost", type=float, help="deny resources whose cost_estimate exceeds this value")
-    run_parser.add_argument("--allow-trust-level", action="append", choices=TRUST_LEVELS, help="allowed trust level; repeatable")
-    run_parser.add_argument("--allow-side-effect", action="append", choices=SIDE_EFFECTS, help="allowed side effect; repeatable")
-    run_parser.add_argument("--escalate-side-effect", action="append", choices=SIDE_EFFECTS, help="side effect that requires human approval; repeatable")
-    run_parser.add_argument("--human-approved", action="store_true", help="treat escalation-class risks as already approved")
+    run_parser.add_argument("--granted-permission", action="append", default=[], help=_("permission granted to the task context; repeatable"))
+    run_parser.add_argument("--max-cost", type=float, help=_("deny resources whose cost_estimate exceeds this value"))
+    run_parser.add_argument("--allow-trust-level", action="append", choices=TRUST_LEVELS, help=_("allowed trust level; repeatable"))
+    run_parser.add_argument("--allow-side-effect", action="append", choices=SIDE_EFFECTS, help=_("allowed side effect; repeatable"))
+    run_parser.add_argument("--escalate-side-effect", action="append", choices=SIDE_EFFECTS, help=_("side effect that requires human approval; repeatable"))
+    run_parser.add_argument("--human-approved", action="store_true", help=_("treat escalation-class risks as already approved"))
     run_parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="validate and record tool calls without invoking any tool handler",
+        help=_("validate and record tool calls without invoking any tool handler"),
     )
     run_parser.add_argument(
         "--strict",
         action="store_true",
-        help="return non-zero when a resource is skipped or a tool named in --tool-args is not evaluated",
+        help=_("return non-zero when a resource is skipped or a tool named in --tool-args is not evaluated"),
     )
     _add_safety_args(run_parser)
     _add_isolation_args(run_parser)
@@ -180,49 +224,49 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         metavar="ID=MODULE:FUNC",
-        help="bind a tool resource id to an importable callable; repeatable",
+        help=_("bind a tool resource id to an importable callable; repeatable"),
     )
     run_parser.add_argument(
         "--agent-impl",
         action="append",
         default=[],
         metavar="ID=MODULE:FUNC",
-        help="bind an agent resource id to a synchronous callable; repeatable",
+        help=_("bind an agent resource id to a synchronous callable; repeatable"),
     )
     run_parser.add_argument(
         "--tool-args",
         default="",
         metavar="JSON",
-        help=(
+        help=_(
             'arguments the mock LLM passes per tool id, e.g. \'{"tool.files.read-text": {"path": "README.md"}}\'; '
             "ignored when --llm is a real provider"
         ),
     )
-    run_parser.add_argument("--top-k", type=int, default=8, help="search candidates considered before set selection")
-    run_parser.add_argument("--set-limit", action="append", default=[], metavar="KIND=N", help="limit selected set per kind; repeatable")
-    run_parser.add_argument("--max-tool-calls", type=int, default=5, help="tool call budget before the task fails")
+    run_parser.add_argument("--top-k", type=int, default=8, help=_("search candidates considered before set selection"))
+    run_parser.add_argument("--set-limit", action="append", default=[], metavar="KIND=N", help=_("limit selected set per kind; repeatable"))
+    run_parser.add_argument("--max-tool-calls", type=int, default=5, help=_("tool call budget before the task fails"))
     run_parser.add_argument(
         "--max-input-repairs",
         type=int,
         default=2,
-        help="times the model may be handed a tool-argument error and asked to call again",
+        help=_("times the model may be handed a tool-argument error and asked to call again"),
     )
     run_parser.add_argument(
         "--max-tool-output-tokens",
         type=int,
         default=8000,
-        help="estimated tokens kept from one tool result before it is truncated (0 to keep all)",
+        help=_("estimated tokens kept from one tool result before it is truncated (0 to keep all)"),
     )
-    run_parser.add_argument("--max-agent-depth", type=int, default=1, help="maximum synchronous delegation depth")
-    run_parser.add_argument("--max-agent-cost", type=float, help="maximum cumulative estimated Agent cost")
+    run_parser.add_argument("--max-agent-depth", type=int, default=1, help=_("maximum synchronous delegation depth"))
+    run_parser.add_argument("--max-agent-cost", type=float, help=_("maximum cumulative estimated Agent cost"))
     run_parser.add_argument(
         "--context-token-budget",
         type=int,
-        help="maximum estimated tokens for the compiled execution context",
+        help=_("maximum estimated tokens for the compiled execution context"),
     )
-    run_parser.add_argument("--timeout", type=float, default=30.0, help="per-tool execution timeout in seconds")
-    run_parser.add_argument("--timeout-mode", choices=("thread", "process"), default="thread", help="process mode stops importable handlers at the deadline")
-    run_parser.add_argument("--audit-log", help="write this run's hash-chained audit records to a JSONL file (overwrites)")
+    run_parser.add_argument("--timeout", type=float, default=30.0, help=_("per-tool execution timeout in seconds"))
+    run_parser.add_argument("--timeout-mode", choices=("thread", "process"), default="thread", help=_("process mode stops importable handlers at the deadline"))
+    run_parser.add_argument("--audit-log", help=_("write this run's hash-chained audit records to a JSONL file (overwrites)"))
     _add_state_args(run_parser)
     _add_hitl_args(run_parser)
     _add_recovery_args(run_parser)
@@ -230,87 +274,87 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--confirm",
         action="store_true",
-        help="ask for confirmations on this terminal instead of pausing the task",
+        help=_("ask for confirmations on this terminal instead of pausing the task"),
     )
     run_parser.add_argument("--format", choices=("text", "json"), default="text")
     run_parser.set_defaults(func=_cmd_run)
 
     resume_parser = subparsers.add_parser(
         "resume",
-        help="answer a paused task's confirmation and continue it",
+        help=_("answer a paused task's confirmation and continue it"),
     )
     resume_parser.add_argument(
         "--llm",
         choices=LLM_CHOICES,
         default="mock",
-        help="model that continues the task; use the same choice as the original run",
+        help=_("model that continues the task; use the same choice as the original run"),
     )
     resume_parser.add_argument(
         "--retriever",
         choices=RETRIEVER_CHOICES,
         default="lexical",
-        help="retriever used when the resumed task re-selects resources; match the original run",
+        help=_("retriever used when the resumed task re-selects resources; match the original run"),
     )
-    resume_parser.add_argument("--task-id", required=True, help="id of the paused task")
+    resume_parser.add_argument("--task-id", required=True, help=_("id of the paused task"))
     _add_path_arg(resume_parser)
     verdict = resume_parser.add_mutually_exclusive_group(required=True)
-    verdict.add_argument("--approve", action="store_true", help="approve the pending operation")
-    verdict.add_argument("--reject", action="store_true", help="reject it and end the task")
-    verdict.add_argument("--defer", action="store_true", help="leave the task paused for later")
+    verdict.add_argument("--approve", action="store_true", help=_("approve the pending operation"))
+    verdict.add_argument("--reject", action="store_true", help=_("reject it and end the task"))
+    verdict.add_argument("--defer", action="store_true", help=_("leave the task paused for later"))
     verdict.add_argument(
         "--modify",
         metavar="JSON",
-        help='approve with replacement tool arguments, e.g. \'{"path": "safe.txt"}\'',
+        help=_('approve with replacement tool arguments, e.g. \'{"path": "safe.txt"}\''),
     )
-    resume_parser.add_argument("--responder", default="", help="who is answering (checked against --approver)")
-    resume_parser.add_argument("--note", default="", help="free-text reason recorded in the audit log")
-    resume_parser.add_argument("--granted-permission", action="append", default=[], help="permission granted to the task context; repeatable")
-    resume_parser.add_argument("--max-cost", type=float, help="deny resources whose cost_estimate exceeds this value")
-    resume_parser.add_argument("--allow-trust-level", action="append", choices=TRUST_LEVELS, help="allowed trust level; repeatable")
-    resume_parser.add_argument("--allow-side-effect", action="append", choices=SIDE_EFFECTS, help="allowed side effect; repeatable")
-    resume_parser.add_argument("--escalate-side-effect", action="append", choices=SIDE_EFFECTS, help="side effect that requires human approval; repeatable")
-    resume_parser.add_argument("--human-approved", action="store_true", help="treat escalation-class risks as already approved")
+    resume_parser.add_argument("--responder", default="", help=_("who is answering (checked against --approver)"))
+    resume_parser.add_argument("--note", default="", help=_("free-text reason recorded in the audit log"))
+    resume_parser.add_argument("--granted-permission", action="append", default=[], help=_("permission granted to the task context; repeatable"))
+    resume_parser.add_argument("--max-cost", type=float, help=_("deny resources whose cost_estimate exceeds this value"))
+    resume_parser.add_argument("--allow-trust-level", action="append", choices=TRUST_LEVELS, help=_("allowed trust level; repeatable"))
+    resume_parser.add_argument("--allow-side-effect", action="append", choices=SIDE_EFFECTS, help=_("allowed side effect; repeatable"))
+    resume_parser.add_argument("--escalate-side-effect", action="append", choices=SIDE_EFFECTS, help=_("side effect that requires human approval; repeatable"))
+    resume_parser.add_argument("--human-approved", action="store_true", help=_("treat escalation-class risks as already approved"))
     resume_parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="validate and record tool calls without invoking any tool handler",
+        help=_("validate and record tool calls without invoking any tool handler"),
     )
     resume_parser.add_argument(
         "--strict",
         action="store_true",
-        help="return non-zero when a resource is skipped or a tool named in --tool-args is not evaluated",
+        help=_("return non-zero when a resource is skipped or a tool named in --tool-args is not evaluated"),
     )
     _add_safety_args(resume_parser)
     _add_isolation_args(resume_parser)
     _add_connector_args(resume_parser)
-    resume_parser.add_argument("--tool-impl", action="append", default=[], metavar="ID=MODULE:FUNC", help="bind a tool resource id to an importable callable; repeatable")
-    resume_parser.add_argument("--agent-impl", action="append", default=[], metavar="ID=MODULE:FUNC", help="bind an agent resource id to a synchronous callable; repeatable")
-    resume_parser.add_argument("--tool-args", default="", metavar="JSON", help="mock-LLM arguments per tool id")
-    resume_parser.add_argument("--top-k", type=int, default=8, help="search candidates considered before set selection")
-    resume_parser.add_argument("--set-limit", action="append", default=[], metavar="KIND=N", help="limit selected set per kind; repeatable")
-    resume_parser.add_argument("--max-tool-calls", type=int, default=5, help="tool call budget before the task fails")
+    resume_parser.add_argument("--tool-impl", action="append", default=[], metavar="ID=MODULE:FUNC", help=_("bind a tool resource id to an importable callable; repeatable"))
+    resume_parser.add_argument("--agent-impl", action="append", default=[], metavar="ID=MODULE:FUNC", help=_("bind an agent resource id to a synchronous callable; repeatable"))
+    resume_parser.add_argument("--tool-args", default="", metavar="JSON", help=_("mock-LLM arguments per tool id"))
+    resume_parser.add_argument("--top-k", type=int, default=8, help=_("search candidates considered before set selection"))
+    resume_parser.add_argument("--set-limit", action="append", default=[], metavar="KIND=N", help=_("limit selected set per kind; repeatable"))
+    resume_parser.add_argument("--max-tool-calls", type=int, default=5, help=_("tool call budget before the task fails"))
     resume_parser.add_argument(
         "--max-input-repairs",
         type=int,
         default=2,
-        help="times the model may be handed a tool-argument error and asked to call again",
+        help=_("times the model may be handed a tool-argument error and asked to call again"),
     )
     resume_parser.add_argument(
         "--max-tool-output-tokens",
         type=int,
         default=8000,
-        help="estimated tokens kept from one tool result before it is truncated (0 to keep all)",
+        help=_("estimated tokens kept from one tool result before it is truncated (0 to keep all)"),
     )
-    resume_parser.add_argument("--max-agent-depth", type=int, default=1, help="maximum synchronous delegation depth")
-    resume_parser.add_argument("--max-agent-cost", type=float, help="maximum cumulative estimated Agent cost")
+    resume_parser.add_argument("--max-agent-depth", type=int, default=1, help=_("maximum synchronous delegation depth"))
+    resume_parser.add_argument("--max-agent-cost", type=float, help=_("maximum cumulative estimated Agent cost"))
     resume_parser.add_argument(
         "--context-token-budget",
         type=int,
-        help="maximum estimated tokens for the compiled execution context",
+        help=_("maximum estimated tokens for the compiled execution context"),
     )
-    resume_parser.add_argument("--timeout", type=float, default=30.0, help="per-tool execution timeout in seconds")
-    resume_parser.add_argument("--timeout-mode", choices=("thread", "process"), default="thread", help="match the run's timeout mode")
-    resume_parser.add_argument("--audit-log", help="JSONL audit file to continue the hash chain in")
+    resume_parser.add_argument("--timeout", type=float, default=30.0, help=_("per-tool execution timeout in seconds"))
+    resume_parser.add_argument("--timeout-mode", choices=("thread", "process"), default="thread", help=_("match the run's timeout mode"))
+    resume_parser.add_argument("--audit-log", help=_("JSONL audit file to continue the hash chain in"))
     _add_state_args(resume_parser, required=True)
     _add_hitl_args(resume_parser)
     _add_recovery_args(resume_parser)
@@ -318,157 +362,165 @@ def build_parser() -> argparse.ArgumentParser:
     resume_parser.add_argument("--format", choices=("text", "json"), default="text")
     resume_parser.set_defaults(func=_cmd_resume, confirm=False)
 
-    tasks_parser = subparsers.add_parser("tasks", help="list tasks held in a state store")
+    tasks_parser = subparsers.add_parser("tasks", help=_("list tasks held in a state store"))
     _add_state_args(tasks_parser, required=True)
-    tasks_parser.add_argument("--status", help="only show tasks in this status")
+    tasks_parser.add_argument("--status", help=_("only show tasks in this status"))
     tasks_parser.add_argument("--format", choices=("text", "json"), default="text")
     tasks_parser.set_defaults(func=_cmd_tasks)
 
     package_parser = subparsers.add_parser(
         "package",
-        help="lock, verify, and inspect a local resource package",
+        help=_("lock, verify, and inspect a local resource package"),
     )
     package_subparsers = package_parser.add_subparsers(dest="package_command", required=True)
     package_lock_parser = package_subparsers.add_parser(
         "lock",
-        help="pin the manifest and resource files by SHA-256",
+        help=_("pin the manifest and resource files by SHA-256"),
     )
-    package_lock_parser.add_argument("path", help="directory containing marmo-package.json")
+    package_lock_parser.add_argument("path", help=_("directory containing marmo-package.json"))
     package_lock_parser.add_argument(
         "--source",
         default=".",
-        help="portable local acquisition path to record in the lock (default: .)",
+        help=_("portable local acquisition path to record in the lock (default: .)"),
     )
     package_lock_parser.add_argument("--format", choices=("text", "json"), default="text")
     package_lock_parser.set_defaults(func=_cmd_package_lock)
 
     package_verify_parser = package_subparsers.add_parser(
         "verify",
-        help="verify compatibility, source metadata, and all pinned hashes",
+        help=_("verify compatibility, source metadata, and all pinned hashes"),
     )
-    package_verify_parser.add_argument("path", help="directory containing marmo-package.json")
+    package_verify_parser.add_argument("path", help=_("directory containing marmo-package.json"))
     package_verify_parser.add_argument("--format", choices=("text", "json"), default="text")
     package_verify_parser.set_defaults(func=_cmd_package_verify)
 
     package_inspect_parser = package_subparsers.add_parser(
         "inspect",
-        help="show the verified manifest and lock metadata",
+        help=_("show the verified manifest and lock metadata"),
     )
-    package_inspect_parser.add_argument("path", help="directory containing marmo-package.json")
+    package_inspect_parser.add_argument("path", help=_("directory containing marmo-package.json"))
     package_inspect_parser.add_argument("--format", choices=("text", "json"), default="text")
     package_inspect_parser.set_defaults(func=_cmd_package_inspect)
 
     return parser
 
 
-def _add_state_args(parser: argparse.ArgumentParser, *, required: bool = False) -> None:
+def _add_state_args(parser: _ArgumentParser, *, required: bool = False) -> None:
+    _ = parser.translate
     parser.add_argument(
         "--state-dir",
         required=required,
-        help="directory holding durable task state; without it, state lives in memory only",
+        help=_("directory holding durable task state; without it, state lives in memory only"),
     )
 
 
-def _add_safety_args(parser: argparse.ArgumentParser) -> None:
+def _add_safety_args(parser: _ArgumentParser) -> None:
+    _ = parser.translate
     parser.add_argument(
         "--allow-external-host",
         action="append",
         default=[],
         metavar="HOST",
-        help="allow this external hostname and its subdomains; repeatable",
+        help=_("allow this external hostname and its subdomains; repeatable"),
     )
     parser.add_argument(
         "--block-external-host",
         action="append",
         default=[],
         metavar="HOST",
-        help="deny this external hostname and its subdomains; repeatable",
+        help=_("deny this external hostname and its subdomains; repeatable"),
     )
 
 
-def _add_isolation_args(parser: argparse.ArgumentParser) -> None:
+def _add_isolation_args(parser: _ArgumentParser) -> None:
+    _ = parser.translate
     parser.add_argument(
         "--minimum-isolation-level",
         choices=ISOLATION_LEVELS,
         default="L0",
-        help="deny tools whose declared isolation is below this level",
+        help=_("deny tools whose declared isolation is below this level"),
     )
     parser.add_argument(
         "--available-isolation-level",
         action="append",
         choices=ISOLATION_LEVELS,
-        help="isolation level supplied by this runtime; repeatable (core default: L0-L2)",
+        help=_("isolation level supplied by this runtime; repeatable (core default: L0-L2)"),
     )
 
 
-def _add_planner_args(parser: argparse.ArgumentParser) -> None:
+def _add_planner_args(parser: _ArgumentParser) -> None:
+    _ = parser.translate
     parser.add_argument(
         "--planner",
         choices=("none", "rule", "llm"),
         default="none",
-        help="plan the goal up front instead of letting the model choose call by call",
+        help=_("plan the goal up front instead of letting the model choose call by call"),
     )
     parser.add_argument(
         "--max-parallel-steps",
         type=int,
         default=4,
-        help="independent plan steps to run at the same time",
+        help=_("independent plan steps to run at the same time"),
     )
-    parser.add_argument("--max-replans", type=int, default=2, help="plan revisions allowed after a failure")
+    parser.add_argument("--max-replans", type=int, default=2, help=_("plan revisions allowed after a failure"))
 
 
-def _add_recovery_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--max-attempts", type=int, default=3, help="executions per step before recovery gives up")
+def _add_recovery_args(parser: _ArgumentParser) -> None:
+    _ = parser.translate
+    parser.add_argument("--max-attempts", type=int, default=3, help=_("executions per step before recovery gives up"))
     parser.add_argument(
         "--retry-backoff",
         type=float,
         default=0.1,
-        help="initial exponential backoff in seconds between retries",
+        help=_("initial exponential backoff in seconds between retries"),
     )
     parser.add_argument(
         "--circuit-threshold",
         type=int,
         default=3,
-        help="consecutive failures of one resource before it is cut off",
+        help=_("consecutive failures of one resource before it is cut off"),
     )
     parser.add_argument(
         "--no-compensate",
         action="store_true",
-        help="do not run declared compensating tools when a task fails",
+        help=_("do not run declared compensating tools when a task fails"),
     )
 
 
-def _add_hitl_args(parser: argparse.ArgumentParser) -> None:
+def _add_hitl_args(parser: _ArgumentParser) -> None:
+    _ = parser.translate
     parser.add_argument(
         "--always-confirm",
         action="append",
         default=[],
         metavar="ID",
-        help="resource id that always needs a human before it runs; repeatable",
+        help=_("resource id that always needs a human before it runs; repeatable"),
     )
     parser.add_argument(
         "--approver",
         action="append",
         default=[],
         metavar="NAME",
-        help="restrict who may approve; repeatable",
+        help=_("restrict who may approve; repeatable"),
     )
 
 
-def _add_path_arg(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("paths", nargs="*", help="resource files or directories")
+def _add_path_arg(parser: _ArgumentParser) -> None:
+    _ = parser.translate
+    parser.add_argument("paths", nargs="*", help=_("resource files or directories"))
     parser.add_argument(
         "--no-default-resources",
         action="store_true",
-        help="do not auto-discover resources, skills, examples/resources, or the current directory",
+        help=_("do not auto-discover resources, skills, examples/resources, or the current directory"),
     )
 
 
-def _add_common_filters(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--kind", action="append", choices=KINDS, default=[], help="resource kind filter; repeatable")
-    parser.add_argument("--trust-level", action="append", choices=TRUST_LEVELS, default=[], help="trust level filter; repeatable")
-    parser.add_argument("--side-effect", action="append", choices=SIDE_EFFECTS, default=[], help="side-effect filter; repeatable")
-    parser.add_argument("--tag", action="append", default=[], help="required tag filter; repeatable")
+def _add_common_filters(parser: _ArgumentParser) -> None:
+    _ = parser.translate
+    parser.add_argument("--kind", action="append", choices=KINDS, default=[], help=_("resource kind filter; repeatable"))
+    parser.add_argument("--trust-level", action="append", choices=TRUST_LEVELS, default=[], help=_("trust level filter; repeatable"))
+    parser.add_argument("--side-effect", action="append", choices=SIDE_EFFECTS, default=[], help=_("side-effect filter; repeatable"))
+    parser.add_argument("--tag", action="append", default=[], help=_("required tag filter; repeatable"))
 
 
 def _cmd_validate(args: argparse.Namespace) -> int:
@@ -556,7 +608,7 @@ def _cmd_package_inspect(args: argparse.Namespace) -> int:
 def _cmd_list(args: argparse.Namespace) -> int:
     paths = _default_paths(args.paths, no_defaults=args.no_default_resources)
     registry = load_registry(paths)
-    _warn_if_empty(registry, paths)
+    _warn_if_empty(registry, paths, args.language)
     resources = registry.list(kinds=args.kind, trust_levels=args.trust_level, side_effects=args.side_effect, tags=args.tag)
     if args.format == "json":
         print_json([resource.to_dict(include_extras=False) for resource in resources])
@@ -568,7 +620,7 @@ def _cmd_list(args: argparse.Namespace) -> int:
 def _cmd_search(args: argparse.Namespace) -> int:
     paths = _default_paths(args.paths, no_defaults=args.no_default_resources)
     registry = load_registry(paths)
-    _warn_if_empty(registry, paths)
+    _warn_if_empty(registry, paths, args.language)
     per_kind_limits = _parse_limits(args.per_kind_limit)
     set_limits = _parse_limits(args.set_limit)
     query = SearchQuery(
@@ -635,7 +687,7 @@ def _cmd_policy_check(args: argparse.Namespace) -> int:
     if args.arguments:
         parsed = json.loads(args.arguments)
         if not isinstance(parsed, dict):
-            raise ValueError("--arguments must be a JSON object")
+            raise CLIInputError("--arguments must be a JSON object")
         arguments = parsed
     decision = PolicyGateway().evaluate(resource, context, gate=args.gate, arguments=arguments)
     audit_record = None
@@ -694,12 +746,13 @@ def _build_kernel(args: argparse.Namespace, *, continue_audit: bool) -> Kernel:
     llm = _build_llm(llm_choice, tool_arguments)
     retriever_choice = getattr(args, "retriever", "lexical")
     if retriever_choice == "hyde" and llm_choice == "mock":
-        print(
+        message = translate(
+            args.language,
             "note: --retriever hyde rewrites the goal with --llm, and the mock model replies with a "
             "canned script; the rewrite will steer retrieval at random. Pass --llm openai or "
             "--llm anthropic, or use the default --retriever lexical.",
-            file=sys.stderr,
         )
+        print(message, file=sys.stderr)
     retriever = _build_retriever(retriever_choice, llm)
     planner: Planner | None = None
     if args.planner == "rule":
@@ -754,7 +807,8 @@ def _audit_log_preserved(args: argparse.Namespace, kernel: Kernel) -> Iterator[N
         try:
             _write_audit_log(args, kernel)
         except Exception as exc:  # noqa: BLE001 - reported, never raised over the original
-            print(f"warning: could not write {args.audit_log}: {exc}", file=sys.stderr)
+            message = translate(getattr(args, "language", "en"), "warning: could not write {path}: {detail}")
+            print(message.format(path=args.audit_log, detail=exc), file=sys.stderr)
         raise
 
 
@@ -775,12 +829,13 @@ def _report_task(args: argparse.Namespace, kernel: Kernel, result) -> int:
             payload["strict_violations"] = list(strict_violations)
         print_json(payload)
         return 0 if result.completed and not strict_violations else 1
-    print(f"task: {result.task_id}")
-    print(f"status: {result.status}")
+    _ = partial(translate, args.language)
+    print(f"{_('task')}: {result.task_id}")
+    print(f"{_('status')}: {result.status}")
     if result.output:
-        print(f"output: {result.output}")
+        print(f"{_('output')}: {result.output}")
     if result.detail:
-        print(f"detail: {result.detail}")
+        print(f"{_('detail')}: {result.detail}")
     for tool_result in result.tool_results:
         print(
             f"  tool: {tool_result.tool_id} status={tool_result.status} "
@@ -792,20 +847,24 @@ def _report_task(args: argparse.Namespace, kernel: Kernel, result) -> int:
             f"elapsed_ms={agent_result.elapsed_ms:.1f} cost={agent_result.cost:g}"
         )
     for skipped in result.skipped_resources:
-        print(f"  skipped: {skipped['resource']} ({skipped['reason']})")
+        print(f"  {_('skipped')}: {skipped['resource']} ({skipped['reason']})")
     for violation in strict_violations:
         print(f"  strict: {violation}")
     if result.paused:
         request = kernel.pending_request(result.task_id)
         if request is not None:
-            print("awaiting confirmation:")
+            print(_("awaiting confirmation:"))
             print(request.describe())
             if args.state_dir:
-                print(f"  answer with: {resume_command(args, result.task_id)}")
+                print(_("  answer with: {command}").format(command=resume_command(args, result.task_id)))
             else:
-                print("  pass --state-dir to keep the pause resumable across processes")
+                print(_("  pass --state-dir to keep the pause resumable across processes"))
     chain = kernel.audit_log.records
-    print(f"audit: {len(chain)} records, last_hash={chain[-1].hash[:16]}…" if chain else "audit: empty")
+    audit_summary = (
+        _("{count} records, last_hash={last_hash}…").format(count=len(chain), last_hash=chain[-1].hash[:16])
+        if chain else _("empty")
+    )
+    print(f"{_('audit')}: {audit_summary}")
     return 0 if result.completed and not strict_violations else 1
 
 
@@ -821,7 +880,7 @@ def _cmd_resume(args: argparse.Namespace) -> int:
     if args.modify:
         arguments = json.loads(args.modify)
         if not isinstance(arguments, dict):
-            raise ValueError("--modify must be a JSON object of replacement tool arguments")
+            raise CLIInputError("--modify must be a JSON object of replacement tool arguments")
         response = HitlResponse(
             kind="modify", responder=args.responder, note=args.note, arguments=arguments
         )
@@ -840,7 +899,7 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
         print_json({"tasks": [state.to_dict() for state in states]})
         return 0
     if not states:
-        print("no tasks found")
+        print(translate(args.language, "no tasks found"))
         return 0
     for state in states:
         line = f"{state.task_id}  {state.status:<10}  {state.goal}"
@@ -859,7 +918,7 @@ def _parse_tool_arguments(raw: str) -> dict[str, Any]:
         return {}
     parsed = json.loads(raw)
     if not isinstance(parsed, dict):
-        raise ValueError("--tool-args must be a JSON object mapping tool ids to argument objects")
+        raise CLIInputError("--tool-args must be a JSON object mapping tool ids to argument objects")
     return parsed
 
 
@@ -986,64 +1045,65 @@ def _parse_implementations(
     implementations: dict[str, Callable[..., Any]] = {}
     for value in values:
         if "=" not in value or ":" not in value.split("=", 1)[1]:
-            raise ValueError(f"{resource_kind} impl must be ID=MODULE:FUNC: {value}")
+            raise CLIInputError("{resource_kind} impl must be ID=MODULE:FUNC: {value}", resource_kind=resource_kind, value=value)
         resource_id, target = value.split("=", 1)
         module_name, _, attribute = target.rpartition(":")
         module = importlib.import_module(module_name)
         handler = getattr(module, attribute, None)
         if not callable(handler):
-            raise ValueError(f"{target} is not a callable")
+            raise CLIInputError("{target} is not a callable", target=target)
         implementations[resource_id] = handler
     return implementations
 
 
-def _add_connector_args(parser: argparse.ArgumentParser) -> None:
+def _add_connector_args(parser: _ArgumentParser) -> None:
+    _ = parser.translate
     parser.add_argument(
         "--connector-http",
         action="store_true",
-        help="enable the built-in HTTP Connector",
+        help=_("enable the built-in HTTP Connector"),
     )
     parser.add_argument(
         "--connector-http-allow-private",
         action="store_true",
-        help="allow HTTP destinations on private/loopback networks (unsafe unless intentional)",
+        help=_("allow HTTP destinations on private/loopback networks (unsafe unless intentional)"),
     )
     parser.add_argument(
         "--connector-file-root",
-        help="enable the File Connector confined to this directory",
+        help=_("enable the File Connector confined to this directory"),
     )
     parser.add_argument(
         "--connector-shell-root",
-        help="root directory for the Shell Connector (requires --connector-shell-command)",
+        help=_("root directory for the Shell Connector (requires --connector-shell-command)"),
     )
     parser.add_argument(
         "--connector-shell-command",
         action="append",
         default=[],
         metavar="EXECUTABLE",
-        help="allow one executable in the Shell Connector; repeatable",
+        help=_("allow one executable in the Shell Connector; repeatable"),
     )
     parser.add_argument(
         "--connector-sqlite",
         metavar="DATABASE",
-        help="enable the SQLite Connector for one database path",
+        help=_("enable the SQLite Connector for one database path"),
     )
     parser.add_argument(
         "--connector-max-attempts",
         type=int,
         default=1,
-        help="Connector-local attempts for retry-safe read operations",
+        help=_("Connector-local attempts for retry-safe read operations"),
     )
     parser.add_argument(
         "--connector-rate-limit",
         type=float,
-        help="maximum calls per second for each Connector operation",
+        help=_("maximum calls per second for each Connector operation"),
     )
     parser.add_argument(
         "--connector-circuit-threshold",
         type=int,
         default=3,
-        help="consecutive transient failures before a Connector circuit opens",
+        help=_("consecutive transient failures before a Connector circuit opens"),
     )
 
 
@@ -1056,7 +1116,7 @@ def _build_connectors(args: argparse.Namespace) -> tuple[Connector, ...]:
     )
     connectors: list[Connector] = []
     if args.connector_http_allow_private and not args.connector_http:
-        raise ValueError("--connector-http-allow-private requires --connector-http")
+        raise CLIInputError("--connector-http-allow-private requires --connector-http")
     if args.connector_http:
         connectors.append(
             HTTPConnector(
@@ -1076,7 +1136,7 @@ def _build_connectors(args: argparse.Namespace) -> tuple[Connector, ...]:
             )
         )
     elif args.connector_shell_root:
-        raise ValueError("--connector-shell-root requires at least one --connector-shell-command")
+        raise CLIInputError("--connector-shell-root requires at least one --connector-shell-command")
     if args.connector_sqlite:
         connectors.append(SQLiteConnector(args.connector_sqlite, config=config))
     return tuple(connectors)
@@ -1086,16 +1146,16 @@ def _parse_limits(values: list[str]) -> dict[str, int]:
     parsed: dict[str, int] = {}
     for value in values:
         if "=" not in value:
-            raise ValueError(f"limit must be KIND=N: {value}")
+            raise CLIInputError("limit must be KIND=N: {value}", value=value)
         kind, raw_limit = value.split("=", 1)
         if kind not in KINDS:
-            raise ValueError(f"invalid kind in limit: {kind}")
+            raise CLIInputError("invalid kind in limit: {kind}", kind=kind)
         try:
             limit = int(raw_limit)
         except ValueError as exc:
-            raise ValueError(f"invalid numeric limit for {kind}: {raw_limit}") from exc
+            raise CLIInputError("invalid numeric limit for {kind}: {raw_limit}", kind=kind, raw_limit=raw_limit) from exc
         if limit < 0:
-            raise ValueError(f"limit for {kind} must be non-negative")
+            raise CLIInputError("limit for {kind} must be non-negative", kind=kind)
         parsed[kind] = limit
     return parsed
 
@@ -1119,17 +1179,18 @@ def _build_retriever(choice: str, llm: LLMProvider) -> Retriever:
     return lexical
 
 
-def _warn_if_empty(registry: ResourceRegistry, paths: list[Path]) -> None:
+def _warn_if_empty(registry: ResourceRegistry, paths: list[Path], language: str) -> None:
     """Tell a first-time user why a listing or search is empty instead of printing nothing."""
 
     if registry.list():
         return
-    shown = ", ".join(str(path) for path in paths) or "(no paths)"
-    print(
-        f"note: no resource definitions were found under {shown}. Pass a file or directory of "
+    shown = ", ".join(str(path) for path in paths) or translate(language, "(no paths)")
+    message = translate(
+        language,
+        "note: no resource definitions were found under {paths}. Pass a file or directory of "
         "resource JSON, or run from a checkout that has a resources/ or examples/resources/ directory.",
-        file=sys.stderr,
     )
+    print(message.format(paths=shown), file=sys.stderr)
 
 
 def _default_paths(paths: list[str], *, no_defaults: bool = False) -> list[Path]:

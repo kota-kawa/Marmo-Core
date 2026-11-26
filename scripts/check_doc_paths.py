@@ -52,12 +52,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # (要件定義書１.md, 改善策.md) describe intended or proposed work, not the tree.
 DOC_GLOBS: tuple[str, ...] = (
     "README.md",
-    "CONTRIBUTING.md",
-    "SECURITY.md",
+    "CONTRIBUTING*.md",
+    "SECURITY*.md",
     "AGENTS.md",
-    "ARCHITECTURE.md",
+    "ARCHITECTURE*.md",
     "docs/**/*.md",
-    "benchmarks/README.md",
+    "benchmarks/README*.md",
     ".github/**/*.md",
 )
 

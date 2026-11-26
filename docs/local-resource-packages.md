@@ -1,5 +1,7 @@
 # ローカルリソースパッケージ
 
+[English](local-resource-packages.en.md)
+
 Marmo-Core のローカルリソースパッケージは、Memory・Skill・Tool・Agent を同じ形式で共有し、読み込み前に互換性と改変の有無を検査するための仕組みです。追加依存はありません。
 
 完成した例は [`examples/package-template`](../examples/package-template) にあります。

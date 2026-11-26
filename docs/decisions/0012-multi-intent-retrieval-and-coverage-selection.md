@@ -1,5 +1,7 @@
 # 0012. 複数意図のゴールは分解して検索し、集合はファセット被覆で選ぶ（opt-in）
 
+[English](0012-multi-intent-retrieval-and-coverage-selection.en.md)
+
 - 状態: Accepted
 - 日付: 2026-11-24
 - 根拠: `marmo_core/decomposition.py`、`marmo_core/coverage.py`、

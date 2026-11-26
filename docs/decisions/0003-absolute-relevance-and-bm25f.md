@@ -1,5 +1,7 @@
 # 0003. 関連度成分を絶対値にし、SKILL.md 本文を割り引いた BM25F で索引する
 
+[English](0003-absolute-relevance-and-bm25f.en.md)
+
 - 状態: Accepted
 - 日付: 2026-09-19
 - 根拠: 11648de1、3de214ca（PR #13）、CHANGELOG 0.6.0、`benchmarks/README.md`

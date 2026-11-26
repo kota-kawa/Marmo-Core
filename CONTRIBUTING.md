@@ -1,5 +1,7 @@
 # Contributing to Marmo-Core
 
+日本語版: [CONTRIBUTING.ja.md](CONTRIBUTING.ja.md).
+
 ## Setup
 
 Marmo-Core supports Python 3.10 through 3.14 and keeps its runtime dependency
@@ -94,13 +96,13 @@ marmo validate resources/memory resources/tools resources/agents
 
 ## Documentation
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) is the internal design reference: layers,
+- [ARCHITECTURE.en.md](ARCHITECTURE.en.md) is the internal design reference: layers,
   the request path through `Kernel.run_goal`, contracts, and extension points.
 - [docs/knowledge/](docs/knowledge/README.md) holds the development
   conventions, debugging procedures, compatibility contracts, and the lessons
   recorded from this repository's history. Read
   `docs/knowledge/development_conventions.md` before changing code.
-- [docs/decisions/](docs/decisions/README.md) records the architecture
+- [Architecture decision records](docs/decisions/README.en.md) records the architecture
   decisions; add or update an ADR when you change one of them.
 - [AGENTS.md](AGENTS.md) lists every document with when to read it, and is the
   rule set for coding agents working in this repository. When you add or remove
@@ -129,11 +131,11 @@ packaged version disagree.
 3. Run the checks above, then commit and merge to `main`.
 4. Optionally run the `Release` workflow manually (`workflow_dispatch`) to
    publish to TestPyPI first and verify the rendered project page.
-5. Tag and push:
+5. From an up-to-date `main` checkout, tag and push the release commit.
 
    ```bash
-   git tag v0.4.0
-   git push origin v0.4.0
+   marmo_release_tag="v$(python -c 'from marmo_core import __version__; print(__version__)')"
+   git tag "$marmo_release_tag" && git push origin "$marmo_release_tag"
    ```
 
 The `pypi` environment requires an approval before the upload step runs.

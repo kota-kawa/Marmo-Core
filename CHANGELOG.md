@@ -1,11 +1,26 @@
 # Changelog
 
-All notable changes to this project are documented in this file.
+All notable changes to this project are documented in this file. New entries include
+an English description and a Japanese description.
+
+このファイルにはプロジェクトの主な変更を記録します。今後の項目は英語と日本語で記載します。
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- Added English and Japanese editions of the linked user guides, architecture
+  and decision records, benchmark documentation, and contributor and security
+  guides. Each language in the README links to its corresponding guides.
+  - README の各言語から、利用ガイド、アーキテクチャと設計判断、ベンチマーク、
+    貢献・セキュリティ関連の各言語版を読めるようにしました。
+- Set `MARMO_CLI_LANGUAGE=ja` in the process environment for Japanese CLI help,
+  input diagnostics, and main task output labels. English remains the default.
+  - プロセスの環境変数 `MARMO_CLI_LANGUAGE=ja` を設定すると、CLI のヘルプ、
+    入力エラー、タスク結果の主なラベルを日本語で表示します。既定は英語です。
 
 ## [0.7.0] - 2026-11-24
 
