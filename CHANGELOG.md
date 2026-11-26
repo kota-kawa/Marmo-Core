@@ -100,6 +100,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ASCII letters or digits gets a stable hashed id), and
   `examples/tool_catalog_routing.py` narrows 3,007 functions to the three a
   goal needs, offline.
+- Research opt-in `marmo_core.requirement_coverage.RequirementCoverageSelector`
+  (not re-exported from `marmo_core`): one LLM call lists the task's
+  requirements and the candidates that can fulfil each, without seeing
+  permissions, costs, or constraint rules; the solver then abstains when a
+  requirement has no candidate, escalates when only permission-blocked ones
+  satisfy it, and otherwise covers every requirement under the usual unit,
+  conflict, and budget constraints. On ToolRet-SAE it has the best macro
+  accuracy over select / escalate / abstain (0.447, +0.103 over the best
+  tuned relevance floor and +0.149 over `LLMSetSelector`), but it missed one
+  of the adoption criteria fixed before the run (unneeded escalations 0.060
+  against a 0.043 bound), so it is not recommended yet (ADR 0013).
+- `benchmarks/run_toolret_sae.py` (ToolRet-SAE) derives select, escalate,
+  and abstain variants of 1,689 ToolRet queries with opaque permission
+  scopes, labels substitutes and necessity with an annotator model not used
+  by the methods under test (inter-annotator kappa 0.73 to 0.80), and scores
+  selectors with paired bootstrap intervals. Results are in
+  `benchmarks/results/toolret-sae.json` and `benchmarks/README.md`.
 - `benchmarks/run_forgery_benchmark.py` tracks how far a resource with forged
   declarations gets: for Tool, Skill, and Agent decoys, each forged
   declaration (trust, permissions, side effect, isolation) and every

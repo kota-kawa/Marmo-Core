@@ -30,6 +30,7 @@ Marmo-Core は、Object Routing を実装する公開 Python ライブラリで�
 - `docs/decisions/0011-agent-execution-backends-and-structured-tasks.md`／Agent backend と dependency-scoped child Kernel の判断／Agent 実行契約を変更するとき。
 - `docs/decisions/0008-timeout-outcome-is-uncertain.md`／timeout 後の不明な副作用と実行方式の判断／期限切れ処理・回復動作を変更するとき。
 - `docs/decisions/0012-multi-intent-retrieval-and-coverage-selection.md`／クエリ分解検索とファセット被覆による集合選択の判断と ToolRet での根拠／`DecomposedRetriever`・`CoverageSetSelector` や集合サイズの決め方を変更するとき。
+- `docs/decisions/0013-requirement-coverage-decides-status.md`／要求ごとの能力判定と宣言制約から selected / abstain / escalate を決める判断と ToolRet-SAE での根拠・未達の採用基準／`RequirementCoverageSelector` や棄権・エスカレートの決め方を変更するとき。
 - `docs/threat-model.md`／信頼境界・想定脅威・リリース前レビューの記録／権限、副作用、ポリシー、シークレット、HITL に触る変更で読み、境界を動かしたら更新する。
 - `docs/connectors.md`、`docs/local-resource-packages.md`／利用者向けマニュアル／実装の責務や内部挙動を確認する資料としては使わない。
 - `benchmarks/README.md`／ベンチマークの実行方法、シナリオ設計、測定結果と読み方／検索・選択・ルーティングの挙動を変えるときに、比較の基準として読む。数値は隣の `benchmarks/results/*.json` の同一実行から取る。

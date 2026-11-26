@@ -44,6 +44,7 @@ Agent の 4 種別）を登録し、ゴールに対して必要なものだけ�
 | 検索 | `candidate_pool.py` | `CandidatePool` ABC、`CandidatePoolRequest`、Kernel 既定の `KindBalancedCandidatePool`（policy の事前除外と kind 別の追加検索）、`RetrieverCandidatePool`（検索結果をそのまま渡す） | models, registry, retriever |
 | 選択 | `selector.py` | `SetSelector` ABC、`SelectionContext`、`RuleBasedSetSelector`（既定）、Greedy / Beam / BranchAndBound の制約付きソルバー、比較用の `TopKSetSelector` と `RepairingSetSelector`（上位 K 件・任意の選択結果に依存の追加・競合の除去・権限の確認をかける）、Kernel が全 Selector の結果にかける `_enforce_set_constraints` | models |
 | 選択 | `coverage.py` | `CoverageSetSelector`（`facet.<i>` 成分の facility-location 被覆を種別ごとに貪欲に最大化し、限界利得が `min_gain` 未満で止めて集合の大きさを決める。`include_within` で首位候補に近い候補も残せる。単位・制約・abstain / escalate は Greedy と共通） | decomposition, models, selector |
+| 選択 | `requirement_coverage.py` | `RequirementCoverageSelector`（研究用 opt-in。1 回の LLM 呼び出しで要求と各要求を満たす候補だけを判定させ、権限・費用・制約は見せない。集合と selected / abstain / escalate は単位・権限・制約からソルバーが決める。ADR 0013） | budget, llm, llm_routing, models, selector |
 | 選択 | `routing_contracts.py`、`sufficient_selector.py` | opt-in の TaskSpec・資源契約と GoalAwareSetSelector（要求被覆・権限・依存・集合描画量） | models, selector |
 | 選択 | `adaptive.py` | `CaseBasedRouter`、`RoutingCaseStore`（Kernel には組み込まれていない） | errors, models, registry, retriever, selector, semantic |
 | 選択 | `evaluator.py` | `ExecutionEvaluator`（監査ログ → `ResourceStats` 書き戻し。Kernel からは呼ばれない） | audit, models, registry |
@@ -209,7 +210,7 @@ Agent 委譲を許し、その子からさらに Agent を呼ぶには明示的�
 | 候補プール | `CandidatePool.build(CandidatePoolRequest)`（既定は `KindBalancedCandidatePool`、検索結果をそのまま渡す `RetrieverCandidatePool`） | `candidate_pool=` |
 | Selector | `SetSelector.select(results, *, context)`（任意で `default_limits`、`min_score`） | `selector=` |
 | LLM | `LLMProvider.complete(messages, tools)` | 位置引数 `llm` |
-| 埋め込み | `EmbeddingProvider.embed(texts)` | `HybridRetriever` / `HierarchicalRetriever` / `CaseBasedRouter` 経由 |
+| 埋め込み | `EmbeddingProvider.embed(texts)`（クエリ側に指示文が要る非対称モデルは `embed_queries(texts)` も） | `HybridRetriever` / `HierarchicalRetriever` / `CaseBasedRouter` 経由 |
 | Cross-encoder | `CrossEncoderProvider.score` | `CrossEncoderRerankRetriever` 経由 |
 | グルーピング | `GroupingStrategy.partition` | `HierarchicalRetriever` 経由 |
 | Connector | `Connector.tools()` | `connectors=`（registry と handler に自動統合） |
