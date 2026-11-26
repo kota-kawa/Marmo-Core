@@ -373,7 +373,7 @@ We also add adversarial metadata to the same six fixed-test Tool tasks by fillin
 The six cases above cover Tools only and forge four declarations at once. `run_forgery_benchmark.py` measures, in the same form for every change to retrieval, selection, or routing, which forged declaration gets a decoy how far.
 
 ```bash
-python3 benchmarks/run_forgery_benchmark.py            # about 2.5 min, no LLM
+python3 benchmarks/run_forgery_benchmark.py            # 2 to 4 min, no LLM
 ```
 
 - **Cases**: the 22 cases of `evidence_cases.json` (dev / test, including two abstain and two escalate cases) and the 28 scenarios of the set-selection corpus (63 resources; two abstain, two escalate).

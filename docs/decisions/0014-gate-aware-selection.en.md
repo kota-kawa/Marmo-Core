@@ -3,7 +3,7 @@
 [日本語](0014-gate-aware-selection.md)
 
 - Status: Accepted (opt-in; not made the default)
-- Date: 2026-11-27
+- Date: 2026-11-26
 - Evidence: `static_denials` in `marmo_core/policy.py`, `_gate_admissible` in `marmo_core/selector.py`,
   `benchmarks/run_forgery_benchmark.py`, `benchmarks/results/forgery.json`, the forged-metadata
   section of [`benchmarks/README.en.md`](../../benchmarks/README.en.md)
@@ -32,7 +32,7 @@ Pushing the permission filter down into retrieval broke escalation before (polic
   unavailable or below the minimum. `PolicyGateway.evaluate` uses the same checks, so selection and
   the gate cannot drift.
 - With the gate's policy in `SelectionContext.policy`, the rule-based, greedy, beam,
-  branch-and-bound, and coverage selectors drop such candidates before units are built. They are
+  branch-and-bound, coverage, and top-k selectors drop such candidates before units are built. They are
   not selected, not counted as available dependencies, and not a reason to escalate. The selection
   reason names them.
 - Missing permissions and side effects that wait for human approval are not included and escalate
@@ -46,19 +46,23 @@ partial forgery and status changes under honest declarations both fall) and no r
 existing benchmarks.
 
 - The effect holds. For greedy on Tools, gold Tool loss under partial forgery falls from 0.374 to
-  0.170 and status changes under honest declarations from 0.307 to 0.170. No forgery metric got worse.
+  0.170 and status changes under honest declarations from 0.307 to 0.170. No `tracked` aggregate got
+  worse. In the finer `by_kind_content_attack` cells, status changes rose by one variant in 50 in six
+  stuffed cells that forge the trust level.
 - There is one regression. In the evidence case `dev-escalate` the notification Tool needs
   isolation level L3, which the default runtime does not have, as well as permissions, so the
   outcome changes from escalate to abstain (status accuracy 0.955 to 0.909). Granting the
   permissions would not get that Tool past the gate, so the new outcome matches what would happen,
   but the label says escalate and conditions are not changed after the fact. It is therefore not
   the default.
-- The 28 set-selection scenarios (including the policy ablation) and the Kernel path of the
-  evidence benchmark are unchanged.
+- Status accuracy on the 28 set-selection scenarios without a decoy (0.714; 0.857 for rule-based)
+  and the share of evidence tasks whose gold Tool reaches the model (0.929) are unchanged
+  (`suites.*.configs.*.clean` in `forgery.json`).
 - With the option off, existing selections and public API compatibility are unchanged. Only
   optional fields were added.
 
-`TopKSetSelector`, `RepairingSetSelector`, and the LLM-based selectors do not read `policy`.
+`TopKSetSelector` and `RepairingSetSelector` leave out the same candidates. The LLM-based selectors
+do not read `policy`.
 Denials by `max_cost` are not included.
 
 ## Alternatives

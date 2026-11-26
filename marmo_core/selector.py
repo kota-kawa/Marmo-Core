@@ -63,8 +63,9 @@ class SelectionContext:
     candidate the gate denies whatever is granted or approved
     (``policy.static_denials``): it is not selected, not counted as an
     available dependency, and not a reason to escalate. Missing permissions
-    are not such a denial and keep escalating. ``TopKSetSelector``,
-    ``RepairingSetSelector``, and the LLM selectors do not read it.
+    are not such a denial and keep escalating. ``RepairingSetSelector``
+    applies it to the wrapped selector's picks too. The LLM selectors do not
+    read it.
     """
 
     task: str = ""
@@ -558,6 +559,7 @@ class TopKSetSelector(SetSelector):
         self, results: list[SearchResult], *, context: SelectionContext | None = None
     ) -> SelectionResult:
         ctx = context or SelectionContext()
+        results, gate_notes = _gate_admissible(results, ctx)
         candidates = [
             r
             for r in results
@@ -565,14 +567,13 @@ class TopKSetSelector(SetSelector):
             and float(r.components.get("relevance", 1.0)) >= ctx.min_relevance
         ]
         if not candidates:
-            return SelectionResult(
-                (), "no candidate met the minimum score and relevance thresholds", status="abstain"
-            )
+            return _no_candidates(gate_notes)
         picked = candidates[: self.k]
         return _repair_selection(
             picked,
             results,
             ctx,
+            gate_notes,
             expand_dependencies=self.expand_dependencies,
             drop_conflicts=self.drop_conflicts,
             check_permissions=self.check_permissions,
@@ -608,10 +609,16 @@ class RepairingSetSelector(SetSelector):
         selection = self.inner.select(results, context=ctx)
         if selection.status != "selected" or not selection.results:
             return selection
+        # The wrapped selector may not read the policy, so its picks are
+        # filtered here as well as the pool the repair draws dependencies from.
+        results, gate_notes = _gate_admissible(results, ctx)
+        picked, picked_notes = _gate_admissible(list(selection.results), ctx)
+        gate_notes += [note for note in picked_notes if note not in gate_notes]
         return _repair_selection(
-            list(selection.results),
+            picked,
             results,
             ctx,
+            gate_notes,
             expand_dependencies=self.expand_dependencies,
             drop_conflicts=self.drop_conflicts,
             check_permissions=self.check_permissions,
@@ -623,18 +630,23 @@ def _repair_selection(
     picked: list[SearchResult],
     pool_results: list[SearchResult],
     ctx: SelectionContext,
+    gate_notes: list[str],
     *,
     expand_dependencies: bool,
     drop_conflicts: bool,
     check_permissions: bool,
     label: str,
 ) -> SelectionResult:
-    """Dependency expansion, conflict dropping, and the permission check, in that order."""
+    """Dependency expansion, conflict dropping, and the permission check, in that order.
+
+    ``picked`` and ``pool_results`` are already without the candidates the
+    activation gate would deny; ``gate_notes`` names those for the reason.
+    """
 
     pool = {result.resource.metadata.id: result for result in pool_results}
     for result in picked:
         pool.setdefault(result.resource.metadata.id, result)
-    notes: list[str] = []
+    notes = list(gate_notes)
     kept: dict[str, SearchResult] = {}
     for result in picked:
         rid = result.resource.metadata.id

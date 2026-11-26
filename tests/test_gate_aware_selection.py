@@ -13,11 +13,13 @@ from marmo_core import (
     MockLLMProvider,
     PolicyContext,
     PolicyGateway,
+    RepairingSetSelector,
     ResourceDefinition,
     ResourceRegistry,
     RuleBasedSetSelector,
     SearchResult,
     SelectionContext,
+    TopKSetSelector,
 )
 from marmo_core.policy import static_denials
 
@@ -139,6 +141,29 @@ class GateAwareSelectorTests(unittest.TestCase):
         selection = GreedyConstrainedSetSelector().select(results, context=SelectionContext(policy=PolicyContext()))
         self.assertEqual(_ids(selection), {"tool.other"})
         self.assertIn("tool.main: dependency skill.dep not in candidate pool", selection.reason)
+
+
+class RepairGateAwareTests(unittest.TestCase):
+    def _pool(self) -> list[SearchResult]:
+        return [
+            _result(0.9, "tool.main", dependencies=["skill.dep"]),
+            _result(0.5, "skill.dep", kind="skill", trust_level="untrusted"),
+            _result(0.4, "tool.other"),
+        ]
+
+    def test_repair_does_not_bring_back_a_denied_dependency(self) -> None:
+        aware = SelectionContext(policy=PolicyContext())
+        for selector in (RepairingSetSelector(RuleBasedSetSelector()), TopKSetSelector(3, expand_dependencies=True)):
+            with self.subTest(selector=type(selector).__name__):
+                self.assertIn("skill.dep", _ids(selector.select(self._pool(), context=SelectionContext())))
+                selection = selector.select(self._pool(), context=aware)
+                self.assertEqual(_ids(selection), {"tool.other"})
+                self.assertIn("skill.dep: the activation gate would deny it", selection.reason)
+
+    def test_repair_drops_a_denied_pick_of_a_selector_that_ignores_the_policy(self) -> None:
+        pool = [_result(0.9, "tool.decoy", trust_level="untrusted"), _result(0.6, "tool.gold")]
+        selection = TopKSetSelector(1).select(pool, context=SelectionContext(policy=PolicyContext()))
+        self.assertEqual(_ids(selection), {"tool.gold"})
 
 
 class KernelGateAwareSelectionTests(unittest.TestCase):

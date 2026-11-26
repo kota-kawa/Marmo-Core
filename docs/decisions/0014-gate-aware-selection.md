@@ -3,7 +3,7 @@
 [English](0014-gate-aware-selection.en.md)
 
 - 状態: Accepted（opt-in。既定化は見送り）
-- 日付: 2026-11-27
+- 日付: 2026-11-26
 - 根拠: `marmo_core/policy.py` の `static_denials`、`marmo_core/selector.py` の `_gate_admissible`、
   `benchmarks/run_forgery_benchmark.py`、`benchmarks/results/forgery.json`、
   `benchmarks/README.md` の「偽装メタデータの継続計測」節
@@ -26,7 +26,7 @@
 - ゲートの拒否理由のうち、権限の付与や人の承認で解消しないものを `policy.static_denials` に
   まとめる。対象は、許可されない信頼度と副作用、使えない・最低水準に満たない隔離レベル。
   `PolicyGateway.evaluate` も同じ判定を使うので、選択とゲートがずれない。
-- `SelectionContext.policy` にゲートの方針を渡すと、rule-based・greedy・beam・分枝限定・被覆型の
+- `SelectionContext.policy` にゲートの方針を渡すと、rule-based・greedy・beam・分枝限定・被覆型・top-k の
   各 Selector は、該当する候補を単位を作る前に外す。選ばず、依存先としても数えず、escalate の
   理由にもしない。外した候補は選択理由に残す。
 - 権限不足と、人の承認を待つ副作用は対象にしない。従来どおり escalate する。検索の順位は変えない。
@@ -38,15 +38,18 @@
 状態の変化がどちらも下がる）と、既存ベンチマークの悪化なしだった。
 
 - 効果は満たした。greedy の Tool で、一部偽装の gold Tool 喪失は 0.374 → 0.170、正直な宣言での
-  状態の変化は 0.307 → 0.170。悪化した偽装指標は無い。
+  状態の変化は 0.307 → 0.170。`tracked` の集計で悪化した指標は無い。細かい区分
+  （`by_kind_content_attack`）では、信頼度を偽装した stuffed の 6 区分で状態の変化が 50 変種中
+  1 件ずつ増えた。
 - 悪化が 1 件あった。evidence の `dev-escalate` は、通知 Tool が権限に加えて既定の実行環境に無い
   隔離レベル L3 を要求するため、escalate から abstain に変わる（状態の正答率 0.955 → 0.909）。
   権限を付与してもこの Tool はゲートを通らないので新しい結果のほうが実態に合うが、ラベルは
   escalate であり、条件は事後に変えない。このため既定にはしない。
-- 集合選択の 28 シナリオ（Policy アブレーションを含む）と evidence の Kernel 経路は変わらない。
+- 偽装なしの集合選択 28 シナリオの状態の正答率（0.714、rule-based は 0.857）と、evidence で gold Tool が
+  モデルに渡る割合（0.929）は変わらない（`forgery.json` の `suites.*.configs.*.clean`）。
 - 既定がオフなので、既存の選択結果と公開 API の互換性は変わらない。追加は任意の項目だけである。
 
-`TopKSetSelector`、`RepairingSetSelector`、LLM を使う Selector は `policy` を読まない。
+`TopKSetSelector` と `RepairingSetSelector` も同じ候補を外す。LLM を使う Selector は `policy` を読まない。
 `max_cost` による拒否は対象に入れていない。
 
 ## 代替案

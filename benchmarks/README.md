@@ -373,7 +373,7 @@ dev の同系列再訪では 8 Tool タスク中 2 件が cache に命中し、�
 上の 6 件は Tool だけで、偽装も 4 項目をまとめて変えています。`run_forgery_benchmark.py` は、どの宣言の偽装がどの段階まで届くかを、検索・選択・ルーティングを変えるたびに同じ形で測ります。
 
 ```bash
-python3 benchmarks/run_forgery_benchmark.py            # 約 2 分半、LLM なし
+python3 benchmarks/run_forgery_benchmark.py            # 2〜4 分、LLM なし
 ```
 
 - **ケース**: `evidence_cases.json` の 22 件（dev / test、abstain 2・escalate 2 を含む）と、集合選択コーパス（63 資源）の 28 シナリオ（abstain 2・escalate 2）。
@@ -403,7 +403,7 @@ python3 benchmarks/run_forgery_benchmark.py            # 約 2 分半、LLM な�
 | lexical + rule-based、gate-aware | Tool | 正直 | 0.000 | 0.000 | 0.000 | 0.000 | 0.115 | 0.000 |
 | lexical + rule-based、gate-aware | Tool | 一部だけ偽装 | 0.109 | 0.000 | 0.000 | 0.000 | 0.170 | 0.214 |
 
-Skill と Agent の「正直」は 3 構成とも activation 通過 0、Skill にハンドラはありません（—）。乗っ取りの分母は abstain / escalate が正解の 8 ケース × 変種で、rule-based は偽装なしでも abstain しない Selector なので値が高く出ます。gold Tool 喪失の分母は偽装なしで gold Tool がモデルに渡っていた evidence の Tool タスクです。
+Skill と Agent の「正直」はどの構成でも activation 通過 0、Skill にハンドラはありません（—）。乗っ取りの分母は abstain / escalate が正解の 8 ケース × 変種で、rule-based は偽装なしでも abstain しない Selector なので値が高く出ます。gold Tool 喪失の分母は偽装なしで gold Tool がモデルに渡っていた evidence の Tool タスクです。
 
 **読み方**
 
