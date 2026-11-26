@@ -9,6 +9,7 @@
 | `debugging.md` | 実モデル・検索・CLI・パッケージングの不具合の切り分け手順 | 動作がおかしいとき、コードを読み始める前に |
 | `contracts-and-compatibility.md` | 公開 API、リソース定義、状態ファイル、監査ログ、CLI 終了コード、プロバイダ wire 形式の互換性契約と変更手順 | これらの表面に触る前に |
 | `parallel_work.md` | git worktree で作業を分けた後の運用手順 | 並行作業をするときに |
+| `experiment_runbook.md` | 実験の段取り（準備・段階実行・評価設計の約束・長時間ジョブ）と、Claude Code クラウドセッションとローカル PC（API、AWS Bedrock、GPU）での違い | 実験を始める・再開する前に |
 | `lessons_from_history.md` | git 履歴と PR から抽出した過去の失敗と教訓 | 該当領域を触る前に、同じ轍を踏まないために |
 
 知見を追加したら、この表と `AGENTS.md` の「ドキュメントの参照先」を同じコミットで更新する。
