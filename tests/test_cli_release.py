@@ -104,6 +104,18 @@ class CliLanguageTests(unittest.TestCase):
                 self.assertEqual((status, stdout), (2, ""))
                 self.assertIn(translation, stderr)
 
+    def test_japanese_diagnostics_for_out_of_range_settings(self) -> None:
+        for option, message in (
+            ("--timeout", "エラー: --timeout には 0 より大きい秒数を指定してください"),
+            ("--context-token-budget", "エラー: --context-token-budget には正の整数を指定してください"),
+        ):
+            with self.subTest(option=option):
+                status, stdout, stderr = self.capture_cli(
+                    "ja", "run", "--task", "test", "--no-default-resources", option, "0",
+                )
+                self.assertEqual((status, stdout), (2, ""))
+                self.assertIn(message, stderr)
+
     def test_language_changes_task_labels_but_keeps_json_output(self) -> None:
         args = ("run", "--task", "test", "--no-default-resources")
         status, stdout, stderr = self.capture_cli("ja", *args)

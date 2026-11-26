@@ -93,6 +93,8 @@ def main(argv: list[str] | None = None) -> int:
             detail = _(exc.template).format(**exc.fields)
         elif isinstance(exc, json.JSONDecodeError):
             detail = _("invalid JSON: {detail}").format(detail=exc) if language == "ja" else str(exc)
+        elif isinstance(exc, ValueError):
+            detail = _(str(exc))
         else:
             detail = str(exc)
         print(f"{_('error')}: {detail}", file=sys.stderr)
