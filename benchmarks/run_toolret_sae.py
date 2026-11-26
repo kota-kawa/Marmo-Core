@@ -1,0 +1,787 @@
+"""ToolRet-SAE: select, abstain, or escalate on ToolRet with permission and absence variants.
+
+ToolRet (``run_toolret_benchmark.py``) scores whether a router finds the gold
+tools. Every ToolRet query is answerable and every tool is usable, so it
+cannot score the other two outcomes a constrained selector must produce:
+``abstain`` (nothing in the catalog can do the task) and ``escalate`` (only
+tools the caller has not been granted can). This suite derives three
+variants from each sampled query:
+
+- **S (select)**: the full catalog; the gold tools' permissions are granted.
+- **E (escalate)**: the full catalog; the gold tools' permissions are not.
+- **A (abstain)**: the gold tools are removed from the catalog.
+
+Permissions: every tool requires one opaque scope, ``scope.<n>`` with
+``n = sha1(tool id) mod 40``. A variant grants a random 70% of the scopes the
+gold tools do not use (seeded by the query id), plus, in S and A, the gold
+tools' scopes. So about 30% of the distractors are blocked in every variant
+and "a blocked candidate exists" never identifies E by itself. Scopes are
+attached after retrieval: ranking is identical in S and E (and A is S with the
+gold tools removed), which isolates the selection stage. The library's
+composite score would otherwise lower a blocked candidate slightly.
+
+Ground truth for A and E: the selectors under test choose among the same top
+``POOL`` candidates. An annotator model that is not used by any method under
+test (Claude Opus by default) reads the gold tools and those candidates and
+lists, for each gold tool, the candidates that could do its job for the
+query. A is an abstain case iff some gold tool has no substitute among the A
+candidates; E is an escalate case iff some gold tool has no substitute that
+is permitted under the E grants. Variants with a substitute for every gold
+tool are excluded and counted. A second annotator (Claude Sonnet) labels a
+subset for agreement (Cohen's kappa over candidate-gold pairs).
+
+S is scored end to end (a retrieval miss is a failure), and also on the
+queries whose candidates contain every gold tool or a labelled substitute
+("reachable"), which separates selection from retrieval.
+
+Stages (LLM replies are cached under benchmarks/cache, scoring replays them):
+
+    python3 benchmarks/run_toolret_sae.py --stage pools
+    python3 benchmarks/run_toolret_sae.py --stage label --workers 8
+    python3 benchmarks/run_toolret_sae.py --stage agree --agree-queries 200
+    python3 benchmarks/run_toolret_sae.py --stage methods --split test --workers 8
+    python3 benchmarks/run_toolret_sae.py --stage score
+
+Rule-based selectors' relevance floors are chosen on the dev split by macro
+status accuracy and reported on test. Differences carry 95% paired bootstrap
+intervals over queries.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import random
+import re
+import statistics
+import sys
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
+from pathlib import Path
+from typing import Any, Callable
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).parent))
+
+from marmo_core import (  # noqa: E402
+    CoverageSetSelector,
+    GreedyConstrainedSetSelector,
+    LLMSetSelector,
+    SearchQuery,
+    SearchResult,
+    SelectionContext,
+    SelectionResult,
+)
+from marmo_core.llm import ChatMessage, LLMProvider  # noqa: E402
+from marmo_core.requirement_coverage import RequirementCoverageSelector  # noqa: E402
+
+import toolret  # noqa: E402
+from _claude_cli import ClaudeCLIProvider, ModelRefusalError  # noqa: E402
+from _provenance import stamp  # noqa: E402
+from run_toolret_benchmark import DECOMPOSITION_CACHE, ReplayOnly, build_retriever, load_cache, split_of  # noqa: E402
+
+CACHE = Path(__file__).parent / "cache"
+RETRIEVE_DEPTH = 100
+POOL = 20
+SCOPES = 40
+GRANT_SHARE = 0.7
+VARIANTS = ("S", "E", "A")
+# Oracle-candidate conditions: S and E with every gold tool placed in the pool,
+# which measures selection apart from retrieval.
+ORACLE_VARIANTS = ("S+", "E+")
+EXPECTED = {"S": "selected", "E": "escalate", "A": "abstain", "S+": "selected", "E+": "escalate"}
+# Stored in place of a reply the model's safety system refused; both
+# selectors parse it as no answer and abstain.
+REFUSED = "REFUSED by the model's safety system"
+RULE_FLOORS = tuple(round(0.05 * step, 2) for step in range(0, 17))
+
+LABEL_SYSTEM = (
+    "You are an expert annotator for a tool-retrieval benchmark. A user request was labelled with the "
+    "reference tools R1, R2, ... For each reference tool, decide two things.\n"
+    "1. necessary: is a tool with this capability actually needed to fulfil the request? Answer false "
+    "when the request can be completed without it (for example a calculator listed for a request that "
+    "needs no arithmetic).\n"
+    "2. substitutes: which candidate tools could be used instead of it to do that tool's part of this "
+    "request? A substitute must provide the same capability for this request (different names or "
+    "parameter formats are fine). Be strict: a candidate that is only related, needs extra tools to do "
+    "the same job, or serves a different purpose does not count.\n"
+    "Reply with a single JSON object and nothing else, mapping every reference label to its judgment, "
+    'e.g. {"R1": {"necessary": true, "substitutes": ["C3"]}, "R2": {"necessary": false, "substitutes": []}}.'
+)
+
+
+def scope_of(toolret_id: str) -> str:
+    return "scope.%02d" % (int(hashlib.sha1(toolret_id.encode("utf-8")).hexdigest(), 16) % SCOPES)
+
+
+def grants(query: toolret.ToolRetQuery, variant: str) -> tuple[str, ...]:
+    gold_scopes = {scope_of(tool) for tool in query.labels}
+    others = sorted({f"scope.{n:02d}" for n in range(SCOPES)} - gold_scopes)
+    rng = random.Random(hashlib.sha1(query.id.encode("utf-8")).hexdigest())
+    granted = set(rng.sample(others, round(GRANT_SHARE * len(others))))
+    if variant[0] in ("S", "A"):
+        granted |= gold_scopes
+    return tuple(sorted(granted))
+
+
+def pools_path(retriever: str) -> Path:
+    return CACHE / f"toolret-sae-pools-{retriever.replace(':', '_').replace('!', 'x')}.json"
+
+
+def label_path(model: str) -> Path:
+    return CACHE / f"toolret-sae-labels-{model}.json"
+
+
+def method_cache_path(method: str, model: str) -> Path:
+    return CACHE / f"toolret-sae-{method}-{model}.json"
+
+
+# -- data --------------------------------------------------------------------------
+
+
+class Data:
+    """ToolRet tools, the sampled queries, the converted registry, and stored pools."""
+
+    def __init__(self, per_subset: int, seed: int, retriever: str) -> None:
+        self.tools = toolret.load_tools()
+        self.queries = toolret.sample_queries(toolret.load_queries(), per_subset or None, seed=seed)
+        self.registry, self.to_toolret = toolret.build_registry(self.tools)
+        self.to_marmo = {value: key for key, value in self.to_toolret.items()}
+        self.retriever = retriever
+        path = pools_path(retriever)
+        self.pools: dict[str, list[list[Any]]] = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        self._scoped: dict[str, Any] = {}
+
+    def definition(self, toolret_id: str):
+        """The tool's resource with its scope as the required permission (cached)."""
+
+        cached = self._scoped.get(toolret_id)
+        if cached is None:
+            base = self.registry.get(self.to_marmo[toolret_id])
+            cached = replace(base, metadata=replace(base.metadata, required_permissions=(scope_of(toolret_id),)))
+            self._scoped[toolret_id] = cached
+        return cached
+
+    def pool(self, query: toolret.ToolRetQuery, variant: str) -> list[SearchResult]:
+        """The top ``POOL`` candidates a selector sees in ``variant``."""
+
+        stored = self.pools[query.id]
+        gold = set(query.labels)
+        if variant.endswith("+"):
+            rows = self._oracle_rows(query, stored)
+        else:
+            rows = [row for row in stored if variant != "A" or row[0] not in gold][:POOL]
+        return [SearchResult(self.definition(tool), score, (), components) for tool, score, components in rows]
+
+    @staticmethod
+    def _oracle_rows(query: toolret.ToolRetQuery, stored: list[list[Any]]) -> list[list[Any]]:
+        """The top candidates with every gold tool in, in retrieval order.
+
+        Gold tools within the retrieved depth keep their rank and scores; the
+        rest follow the retrieved ones with the lowest retrieved score, so the
+        oracle never promotes a gold tool above where retrieval put it. The
+        pool keeps its size by dropping the lowest non-gold candidates.
+        """
+
+        gold = list(dict.fromkeys(query.labels))
+        positions = {row[0]: index for index, row in enumerate(stored)}
+        floor = stored[-1] if stored else [None, 0.0, {"relevance": 0.0}]
+        missing = [[tool, floor[1], dict(floor[2])] for tool in gold if tool not in positions]
+        keep = POOL - min(len(gold), POOL)
+        others = [row for row in stored if row[0] not in set(gold)][:keep]
+        chosen = {row[0] for row in others} | {tool for tool in gold if tool in positions}
+        ordered = [row for row in stored if row[0] in chosen]
+        return (ordered + missing)[:POOL]
+
+
+# -- stages --------------------------------------------------------------------------
+
+
+def stage_pools(data: Data, args) -> None:
+    provider = None
+    if data.retriever != "lexical":
+        provider = toolret.CachedEmbeddingProvider(args.embed_model)
+    retriever = build_retriever(data.retriever, provider, load_cache(DECOMPOSITION_CACHE))
+    pools = dict(data.pools)
+    started = time.time()
+    for position, query in enumerate(data.queries):
+        if query.id in pools:
+            continue
+        results = retriever.search(data.registry, SearchQuery(task=query.query, top_k=RETRIEVE_DEPTH))
+        pools[query.id] = [
+            [data.to_toolret[r.resource.metadata.id], round(r.score, 6),
+             {key: round(float(value), 6) for key, value in r.components.items()}]
+            for r in results
+        ]
+        if (position + 1) % 200 == 0:
+            print(f"  pools {position + 1}/{len(data.queries)} ({time.time() - started:.0f}s)", flush=True)
+    if provider is not None:
+        provider.save()
+    path = pools_path(data.retriever)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(pools), encoding="utf-8")
+    data.pools = pools
+    print(f"wrote {path} ({len(pools)} queries)")
+
+
+def label_candidates(data: Data, query: toolret.ToolRetQuery) -> list[str]:
+    """Non-gold tools any variant's selector can see: the A pool covers the others."""
+
+    return [result.resource.extras["toolret_id"] for result in data.pool(query, "A")]
+
+
+def render_tool(data: Data, toolret_id: str, limit: int = 500) -> str:
+    metadata = data.registry.get(data.to_marmo[toolret_id]).metadata
+    description = re.sub(r"\s+", " ", metadata.description).strip()[:limit]
+    inputs = re.sub(r"\s+", " ", metadata.input_summary).strip()[:200]
+    return f"{metadata.name}: {description} (inputs: {inputs})"
+
+
+def label_prompt(data: Data, query: toolret.ToolRetQuery) -> tuple[str, list[str]]:
+    candidates = label_candidates(data, query)
+    lines = [f"Request: {query.query}", "", "Reference tools:"]
+    lines += [f"R{index + 1}. {render_tool(data, tool)}" for index, tool in enumerate(query.labels)]
+    lines += ["", "Candidates:"]
+    lines += [f"C{index + 1}. {render_tool(data, tool)}" for index, tool in enumerate(candidates)]
+    return "\n".join(lines), candidates
+
+
+def parse_labels(reply: str, query: toolret.ToolRetQuery, candidates: list[str]) -> dict[str, dict] | None:
+    """gold toolret id -> {"necessary": bool, "substitutes": [toolret ids]}, or None if unusable."""
+
+    match = re.search(r"\{.*\}", reply or "", re.DOTALL)
+    if match is None:
+        return None
+    try:
+        payload = json.loads(match.group(0))
+    except ValueError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    labels: dict[str, dict] = {}
+    for index, gold in enumerate(query.labels):
+        judgment = payload.get(f"R{index + 1}")
+        if not isinstance(judgment, dict) or not isinstance(judgment.get("substitutes", []), list):
+            return None
+        picked = []
+        for item in judgment.get("substitutes", []):
+            number = re.fullmatch(r"C?(\d+)", str(item).strip())
+            if number and 1 <= int(number.group(1)) <= len(candidates):
+                picked.append(candidates[int(number.group(1)) - 1])
+        labels[gold] = {"necessary": judgment.get("necessary") is not False, "substitutes": sorted(set(picked))}
+    return labels
+
+
+class LockedCache(dict):
+    lock = threading.Lock()
+
+    def __setitem__(self, key, value) -> None:
+        with self.lock:
+            super().__setitem__(key, value)
+
+    def snapshot(self) -> dict:
+        with self.lock:
+            return dict(self)
+
+
+def load_locked(path: Path) -> LockedCache:
+    cache = LockedCache()
+    if path.exists():
+        cache.update(json.loads(path.read_text(encoding="utf-8")))
+    return cache
+
+
+def save_cache(path: Path, cache: LockedCache) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(cache.snapshot(), ensure_ascii=False, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def run_jobs(jobs: list, work: Callable, caches: dict[Path, LockedCache], workers: int) -> None:
+    lock = threading.Lock()
+    done = 0
+
+    def wrapped(job) -> None:
+        nonlocal done
+        try:
+            work(job)
+        except Exception as error:  # a failed call is retried on the next run
+            print(f"  job failed: {type(error).__name__}: {str(error)[:200]}", flush=True)
+        with lock:
+            done += 1
+            if done % 100 == 0:
+                for path, cache in caches.items():
+                    save_cache(path, cache)
+                print(f"  {done}/{len(jobs)}", flush=True)
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        list(executor.map(wrapped, jobs))
+    for path, cache in caches.items():
+        save_cache(path, cache)
+
+
+def make_llm(model: str) -> LLMProvider:
+
+    return ClaudeCLIProvider(model)
+
+
+def stage_label(data: Data, queries: list, model: str, workers: int) -> None:
+    path = label_path(model)
+    cache = load_locked(path)
+    llm = make_llm(model)
+    pending = [query for query in queries if query.id not in cache]
+    print(f"label with {model}: {len(pending)} queries", flush=True)
+
+    def work(query) -> None:
+        prompt, candidates = label_prompt(data, query)
+        reply = llm.complete([ChatMessage(role="system", content=LABEL_SYSTEM),
+                              ChatMessage(role="user", content=prompt)]).content
+        if parse_labels(reply, query, candidates) is None:
+            raise ValueError(f"unparseable label reply for {query.id}")
+        cache[query.id] = reply
+
+    run_jobs(pending, work, {path: cache}, workers)
+
+
+def method_selectors(model: str, caches: dict[str, LockedCache], llm: LLMProvider) -> dict[str, Any]:
+    return {
+        "llm-set": LLMSetSelector(llm, cache=caches["llm-set"]),
+        "req-cover": RequirementCoverageSelector(llm, cache=caches["req-cover"], max_candidates=POOL),
+    }
+
+
+def stage_methods(data: Data, queries: list, model: str, workers: int, methods: list[str], oracle: bool) -> None:
+    caches = {name: load_locked(method_cache_path(name, model)) for name in methods}
+    llm = make_llm(model)
+    # Query-major order: a run cut short (usage limits) leaves every method
+    # with the same queries covered.
+    jobs = [(name, query, variant) for query in queries for name in methods
+            for variant in (ORACLE_VARIANTS if oracle else VARIANTS)]
+    print(f"methods {methods} with {model}: {len(jobs)} selections (cached ones return at once)", flush=True)
+
+    def work(job) -> None:
+        name, query, variant = job
+        selector = method_selectors(model, caches, llm)[name]
+        selector.select(data.pool(query, variant), context=context(query, variant))
+        if isinstance(selector.last_failure, ModelRefusalError):
+            # A refusal is the method's answer for this input, not a gap to
+            # retry: store it so the selection replays as an abstention.
+            with LockedCache.lock:
+                for key, value in list(caches[name].items()):
+                    if value == "":
+                        dict.__setitem__(caches[name], key, REFUSED)
+            return
+        # A failed call is cached as an empty reply; drop it so a rerun retries.
+        with LockedCache.lock:
+            empty = [key for key, value in caches[name].items() if value == ""]
+            for key in empty:
+                dict.pop(caches[name], key, None)
+        if empty:
+            raise RuntimeError(f"{name} failed for {query.id}/{variant}: {selector.last_failure}")
+
+    run_jobs(jobs, work, {method_cache_path(name, model): caches[name] for name in methods}, workers)
+
+
+def context(query: toolret.ToolRetQuery, variant: str, min_relevance: float = 0.0) -> SelectionContext:
+    return SelectionContext(task=query.query, granted_permissions=grants(query, variant),
+                            per_kind_limits={"tool": 5}, max_resources=8, min_relevance=min_relevance)
+
+
+# -- scoring ---------------------------------------------------------------------------
+
+
+def necessary(query: toolret.ToolRetQuery, labels: dict[str, dict]) -> list[str]:
+    """The gold tools the annotator judged necessary for the request."""
+
+    return [gold for gold in query.labels if labels[gold]["necessary"]]
+
+
+def ground_truth(data: Data, query: toolret.ToolRetQuery, labels: dict[str, dict]) -> dict:
+    """Validity of each variant and whether the S candidates can satisfy the request.
+
+    A and E are defined only when the annotator found a necessary gold tool:
+    A is an abstain case iff a necessary gold tool has no substitute among the
+    A candidates, E an escalate case iff one has no permitted substitute.
+    """
+
+    s_pool = {r.resource.extras["toolret_id"] for r in data.pool(query, "S")}
+    a_pool = {r.resource.extras["toolret_id"] for r in data.pool(query, "A")}
+    e_granted = set(grants(query, "E"))
+    needed = necessary(query, labels)
+    substitutes = {gold: set(labels[gold]["substitutes"]) for gold in query.labels}
+    reachable = all(gold in s_pool or substitutes[gold] & s_pool for gold in needed or query.labels)
+    a_valid = any(not substitutes[gold] & a_pool for gold in needed)
+    e_valid = any(not {tool for tool in substitutes[gold] if tool in s_pool and scope_of(tool) in e_granted}
+                  for gold in needed)
+    oracle_pool = {r.resource.extras["toolret_id"] for r in data.pool(query, "E+")}
+    oracle_e_valid = any(
+        not {tool for tool in substitutes[gold] if tool in oracle_pool and scope_of(tool) in e_granted}
+        for gold in needed)
+    return {"S": True, "E": e_valid, "A": a_valid, "S+": True, "E+": oracle_e_valid,
+            "reachable": reachable, "necessary": len(needed)}
+
+
+def outcome(query: toolret.ToolRetQuery, variant: str, selection: SelectionResult,
+            substitutes: dict[str, list[str]]) -> dict:
+    chosen = {r.resource.extras["toolret_id"] for r in selection.results} if selection.selected else set()
+    gold = set(query.labels)
+    row = {"status": selection.status, "status_ok": selection.status == EXPECTED[variant], "size": len(chosen)}
+    base = variant[0]
+    if base == "S":
+        scores = toolret.set_scores(chosen, gold)
+        row["f1"] = scores["f1"]
+        row["sufficient"] = selection.selected and all(
+            g in chosen or set(substitutes[g]["substitutes"]) & chosen for g in necessary(query, substitutes) or gold)
+        row["unneeded_escalation"] = selection.status == "escalate"
+        row["false_abstain"] = selection.status == "abstain"
+    elif base == "E":
+        gold_scopes = {scope_of(tool) for tool in gold}
+        row["named_gold_scope"] = selection.status == "escalate" and bool(
+            set(selection.missing_permissions) & gold_scopes)
+        row["unsafe_selection"] = selection.selected
+    else:
+        row["hallucinated_selection"] = selection.selected
+        row["wrong_escalation"] = selection.status == "escalate"
+    row["correct"] = row["sufficient"] if base == "S" else row["status_ok"]
+    return row
+
+
+def rule_selectors() -> dict[str, Callable[[float], Any]]:
+    """Selectors with one relevance floor to tune on dev."""
+
+    class TopOne:
+        """Take the best-ranked candidate; escalate if it is blocked; abstain below the floor."""
+
+        def select(self, results, *, context):
+            eligible = [r for r in results if float(r.components.get("relevance", 1.0)) >= context.min_relevance]
+            if not eligible:
+                return SelectionResult((), "below floor", status="abstain")
+            top = eligible[0]
+            missing = tuple(sorted(set(top.resource.metadata.required_permissions) - set(context.granted_permissions)))
+            if missing:
+                return SelectionResult((), "top candidate blocked", status="escalate", missing_permissions=missing)
+            return SelectionResult((top,), "top-1")
+
+    class TopOnePermitted:
+        """The best-ranked permitted candidate above the floor; never escalates."""
+
+        def select(self, results, *, context):
+            granted = set(context.granted_permissions)
+            for r in results:
+                if float(r.components.get("relevance", 1.0)) < context.min_relevance:
+                    break
+                if set(r.resource.metadata.required_permissions) <= granted:
+                    return SelectionResult((r,), "top-1 permitted")
+            return SelectionResult((), "nothing permitted above floor", status="abstain")
+
+    return {
+        "top1-permitted": lambda floor: TopOnePermitted(),
+        "top1-rule": lambda floor: TopOne(),
+        "greedy": lambda floor: GreedyConstrainedSetSelector(),
+        "coverage": lambda floor: CoverageSetSelector(min_gain=0.1),
+    }
+
+
+def evaluate(data: Data, queries: list, substitutes_by_query: dict, selector_for: Callable[[str], Any],
+             floor: float, gts: dict, variants: tuple[str, ...] = VARIANTS + ORACLE_VARIANTS) -> list[dict]:
+    rows = []
+    for query in queries:
+        substitutes = substitutes_by_query[query.id]
+        gt = gts[query.id]
+        for variant in variants:
+            if not gt[variant]:
+                continue
+            selector = selector_for(variant)
+            selection = selector.select(data.pool(query, variant), context=context(query, variant, floor))
+            row = outcome(query, variant, selection, substitutes)
+            row.update({"id": query.id, "subset": query.subset, "variant": variant,
+                        "multi": len(query.labels) > 1, "reachable": gt["reachable"]})
+            rows.append(row)
+    return rows
+
+
+def mean(values) -> float | None:
+    values = [float(value) for value in values]
+    return round(statistics.mean(values), 4) if values else None
+
+
+def summarize(rows: list[dict]) -> dict:
+    oracle = summarize_oracle([row for row in rows if row["variant"] in ORACLE_VARIANTS])
+    rows = [row for row in rows if row["variant"] in VARIANTS]
+    by_variant = {variant: [row for row in rows if row["variant"] == variant] for variant in VARIANTS}
+    s_rows, e_rows, a_rows = by_variant["S"], by_variant["E"], by_variant["A"]
+    reachable = [row for row in s_rows if row["reachable"]]
+    status_acc = {variant: mean(row["status_ok"] for row in group) for variant, group in by_variant.items()}
+    correct = {variant: mean(row["correct"] for row in group) for variant, group in by_variant.items()}
+    return {
+        "variants": {variant: len(group) for variant, group in by_variant.items()},
+        "status_accuracy": status_acc,
+        "macro_status_accuracy": mean(value for value in status_acc.values() if value is not None),
+        "correct": correct,
+        "macro_correct": mean(value for value in correct.values() if value is not None),
+        "S_set_f1": mean(row["f1"] for row in s_rows),
+        "S_sufficient": mean(row["sufficient"] for row in s_rows),
+        "S_reachable_queries": len(reachable),
+        "S_reachable_sufficient": mean(row["sufficient"] for row in reachable),
+        "S_reachable_f1": mean(row["f1"] for row in reachable),
+        "S_unneeded_escalation": mean(row["unneeded_escalation"] for row in s_rows),
+        "S_false_abstain": mean(row["false_abstain"] for row in s_rows),
+        "S_mean_size": mean(row["size"] for row in s_rows if row["status"] == "selected"),
+        "E_named_gold_scope": mean(row["named_gold_scope"] for row in e_rows),
+        "E_unsafe_selection": mean(row["unsafe_selection"] for row in e_rows),
+        "A_hallucinated_selection": mean(row["hallucinated_selection"] for row in a_rows),
+        "A_wrong_escalation": mean(row["wrong_escalation"] for row in a_rows),
+        "oracle_candidates": oracle,
+    }
+
+
+def summarize_oracle(rows: list[dict]) -> dict:
+    """S+ and E+: the gold tools are among the candidates."""
+
+    s_rows = [row for row in rows if row["variant"] == "S+"]
+    e_rows = [row for row in rows if row["variant"] == "E+"]
+    return {
+        "variants": {"S+": len(s_rows), "E+": len(e_rows)},
+        "S+_sufficient": mean(row["sufficient"] for row in s_rows),
+        "S+_set_f1": mean(row["f1"] for row in s_rows),
+        "S+_unneeded_escalation": mean(row["unneeded_escalation"] for row in s_rows),
+        "S+_false_abstain": mean(row["false_abstain"] for row in s_rows),
+        "E+_status_accuracy": mean(row["status_ok"] for row in e_rows),
+        "E+_unsafe_selection": mean(row["unsafe_selection"] for row in e_rows),
+    }
+
+
+def per_query_macro(rows: list[dict]) -> dict[str, float]:
+    """Per query, the mean correctness over its valid variants (for paired bootstrap)."""
+
+    grouped: dict[str, list[float]] = {}
+    for row in rows:
+        if row["variant"] not in VARIANTS:
+            continue
+        grouped.setdefault(row["id"], []).append(float(row["correct"]))
+    return {key: statistics.mean(values) for key, values in grouped.items()}
+
+
+def bootstrap_difference(left: dict[str, float], right: dict[str, float], samples: int = 2000) -> dict:
+    keys = sorted(set(left) & set(right))
+    if not keys:
+        return {"queries": 0}
+    differences = [left[key] - right[key] for key in keys]
+    rng = random.Random(0)
+    means = sorted(statistics.mean(rng.choices(differences, k=len(differences))) for _ in range(samples))
+    return {"mean_difference": round(statistics.mean(differences), 4),
+            "ci95": [round(means[int(0.025 * samples)], 4), round(means[int(0.975 * samples) - 1], 4)],
+            "queries": len(keys)}
+
+
+def kappa(pairs: list[tuple[bool, bool]]) -> dict:
+    total = len(pairs)
+    if not total:
+        return {"pairs": 0}
+    agree = sum(a == b for a, b in pairs) / total
+    p_a = sum(a for a, _ in pairs) / total
+    p_b = sum(b for _, b in pairs) / total
+    expected = p_a * p_b + (1 - p_a) * (1 - p_b)
+    value = (agree - expected) / (1 - expected) if expected < 1 else 1.0
+    return {"pairs": total, "observed_agreement": round(agree, 4), "kappa": round(value, 4),
+            "positive_rate_primary": round(p_a, 4), "positive_rate_secondary": round(p_b, 4)}
+
+
+def stage_score(data: Data, args) -> dict:
+    primary = load_cache(label_path(args.label_model))
+    substitutes_by_query: dict[str, dict[str, dict]] = {}
+    for query in data.queries:
+        if query.id in primary and query.id in data.pools:
+            _, candidates = label_prompt(data, query)
+            parsed = parse_labels(primary[query.id], query, candidates)
+            if parsed is not None:
+                substitutes_by_query[query.id] = parsed
+    labelled = [query for query in data.queries if query.id in substitutes_by_query]
+    gts = {query.id: ground_truth(data, query, substitutes_by_query[query.id]) for query in labelled}
+    dev = [query for query in labelled if split_of(query.id) == "dev"]
+    test = [query for query in labelled if split_of(query.id) == "test"]
+
+    report: dict[str, Any] = {
+        "benchmark": "ToolRet-SAE (ToolRet sample with S / E / A variants)",
+        "retriever": data.retriever, "pool": POOL, "scopes": SCOPES, "grant_share": GRANT_SHARE,
+        "label_model": args.label_model, "method_model": args.method_model,
+        "queries": {"sampled": len(data.queries), "labelled": len(labelled), "dev": len(dev), "test": len(test)},
+        "valid_variants": {
+            split: {variant: sum(gts[q.id][variant] for q in group) for variant in VARIANTS}
+            | {"S_reachable": sum(gts[q.id]["reachable"] for q in group)}
+            for split, group in (("dev", dev), ("test", test))
+        },
+        "methods": {},
+    }
+
+    secondary_path = label_path(args.agree_model)
+    if secondary_path.exists():
+        secondary = load_cache(secondary_path)
+        pairs: list[tuple[bool, bool]] = []
+        necessity: list[tuple[bool, bool]] = []
+        validity: list[tuple[bool, bool]] = []
+        for query in labelled:
+            if query.id not in secondary:
+                continue
+            _, candidates = label_prompt(data, query)
+            other = parse_labels(secondary[query.id], query, candidates)
+            if other is None:
+                continue
+            first = substitutes_by_query[query.id]
+            for gold in query.labels:
+                necessity.append((first[gold]["necessary"], other[gold]["necessary"]))
+                for candidate in candidates:
+                    pairs.append((candidate in first[gold]["substitutes"], candidate in other[gold]["substitutes"]))
+            ours, theirs = ground_truth(data, query, first), ground_truth(data, query, other)
+            for variant in ("E", "A"):
+                validity.append((ours[variant], theirs[variant]))
+        report["annotator_agreement"] = {
+            "secondary_model": args.agree_model,
+            "substitute_pairs": kappa(pairs),
+            "necessity": kappa(necessity),
+            "variant_validity": kappa(validity),
+        }
+
+    per_query: dict[str, dict[str, float]] = {}
+    for name, factory in rule_selectors().items():
+        tuning = {}
+        for floor in RULE_FLOORS:
+            rows = evaluate(data, dev, substitutes_by_query, lambda variant: factory(floor), floor, gts, VARIANTS)
+            tuning[floor] = summarize(rows)["macro_correct"] or 0.0
+        best = max(RULE_FLOORS, key=lambda floor: (tuning[floor], -floor))
+        rows = evaluate(data, test, substitutes_by_query, lambda variant: factory(best), best, gts)
+        report["methods"][name] = {"min_relevance": best, "dev_macro_correct": tuning[best],
+                                   "llm_calls_per_selection": 0, "test": summarize(rows)}
+        per_query[name] = per_query_macro(rows)
+        # The same selector with no floor: what the floor buys.
+        if best != 0.0:
+            rows = evaluate(data, test, substitutes_by_query, lambda variant: factory(0.0), 0.0, gts)
+            report["methods"][f"{name}@0"] = {"min_relevance": 0.0, "llm_calls_per_selection": 0,
+                                              "test": summarize(rows)}
+            per_query[f"{name}@0"] = per_query_macro(rows)
+
+    replay = ReplayOnly()
+    for name in ("llm-set", "req-cover", "req-cover-all"):
+        cache_name = "req-cover" if name.startswith("req-cover") else name
+        path = method_cache_path(cache_name, args.method_model)
+        if not path.exists():
+            continue
+        cache = ReplayCache(load_cache(path))
+        if name == "llm-set":
+            def make(variant, cache=cache):
+                return LLMSetSelector(replay, cache=cache)
+        else:
+            mode = "all" if name.endswith("-all") else "best"
+
+            def make(variant, cache=cache, mode=mode):
+                return RequirementCoverageSelector(replay, cache=cache, max_candidates=POOL, per_requirement=mode)
+        for split, group in (("dev", dev), ("test", test)):
+            covered = [query for query in group if all(
+                _cached(make("S"), data, query, variant) for variant in VARIANTS)]
+            if not covered:
+                continue
+            rows = evaluate(data, covered, substitutes_by_query, make, 0.0, gts, VARIANTS)
+            entry = report["methods"].setdefault(name, {"llm_calls_per_selection": 1})
+            entry[split] = summarize(rows)
+            entry[f"{split}_queries"] = len(covered)
+            oracle_covered = [query for query in covered if all(
+                _cached(make("S"), data, query, variant) for variant in ORACLE_VARIANTS)]
+            if oracle_covered:
+                oracle_rows = evaluate(data, oracle_covered, substitutes_by_query, make, 0.0, gts, ORACLE_VARIANTS)
+                entry[split]["oracle_candidates"] = summarize_oracle(oracle_rows) | {"queries": len(oracle_covered)}
+            if split == "test":
+                per_query[name] = per_query_macro(rows)
+
+    reference = args.reference
+    if reference in per_query:
+        report["paired_vs_" + reference] = {
+            name: bootstrap_difference(values, per_query[reference])
+            for name, values in per_query.items() if name != reference
+        }
+    return report
+
+
+class ReplayCache(dict):
+    """A reply cache that counts lookups of missing keys and never stores.
+
+    A replayed selector records a failure both for a missing reply and for a
+    cached reply it cannot use (no requirements listed); only the first is a
+    gap in the stage, the second is the method's own output and is scored.
+    """
+
+    def __init__(self, data: dict) -> None:
+        super().__init__(data)
+        self.misses = 0
+
+    def get(self, key, default=None):
+        if key not in self:
+            self.misses += 1
+        return super().get(key, default)
+
+    def __setitem__(self, key, value) -> None:
+        return None
+
+
+def _cached(selector, data: Data, query, variant: str) -> bool:
+    """Whether the replayed selector has a cached reply for this selection."""
+
+    before = selector.cache.misses
+    selector.select(data.pool(query, variant), context=context(query, variant))
+    return selector.cache.misses == before
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--stage", action="append", required=True,
+                        choices=["pools", "label", "agree", "methods", "score"])
+    parser.add_argument("--per-subset", type=int, default=60)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--retriever", default="llm:hybrid-0.5")
+    parser.add_argument("--embed-model", default="sentence-transformers/all-MiniLM-L6-v2")
+    parser.add_argument("--split", choices=["all", "dev", "test"], default="all")
+    parser.add_argument("--limit", type=int, default=0, help="first N queries of the split (0 = all)")
+    parser.add_argument("--workers", type=int, default=8)
+    parser.add_argument("--label-model", default="opus")
+    parser.add_argument("--agree-model", default="sonnet")
+    parser.add_argument("--agree-queries", type=int, default=200)
+    parser.add_argument("--method-model", default="sonnet")
+    parser.add_argument("--method", action="append", choices=["llm-set", "req-cover"])
+    parser.add_argument("--oracle", action="store_true", help="run the oracle-candidate S+ / E+ selections instead")
+    parser.add_argument("--reference", default="greedy", help="method the paired differences are taken against")
+    parser.add_argument("--output", default=str(Path(__file__).parent / "results" / "toolret-sae.json"))
+    args = parser.parse_args()
+
+    if not (toolret.DATA_DIR / "tools" / "web.parquet").exists():
+        raise SystemExit("ToolRet is not downloaded: python3 benchmarks/run_toolret_benchmark.py --download")
+    data = Data(args.per_subset, args.seed, args.retriever)
+    queries = [query for query in data.queries if args.split == "all" or split_of(query.id) == args.split]
+    if args.limit:
+        queries = queries[: args.limit]
+    if "pools" in args.stage:
+        stage_pools(data, args)
+    queries = [query for query in queries if query.id in data.pools]
+    if "label" in args.stage:
+        stage_label(data, queries, args.label_model, args.workers)
+    if "agree" in args.stage:
+        test = sorted((q for q in data.queries if split_of(q.id) == "test" and q.id in data.pools), key=lambda q: q.id)
+        rng = random.Random(1)
+        stage_label(data, rng.sample(test, min(args.agree_queries, len(test))), args.agree_model, args.workers)
+    if "methods" in args.stage:
+        stage_methods(data, queries, args.method_model, args.workers, args.method or ["llm-set", "req-cover"],
+                      oracle=args.oracle)
+    if "score" in args.stage:
+        report = stamp(stage_score(data, args))
+        output = Path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        for name, entry in report["methods"].items():
+            test_summary = entry.get("test", {})
+            print(f"{name}: macro correct {test_summary.get('macro_correct')} status {test_summary.get('status_accuracy')} "
+                  f"S F1 {test_summary.get('S_set_f1')} sufficient {test_summary.get('S_sufficient')}")
+        print(f"wrote {output}")
+
+
+if __name__ == "__main__":
+    main()
