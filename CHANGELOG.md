@@ -62,8 +62,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   override it. `HybridRetriever` and `HierarchicalRetriever` now embed goals
   through it and resources through `embed()`. Providers that only define
   `embed()`, including ones that do not subclass `EmbeddingProvider`, behave
-  as before. The ToolRet benchmark takes `--query-prefix` for such models and
-  `--records` for per-query metrics that can be paired across runs.
+  as before. On ToolRet, dropping Arctic-Embed-S's query instruction costs
+  0.065 nDCG@10 in dense retrieval (95% CI [0.056, 0.074]). The ToolRet
+  benchmark takes `--query-prefix` for such models and `--records` for
+  per-query metrics; `benchmarks/compare_toolret_records.py` pairs two runs.
 - Opt-in multi-intent retrieval: `DecomposedRetriever` splits a goal into
   sub-tasks with a `QueryDecomposer`, searches the goal and every sub-task with
   an inner retriever, and fuses the rankings (default `fusion="blend"`:

@@ -1,0 +1,62 @@
+{
+  "reference": "arctic-s-no-instruction",
+  "comparisons": {
+    "arctic-s - arctic-s-no-instruction": {
+      "hybrid-0.5": {
+        "ndcg@10": {
+          "mean_difference": 0.0111,
+          "ci95": [
+            0.0065,
+            0.016
+          ],
+          "queries": 1689
+        },
+        "complete@10": {
+          "mean_difference": 0.0065,
+          "ci95": [
+            -0.0018,
+            0.0148
+          ],
+          "queries": 1689
+        },
+        "complete@100": {
+          "mean_difference": 0.0302,
+          "ci95": [
+            0.0207,
+            0.0403
+          ],
+          "queries": 1689
+        }
+      },
+      "dense": {
+        "ndcg@10": {
+          "mean_difference": 0.0647,
+          "ci95": [
+            0.0556,
+            0.0743
+          ],
+          "queries": 1689
+        },
+        "complete@10": {
+          "mean_difference": 0.0592,
+          "ci95": [
+            0.0468,
+            0.0716
+          ],
+          "queries": 1689
+        },
+        "complete@100": {
+          "mean_difference": 0.0977,
+          "ci95": [
+            0.0823,
+            0.1137
+          ],
+          "queries": 1689
+        }
+      }
+    }
+  },
+  "marmo_core_version": "0.6.0",
+  "marmo_core_commit": "22c7eae7",
+  "generated_at": "2026-11-26T12:38:55+00:00"
+}
