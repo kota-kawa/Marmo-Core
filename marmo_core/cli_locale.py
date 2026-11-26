@@ -203,6 +203,26 @@ def japanese_parser_error(message: str) -> str:
             if prefix == "one of the arguments ":
                 detail = detail.removesuffix(" is required")
             return translation + detail
+
+    argument, separator, detail = message.partition(": ")
+    if not separator or not argument.startswith("argument "):
+        return message
+    option = argument.removeprefix("argument ")
+    if detail == "expected one argument":
+        return f"{option}: 値を 1 つ指定してください"
+    if detail.startswith("invalid choice: "):
+        choices_message = detail.removeprefix("invalid choice: ")
+        value, marker, choices = choices_message.rpartition(" (choose from ")
+        if marker and choices.endswith(")"):
+            return f"{option}: {value} は指定できません。選択肢: {choices[:-1]}"
+        return f"{option}: {choices_message} は指定できません"
+    for prefix, translation in (
+        ("invalid int value: ", "整数を指定してください: "),
+        ("invalid float value: ", "数値を指定してください: "),
+        ("not allowed with argument ", "同時に指定できない引数: "),
+    ):
+        if detail.startswith(prefix):
+            return f"{option}: {translation}{detail.removeprefix(prefix)}"
     return message
 
 

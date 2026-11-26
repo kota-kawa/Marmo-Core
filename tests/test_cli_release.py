@@ -92,6 +92,18 @@ class CliLanguageTests(unittest.TestCase):
         self.assertIn("--tool-args には", stderr)
         self.assertIn("JSON オブジェクト", stderr)
 
+    def test_japanese_argument_diagnostics_show_how_to_fix_invalid_values(self) -> None:
+        for args, translation in (
+            (("--task",), "--task: 値を 1 つ指定してください"),
+            (("--task", "test", "--top-k", "nan"), "--top-k: 整数を指定してください: 'nan'"),
+            (("--task", "test", "--max-cost", "bad"), "--max-cost: 数値を指定してください: 'bad'"),
+            (("--task", "test", "--llm", "unknown"), "--llm: 'unknown' は指定できません。選択肢: 'mock'"),
+        ):
+            with self.subTest(args=args):
+                status, stdout, stderr = self.capture_cli("ja", "run", *args)
+                self.assertEqual((status, stdout), (2, ""))
+                self.assertIn(translation, stderr)
+
     def test_language_changes_task_labels_but_keeps_json_output(self) -> None:
         args = ("run", "--task", "test", "--no-default-resources")
         status, stdout, stderr = self.capture_cli("ja", *args)
