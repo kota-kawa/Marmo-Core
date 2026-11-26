@@ -4,7 +4,7 @@
 
 - Status: Accepted
 - Date: 2026-09-19
-- Evidence: 11648de1, 3de214ca (PR #13), CHANGELOG 0.6.0, `benchmarks/README.md`
+- Evidence: 11648de1, 3de214ca (PR #13), CHANGELOG 0.6.0, [`benchmarks/README.en.md`](../../benchmarks/README.en.md)
 
 ## Context
 

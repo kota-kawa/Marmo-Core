@@ -19,7 +19,7 @@ Marmo-Core is both a public library and a research subject. Research must move q
 
 ## Consequences
 
-- Prefer implementing research methods through the extension points in `ARCHITECTURE.md`, without changing Kernel defaults.
+- Prefer implementing research methods through the extension points in [`ARCHITECTURE.en.md`](../../ARCHITECTURE.en.md), without changing Kernel defaults.
 - Treat `benchmarks/results/*.json` as frozen artifacts; do not change numbers without corresponding implementation changes.
 
 ## Alternatives

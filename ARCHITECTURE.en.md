@@ -10,7 +10,7 @@ This document describes only how the system works now. If it disagrees with the 
 to update this document or the implementation and bring them into alignment in
 the same PR.
 
-Target version: the value in `marmo_core/_version.py` (currently 0.6.0).
+Target version: the value in `marmo_core/_version.py`.
 
 ## 1. Positioning
 

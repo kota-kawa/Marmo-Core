@@ -6,7 +6,7 @@
 - Date: 2026-11-24
 - Evidence: `marmo_core/decomposition.py`, `marmo_core/coverage.py`,
   `benchmarks/run_toolret_benchmark.py`, `benchmarks/results/toolret.json`,
-  the ToolRet section of `benchmarks/README.md`
+  the ToolRet section of [`benchmarks/README.en.md`](../../benchmarks/README.en.md)
 
 ## Context
 
@@ -26,7 +26,7 @@ Keep Kernel defaults unchanged and add the following as extension points:
 
 ## Consequences
 
-- On ToolRet's test split (856 queries, MiniLM-L6 embeddings + BM25F hybrid, Claude Sonnet for LLM decomposition), decomposition and blend fusion improved nDCG@10 by +0.019 (95% CI [0.012, 0.026]) and Completeness@10 by +0.012 [0.001, 0.023]. Numbers are in `benchmarks/README.md` and `benchmarks/results/toolret.json`.
+- On ToolRet's test split (856 queries, MiniLM-L6 embeddings + BM25F hybrid, Claude Sonnet for LLM decomposition), decomposition and blend fusion improved nDCG@10 by +0.019 (95% CI [0.012, 0.026]) and Completeness@10 by +0.012 [0.001, 0.023]. Numbers are in [`benchmarks/README.en.md`](../../benchmarks/README.en.md) and `benchmarks/results/toolret.json`.
 - Most of the set-selection improvement came from ranking. On the sampled test set (856 queries), of the +0.022 Set F1 from pre-decomposition top-1 to post-decomposition coverage, +0.017 came from post-decomposition top-1, while the added gain from coverage was +0.004 [−0.005, 0.014], not significant. On the full test split (3,920 queries, `toolret-test-full.json`), the added gain from coverage was significant at +0.012 [0.006, 0.017], and +0.021 [0.015, 0.027] with `include_within=0.95` (F1 0.229; oracle top-k 0.234). Coverage selected smaller sets and had higher Exact, but a relative threshold of 0.9 of the top score achieved higher F1 (0.189 vs. 0.181), because ToolRet answers often include nearby candidates (multiple endpoints of the same API). Retain coverage because it selects one item per subtask and kind while preserving dependency closure, conflict, permission, and budget constraints and abstain / escalate handling. Use a relative threshold or an LLM when maximizing F1 is the objective.
 - `LLMSetSelector` (Sonnet, top 20) was best at F1 0.243 (top-1 difference +0.067 [0.049, 0.086]). The solver beat the LLM on the repository's synthetic benchmark with declared constraints (ADR 0005), but ToolRet has no declared constraints and benefits from interpreting the meaning of descriptions. Kernel constrains the output of every Selector, so assigning relevance to an LLM and constraints to a solver does not conflict with ADR 0005.
 - For Japanese-translated goals (206 queries), lexical retrieval and English-only embeddings barely worked (nDCG@10 0.013 / 0.029); decomposition without discount scored 0.057 and with discount 0.134. For English versions of the same queries, scores were unchanged by discounting (0.268). A fixed higher weight (1.0) did as well for Japanese, but nearly erased the decomposition gain on English dev (nDCG@10 0.276 → 0.266), so switch based on known-term rate rather than a fixed weight.

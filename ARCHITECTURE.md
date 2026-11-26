@@ -7,7 +7,7 @@ English version: [ARCHITECTURE.en.md](ARCHITECTURE.en.md).
 にある。ここには「今どう動いているか」だけを書く。実装と食い違いを見つけたら、
 この文書を直すか実装を直すかを決めて同じ PR で揃える。
 
-対象バージョン: `marmo_core/_version.py` の値（現在 0.6.0）。
+対象バージョン: `marmo_core/_version.py` の値。
 
 ## 1. 位置づけ
 

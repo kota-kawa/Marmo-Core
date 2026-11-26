@@ -4,7 +4,7 @@
 
 - Status: Accepted
 - Date: 2026-09-17
-- Evidence: 6ef6ad03, 583473e1 (CHANGELOG 0.5.0), comment in `MANIFEST.in`, `benchmarks/README.md`
+- Evidence: 6ef6ad03, 583473e1 (CHANGELOG 0.5.0), comment in `MANIFEST.in`, [`benchmarks/README.en.md`](../../benchmarks/README.en.md)
 
 ## Context
 

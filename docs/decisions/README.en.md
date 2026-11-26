@@ -34,4 +34,4 @@ Records of important technical decisions. When changing or adding a decision, re
 ## Alternatives
 ```
 
-Update this table when adding an ADR. Put empirical evidence behind the decision in `benchmarks/README.md`, user-facing explanations in `CHANGELOG.md`, and the decision and rationale in the ADR.
+Update this table when adding an ADR. Put empirical evidence behind the decision in [`benchmarks/README.en.md`](../../benchmarks/README.en.md), user-facing explanations in `CHANGELOG.md`, and the decision and rationale in the ADR.

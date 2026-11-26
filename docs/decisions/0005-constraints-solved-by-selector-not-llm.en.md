@@ -4,7 +4,7 @@
 
 - Status: Accepted
 - Date: 2026-07-17
-- Evidence: `benchmarks/README.md` (set selection, Policy ablation, B&B comparison), `selector.py`
+- Evidence: [`benchmarks/README.en.md`](../../benchmarks/README.en.md) (set selection, Policy ablation, B&B comparison), `selector.py`
 
 ## Context
 

@@ -19,7 +19,7 @@ Marmo-Core is a kernel embedded in agent runtimes, and not polluting users' depe
 ## Consequences
 
 - Agree on new runtime dependencies in an issue first. State the rationale and impact in the PR.
-- Write numerical computations in pure Python. Cosine similarity is acceptable at a scale of 1,000 items, but 10k or more items require hierarchical routing (`hierarchy.py`) (`benchmarks/README.md`).
+- Write numerical computations in pure Python. Cosine similarity is acceptable at a scale of 1,000 items, but 10k or more items require hierarchical routing (`hierarchy.py`) ([`benchmarks/README.en.md`](../../benchmarks/README.en.md)).
 
 ## Alternatives
 
