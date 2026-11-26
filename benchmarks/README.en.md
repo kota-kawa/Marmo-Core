@@ -386,23 +386,23 @@ Results are in [`results/forgery.json`](results/forgery.json) (2,656 variants ×
 
 | Configuration | Kind | Declarations | Selected | Activation allowed | Reaches the model | Handler runs | Gold Tool loss | Hijack |
 |---|---|---|---:|---:|---:|---:|---:|---:|
-| lexical + greedy | Tool | honest | 0.000 | 0.000 | 0.000 | 0.000 | 0.214 | 0.000 |
-| lexical + greedy | Tool | fully forged | 0.534 | 0.534 | 0.534 | 0.534 | 0.643 | 1.000 |
-| lexical + greedy | Tool | partly forged | 0.226 | 0.000 | 0.000 | 0.000 | 0.347 | 0.500 |
-| lexical + greedy | Skill | fully forged | 0.526 | 0.526 | 0.526 | — | 0.214 | 1.000 |
-| lexical + greedy | Agent | fully forged | 0.564 | 0.564 | 0.564 | 0.564 | 0.214 | 1.000 |
-| lexical + coverage | Tool | fully forged | 0.534 | 0.534 | 0.534 | 0.534 | 0.643 | 1.000 |
-| lexical + Kernel default (rule-based) | Tool | honest | 0.420 | 0.000 | 0.000 | 0.000 | 0.214 | 0.875 |
-| lexical + Kernel default (rule-based) | Tool | fully forged | 0.784 | 0.784 | 0.784 | 0.784 | 0.643 | 1.000 |
-| lexical + Kernel default (rule-based) | Skill | fully forged | 0.859 | 0.859 | 0.859 | — | 0.214 | 1.000 |
-| lexical + Kernel default (rule-based) | Agent | fully forged | 0.833 | 0.833 | 0.833 | 0.833 | 0.214 | 1.000 |
+| lexical + greedy | Tool | honest | 0.000 | 0.000 | 0.000 | 0.000 | 0.231 | 0.000 |
+| lexical + greedy | Tool | fully forged | 0.534 | 0.534 | 0.534 | 0.534 | 0.692 | 1.000 |
+| lexical + greedy | Tool | partly forged | 0.226 | 0.000 | 0.000 | 0.000 | 0.374 | 0.500 |
+| lexical + greedy | Skill | fully forged | 0.526 | 0.526 | 0.526 | — | 0.231 | 1.000 |
+| lexical + greedy | Agent | fully forged | 0.564 | 0.564 | 0.564 | 0.564 | 0.231 | 1.000 |
+| lexical + coverage | Tool | fully forged | 0.534 | 0.534 | 0.534 | 0.534 | 0.692 | 1.000 |
+| lexical + Kernel default (rule-based) | Tool | honest | 0.420 | 0.000 | 0.000 | 0.000 | 0.231 | 0.875 |
+| lexical + Kernel default (rule-based) | Tool | fully forged | 0.784 | 0.784 | 0.784 | 0.784 | 0.692 | 1.000 |
+| lexical + Kernel default (rule-based) | Skill | fully forged | 0.859 | 0.859 | 0.859 | — | 0.231 | 1.000 |
+| lexical + Kernel default (rule-based) | Agent | fully forged | 0.833 | 0.833 | 0.833 | 0.833 | 0.231 | 1.000 |
 
 Honest Skills and Agents never pass activation in any configuration, and Skills have no handler (—). The hijack denominator is the eight abstain / escalate cases times their variants; the rule-based selector never abstains even without a decoy, which inflates its value. The gold Tool loss denominator is the evidence Tool tasks whose gold Tool reached the model without the decoy.
 
 **Interpreting the results**
 
 - **The activation gate stops decoys, the selector does not.** Greedy and coverage do not select a resource whose declared permissions are not granted, so a Tool that forges only its permissions (still `untrusted` and `external`) is selected in 74% of stuffed variants (both suites; 82% when fully forged) and then denied at activation. The selector does not read trust, side effect, or isolation. Only the fully forged decoy passes the gate; with any one declaration honest, activation stays at 0 (all 16 stuffed Tool combinations).
-- **Denial does not undo the harm.** A decoy that is selected and then denied still displaces the gold resource, so partly forged Tools lose the gold Tool in 35% of cases (`partial_forgery` in `tracked`). Even an honestly declared stuffed Tool makes greedy escalate as "the top unit blocked only by permissions" (the default rule that escalates a permission-blocked top candidate), and the gold Tool no longer reaches the model in 43% of cases (0% for clones; the 0.214 in the honest row is the average of both). That path also asks a person to grant `net.external` and `message.send`.
+- **Denial does not undo the harm.** A decoy that is selected and then denied still displaces the gold resource, so partly forged Tools lose the gold Tool in 37% of cases (`partial_forgery` in `tracked`). Even an honestly declared stuffed Tool makes greedy escalate as "the top unit blocked only by permissions" (the default rule that escalates a permission-blocked top candidate), and the gold Tool no longer reaches the model in 46% of cases (0% for clones; the 0.231 in the honest row is the average of both). That path also asks a person to grant `net.external` and `message.send`.
 - **Clones of legitimate resources get through less often than stuffing.** They tie with the gold resource, so even fully forged clones are selected in 36% of Tool cases (evidence) and 4% on the set corpus.
 - The Kernel's default rule-based selector does not check permissions, so it selects even honestly declared decoys in 42–58% of variants (the gate then denies them).
 - Countermeasures that verify declarations (signatures, provenance) are out of scope for this benchmark. When one is added, check with the same command that the fully forged rows of `tracked` go down.

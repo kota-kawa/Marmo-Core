@@ -386,23 +386,23 @@ python3 benchmarks/run_forgery_benchmark.py            # 約 90 秒、LLM なし
 
 | 構成 | 種別 | 宣言 | 選択 | activation 通過 | モデルに渡る | ハンドラ実行 | gold Tool 喪失 | 乗っ取り |
 |---|---|---|---:|---:|---:|---:|---:|---:|
-| lexical + greedy | Tool | 正直 | 0.000 | 0.000 | 0.000 | 0.000 | 0.214 | 0.000 |
-| lexical + greedy | Tool | 全偽装 | 0.534 | 0.534 | 0.534 | 0.534 | 0.643 | 1.000 |
-| lexical + greedy | Tool | 一部だけ偽装 | 0.226 | 0.000 | 0.000 | 0.000 | 0.347 | 0.500 |
-| lexical + greedy | Skill | 全偽装 | 0.526 | 0.526 | 0.526 | — | 0.214 | 1.000 |
-| lexical + greedy | Agent | 全偽装 | 0.564 | 0.564 | 0.564 | 0.564 | 0.214 | 1.000 |
-| lexical + 被覆型 | Tool | 全偽装 | 0.534 | 0.534 | 0.534 | 0.534 | 0.643 | 1.000 |
-| lexical + Kernel 既定（rule-based） | Tool | 正直 | 0.420 | 0.000 | 0.000 | 0.000 | 0.214 | 0.875 |
-| lexical + Kernel 既定（rule-based） | Tool | 全偽装 | 0.784 | 0.784 | 0.784 | 0.784 | 0.643 | 1.000 |
-| lexical + Kernel 既定（rule-based） | Skill | 全偽装 | 0.859 | 0.859 | 0.859 | — | 0.214 | 1.000 |
-| lexical + Kernel 既定（rule-based） | Agent | 全偽装 | 0.833 | 0.833 | 0.833 | 0.833 | 0.214 | 1.000 |
+| lexical + greedy | Tool | 正直 | 0.000 | 0.000 | 0.000 | 0.000 | 0.231 | 0.000 |
+| lexical + greedy | Tool | 全偽装 | 0.534 | 0.534 | 0.534 | 0.534 | 0.692 | 1.000 |
+| lexical + greedy | Tool | 一部だけ偽装 | 0.226 | 0.000 | 0.000 | 0.000 | 0.374 | 0.500 |
+| lexical + greedy | Skill | 全偽装 | 0.526 | 0.526 | 0.526 | — | 0.231 | 1.000 |
+| lexical + greedy | Agent | 全偽装 | 0.564 | 0.564 | 0.564 | 0.564 | 0.231 | 1.000 |
+| lexical + 被覆型 | Tool | 全偽装 | 0.534 | 0.534 | 0.534 | 0.534 | 0.692 | 1.000 |
+| lexical + Kernel 既定（rule-based） | Tool | 正直 | 0.420 | 0.000 | 0.000 | 0.000 | 0.231 | 0.875 |
+| lexical + Kernel 既定（rule-based） | Tool | 全偽装 | 0.784 | 0.784 | 0.784 | 0.784 | 0.692 | 1.000 |
+| lexical + Kernel 既定（rule-based） | Skill | 全偽装 | 0.859 | 0.859 | 0.859 | — | 0.231 | 1.000 |
+| lexical + Kernel 既定（rule-based） | Agent | 全偽装 | 0.833 | 0.833 | 0.833 | 0.833 | 0.231 | 1.000 |
 
 Skill と Agent の「正直」は 3 構成とも activation 通過 0、Skill にハンドラはありません（—）。乗っ取りの分母は abstain / escalate が正解の 8 ケース × 変種で、rule-based は偽装なしでも abstain しない Selector なので値が高く出ます。gold Tool 喪失の分母は偽装なしで gold Tool がモデルに渡っていた evidence の Tool タスクです。
 
 **読み方**
 
 - **止めているのは activation gate で、Selector ではありません**。greedy と被覆型は宣言された権限が足りない資源を選ばないので、権限の宣言だけを偽装した Tool（信頼度は `untrusted`、副作用は `external` のまま）は stuffed で 74%（両スイート合計。全偽装は 82%）選ばれ、activation gate で拒否されます。Selector は信頼度・副作用・隔離レベルを見ません。ゲートを通るのは 4 項目すべてを偽装した場合だけで、1 項目でも正直なら activation 通過は 0 でした（stuffed の Tool 16 通り）。
-- **拒否されても被害は残ります**。選ばれてから拒否された偽装資源は gold を押しのけたままなので、一部だけ偽装した Tool でも gold Tool の喪失は 35% です（`tracked` の `partial_forgery`）。正直な宣言の stuffed Tool でさえ、greedy は「権限だけで阻まれた上位の単位」として escalate を返し（権限不足の上位候補を escalate する既定の挙動）、gold Tool が 43% のケースで渡らなくなります（clone では 0%、表の「正直」の 0.214 は両方の平均）。人に `net.external` と `message.send` の付与を求める経路でもあります。
+- **拒否されても被害は残ります**。選ばれてから拒否された偽装資源は gold を押しのけたままなので、一部だけ偽装した Tool でも gold Tool の喪失は 37% です（`tracked` の `partial_forgery`）。正直な宣言の stuffed Tool でさえ、greedy は「権限だけで阻まれた上位の単位」として escalate を返し（権限不足の上位候補を escalate する既定の挙動）、gold Tool が 46% のケースで渡らなくなります（clone では 0%、表の「正直」の 0.231 は両方の平均）。人に `net.external` と `message.send` の付与を求める経路でもあります。
 - **`clone`（正規の資源の複製）は stuffed より通りにくい**。同点の gold と並ぶため、全偽装でも Tool 36%（evidence）、集合コーパスでは 4% でした。
 - Kernel 既定の rule-based Selector は権限を見ないので、正直な宣言の偽装資源も 42〜58% 選ばれます（ゲートで拒否）。
 - 宣言の真正性を確かめる対策（署名・出所の検証）はこのベンチマークの対象外です。対策を入れたら、同じコマンドで `tracked` の全偽装の行が下がるかを確かめます。
