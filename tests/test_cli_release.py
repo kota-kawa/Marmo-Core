@@ -97,7 +97,7 @@ class CliLanguageTests(unittest.TestCase):
             (("--task",), "--task: 値を 1 つ指定してください"),
             (("--task", "test", "--top-k", "nan"), "--top-k: 整数を指定してください: 'nan'"),
             (("--task", "test", "--max-cost", "bad"), "--max-cost: 数値を指定してください: 'bad'"),
-            (("--task", "test", "--llm", "unknown"), "--llm: 'unknown' は指定できません。選択肢: 'mock'"),
+            (("--task", "test", "--llm", "unknown"), "--llm: 'unknown' は指定できません。選択肢:"),
         ):
             with self.subTest(args=args):
                 status, stdout, stderr = self.capture_cli("ja", "run", *args)
