@@ -115,17 +115,24 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--model", default="sonnet", help="sonnet or haiku (or a full id of those families)")
     parser.add_argument("--workers", type=int, default=8)
+    parser.add_argument("--limit", type=int, default=0, help="first N queries of the split (0 = all)")
     parser.add_argument("--base", default="hybrid-0.5")
     parser.add_argument("--embed-model", default="sentence-transformers/all-MiniLM-L6-v2")
     parser.add_argument("--rerank-pool", type=int, default=30)
     parser.add_argument("--select-pool", type=int, default=20)
     parser.add_argument("--ja-per-subset", type=int, default=6, help="test-split queries per subset to translate")
-    parser.add_argument("--split", choices=["all", "dev", "test"], default="all", help="restrict the queries to one split")
+    parser.add_argument("--split", choices=["all", "dev", "test", "heldout"], default="all",
+                        help="restrict the queries to one split; heldout is the frozen ToolRet-SAE held-out split")
     args = parser.parse_args()
 
-    queries = toolret.sample_queries(toolret.load_queries(), args.per_subset or None, seed=args.seed)
-    if args.split != "all":
+    every = toolret.load_queries()
+    queries = toolret.sample_queries(every, args.per_subset or None, seed=args.seed)
+    if args.split == "heldout":
+        queries = toolret.load_heldout(every)
+    elif args.split != "all":
         queries = [query for query in queries if split_of(query.id) == args.split]
+    if args.limit:
+        queries = queries[: args.limit]
     tasks = list(dict.fromkeys(query.query for query in queries))
     try:
         llm = ClaudeCLIProvider(args.model)

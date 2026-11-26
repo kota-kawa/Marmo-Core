@@ -45,6 +45,21 @@ pool ``LLMSetSelector`` sees in the ToolRet benchmark) after the score and
 relevance floors. Replies are cached by prompt, so the same candidates under
 different grants reuse one judgment. Budgeted Kernel tasks reject it, like
 other selectors that do not declare ``budget_aware``.
+
+Two options, both off by default:
+
+- ``extra_candidates``: before escalating, look once at the next
+  ``extra_candidates`` results in rank order, keeping those whose unit needs
+  no ungranted permission, and ask in a second call which of them fulfil the
+  requirements that only permission-blocked candidates fulfilled. If every
+  such requirement gets a permitted candidate the set is selected instead.
+  This is one more LLM call on those selections and none on the others.
+- ``judge="strict"``: the prompt tells the judge to credit a candidate only
+  when its description states the capability, and to leave it out when in
+  doubt.
+
+``last_llm_calls`` is the number of judge calls the last selection needed
+(replies served from the cache count, so it is what an uncached run costs).
 """
 
 from __future__ import annotations
@@ -64,6 +79,7 @@ from .models import SearchResult, SelectionResult
 from .selector import SelectionContext, SetSelector, _build_units, _misfit, _total_cost, _Unit
 
 PER_REQUIREMENT_CHOICES = ("best", "all")
+JUDGE_CHOICES = ("standard", "strict")
 _DESCRIPTION_LIMIT = 240
 
 _SYSTEM = (
@@ -75,10 +91,25 @@ _SYSTEM = (
     "Step 2 — candidates: for each requirement, list the id of every candidate whose name and "
     "description show that it can fulfil that requirement by itself. Judge capability only: ignore "
     "cost, trust, and any access rules. Do not stretch a description to fit; if no candidate can "
-    "fulfil a requirement, give it an empty list.\n"
+    "fulfil a requirement, give it an empty list.{strict}\n"
     "Reply with a single JSON object and nothing else:\n"
-    '{"requirements": [{"need": "...", "ids": ["..."]}]}\n'
+    '{{"requirements": [{{"need": "...", "ids": ["..."]}}]}}\n'
     "ids are the exact strings after 'id=' (never positions or names)."
+)
+_EXTRA_SYSTEM = (
+    "You check which candidate resources can fulfil numbered requirements of a task for an AI agent. "
+    "For each requirement, list the id of every candidate whose name and description show that it can "
+    "fulfil that requirement by itself. Judge capability only: ignore cost, trust, and any access "
+    "rules. Do not stretch a description to fit; if no candidate can fulfil a requirement, give it an "
+    "empty list.{strict}\n"
+    "Reply with a single JSON object and nothing else:\n"
+    '{{"matches": [{{"requirement": 1, "ids": ["..."]}}]}}\n'
+    "ids are the exact strings after 'id=' (never positions or names)."
+)
+_STRICT = (
+    " Credit a candidate only when its own description states that capability for the kind of input "
+    "the task has. A candidate for a related task, for a broader or narrower category, or for a "
+    "different data source does not fulfil the requirement. When in doubt, leave the candidate out."
 )
 
 
@@ -101,6 +132,8 @@ class RequirementCoverageSelector(_LLMFailureTracker, SetSelector):
         max_candidates: int = 20,
         max_requirements: int = 8,
         per_requirement: str = "best",
+        extra_candidates: int = 0,
+        judge: str = "standard",
     ) -> None:
         super().__init__()
         if max_candidates < 1:
@@ -109,23 +142,32 @@ class RequirementCoverageSelector(_LLMFailureTracker, SetSelector):
             raise ValueError("max_requirements must be at least 1")
         if per_requirement not in PER_REQUIREMENT_CHOICES:
             raise ValueError(f"per_requirement must be one of: {', '.join(PER_REQUIREMENT_CHOICES)}")
+        if extra_candidates < 0:
+            raise ValueError("extra_candidates must not be negative")
+        if judge not in JUDGE_CHOICES:
+            raise ValueError(f"judge must be one of: {', '.join(JUDGE_CHOICES)}")
         self.llm = llm
         self.cache = cache if cache is not None else {}
         self.max_candidates = max_candidates
         self.max_requirements = max_requirements
         self.per_requirement = per_requirement
+        self.extra_candidates = extra_candidates
+        self.judge = judge
         self.last_requirements: tuple[Requirement, ...] = ()
+        self.last_llm_calls = 0
 
     def select(
         self, results: list[SearchResult], *, context: SelectionContext | None = None
     ) -> SelectionResult:
         ctx = context or SelectionContext()
         self.last_requirements = ()
-        candidates = [
+        self.last_llm_calls = 0
+        eligible = [
             r
             for r in results
             if r.score >= ctx.min_score and float(r.components.get("relevance", 1.0)) >= ctx.min_relevance
-        ][: self.max_candidates]
+        ]
+        candidates = eligible[: self.max_candidates]
         if not candidates:
             return SelectionResult((), "no candidate met the minimum score and relevance thresholds", status="abstain")
         requirements = self._judge(ctx.task, candidates)
@@ -143,28 +185,45 @@ class RequirementCoverageSelector(_LLMFailureTracker, SetSelector):
         rank = {result.resource.metadata.id: position for position, result in enumerate(candidates)}
 
         unmet: list[str] = []
-        needs_grant: list[tuple[Requirement, list[_Unit]]] = []
+        needs_grant: dict[int, list[_Unit]] = {}
         options: list[list[_Unit]] = []
-        for requirement in requirements:
+        for index, requirement in enumerate(requirements):
             feasible = [feasible_by_root[rid] for rid in requirement.ids if rid in feasible_by_root]
             gated = [blocked_by_root[rid] for rid in requirement.ids if rid in blocked_by_root]
             if not feasible and not gated:
                 unmet.append(requirement.need)
             elif not feasible:
-                needs_grant.append((requirement, gated))
+                needs_grant[index] = gated
             options.append(sorted(feasible, key=lambda unit: rank[unit.root]))
 
         if unmet:
             return SelectionResult(
                 (), "no candidate can fulfil: " + "; ".join(unmet) + _judged(requirements), status="abstain"
             )
+        if needs_grant and self.extra_candidates:
+            # One more look before asking a person: the next candidates in rank
+            # order that need no grant, judged for the blocked requirements only.
+            extras = eligible[self.max_candidates : self.max_candidates + self.extra_candidates]
+            permitted = {unit.root: unit for unit in _build_units(extras, pool, ctx, [])[0]}
+            shown = [result for result in extras if result.resource.metadata.id in permitted]
+            rank.update({r.resource.metadata.id: len(candidates) + position for position, r in enumerate(shown)})
+            pending = sorted(needs_grant)
+            credited = self._judge_extras(ctx.task, [requirements[index].need for index in pending], shown)
+            revised = list(requirements)
+            for index, ids in zip(pending, credited):
+                if ids:
+                    options[index] = [permitted[rid] for rid in ids]
+                    revised[index] = Requirement(requirements[index].need, requirements[index].ids + ids)
+                    del needs_grant[index]
+            requirements = tuple(revised)
+            self.last_requirements = requirements
         if needs_grant:
             missing: set[str] = set()
             parts = []
-            for requirement, gated in needs_grant:
+            for index, gated in sorted(needs_grant.items()):
                 cheapest = min(gated, key=lambda unit: (len(unit.missing_permissions), rank[unit.root]))
                 missing |= cheapest.missing_permissions
-                parts.append(f"{requirement.need} needs {', '.join(sorted(cheapest.missing_permissions))}")
+                parts.append(f"{requirements[index].need} needs {', '.join(sorted(cheapest.missing_permissions))}")
             return SelectionResult(
                 (),
                 "only candidates without granted permissions can fulfil: " + "; ".join(parts)
@@ -240,13 +299,40 @@ class RequirementCoverageSelector(_LLMFailureTracker, SetSelector):
         )
 
     def _judge(self, task: str, candidates: list[SearchResult]) -> tuple[Requirement, ...] | None:
-        prompt = _prompt(task, candidates)
-        key = hashlib.sha256(json.dumps([_SYSTEM, prompt], ensure_ascii=False).encode("utf-8")).hexdigest()
+        cached = self._reply(_SYSTEM, _prompt(task, candidates))
+        if not cached:
+            return None
+        requirements = parse_requirements(cached, [r.resource.metadata.id for r in candidates])
+        if not requirements:
+            self._record_failure("requirement judgment", ValueError("reply listed no requirements"))
+            return None
+        return requirements[: self.max_requirements]
+
+    def _judge_extras(self, task: str, needs: list[str], extras: list[SearchResult]) -> list[tuple[str, ...]]:
+        """The extra candidates credited with each need, in the order of ``needs``.
+
+        Nothing is credited when there are no extras or the call fails: the
+        first judgment then stands and the selection escalates as before.
+        """
+
+        if not extras:
+            return [() for _ in needs]
+        numbered = "\n".join(f"{position}. {need}" for position, need in enumerate(needs, start=1))
+        prompt = _prompt(task, extras).replace("\n\nCandidates:", f"\n\nRequirements:\n{numbered}\n\nCandidates:", 1)
+        reply = self._reply(_EXTRA_SYSTEM, prompt)
+        return parse_matches(reply, len(needs), [r.resource.metadata.id for r in extras])
+
+    def _reply(self, system_template: str, prompt: str) -> str:
+        """The judge's reply to ``prompt``, cached; empty when the call failed."""
+
+        self.last_llm_calls += 1
+        system = system_template.format(strict=_STRICT if self.judge == "strict" else "")
+        key = hashlib.sha256(json.dumps([system, prompt], ensure_ascii=False).encode("utf-8")).hexdigest()
         cached = self.cache.get(key)
         if cached is None:
             try:
                 response = self.llm.complete(
-                    [ChatMessage(role="system", content=_SYSTEM), ChatMessage(role="user", content=prompt)]
+                    [ChatMessage(role="system", content=system), ChatMessage(role="user", content=prompt)]
                 )
                 cached = response.content
             except BudgetExceededError:
@@ -255,13 +341,7 @@ class RequirementCoverageSelector(_LLMFailureTracker, SetSelector):
                 self._record_failure("requirement judgment", error)
                 cached = ""
             self.cache[key] = cached
-        if not cached:
-            return None
-        requirements = parse_requirements(cached, [r.resource.metadata.id for r in candidates])
-        if not requirements:
-            self._record_failure("requirement judgment", ValueError("reply listed no requirements"))
-            return None
-        return requirements[: self.max_requirements]
+        return cached
 
 
 def _prompt(task: str, candidates: list[SearchResult]) -> str:
@@ -309,6 +389,38 @@ def parse_requirements(text: str, valid_ids: list[str]) -> tuple[Requirement, ..
         credited = tuple(dict.fromkeys(item for item in ids if isinstance(item, str) and item in valid))
         parsed.append(Requirement(need.strip(), credited))
     return tuple(parsed)
+
+
+def parse_matches(text: str, count: int, valid_ids: list[str]) -> list[tuple[str, ...]]:
+    """Parse the second call's reply: the valid ids credited to requirements 1..``count``.
+
+    As in ``parse_requirements`` the last JSON object with a ``matches`` list
+    wins; a missing or malformed entry credits nothing.
+    """
+
+    entries: list[Any] = []
+    decoder = json.JSONDecoder()
+    position = text.find("{")
+    while position != -1:
+        try:
+            payload: Any
+            payload, end = decoder.raw_decode(text, position)
+        except ValueError:
+            position = text.find("{", position + 1)
+            continue
+        if isinstance(payload, dict) and isinstance(payload.get("matches"), list):
+            entries = payload["matches"]
+        position = text.find("{", end)
+    valid = set(valid_ids)
+    credited: list[tuple[str, ...]] = [() for _ in range(count)]
+    for entry in entries:
+        if not isinstance(entry, dict) or not isinstance(entry.get("ids"), list):
+            continue
+        number = entry.get("requirement")
+        if isinstance(number, bool) or not isinstance(number, int) or not 1 <= number <= count:
+            continue
+        credited[number - 1] = tuple(dict.fromkeys(i for i in entry["ids"] if isinstance(i, str) and i in valid))
+    return credited
 
 
 def _judged(requirements: tuple[Requirement, ...]) -> str:

@@ -8,7 +8,7 @@ import unittest
 from marmo_core import LLMResponse, MockLLMProvider, ResourceDefinition, SearchResult, SelectionContext
 from marmo_core.errors import ProviderError
 from marmo_core.llm import LLMProvider
-from marmo_core.requirement_coverage import RequirementCoverageSelector, parse_requirements
+from marmo_core.requirement_coverage import RequirementCoverageSelector, parse_matches, parse_requirements
 
 
 def _resource(resource_id: str, kind: str = "tool", **overrides) -> ResourceDefinition:
@@ -166,6 +166,113 @@ class RequirementCoverageSelectorTests(unittest.TestCase):
             RequirementCoverageSelector(llm, per_requirement="some")
         with self.assertRaises(ValueError):
             RequirementCoverageSelector(llm, max_candidates=0)
+
+
+def _two_calls(first: list[tuple[str, list[str]]], second: list[tuple[int, list[str]]]) -> MockLLMProvider:
+    return MockLLMProvider(script=[
+        LLMResponse(content=json.dumps({"requirements": [{"need": need, "ids": ids} for need, ids in first]})),
+        LLMResponse(content=json.dumps({"matches": [{"requirement": n, "ids": ids} for n, ids in second]})),
+    ])
+
+
+class ExtraCandidatesTests(unittest.TestCase):
+    """Before escalating, the next permitted candidates are judged once."""
+
+    def _pool(self) -> list[SearchResult]:
+        return _results(
+            _resource("tool.blocked", required_permissions=["net.external"]),
+            _resource("tool.also-blocked", required_permissions=["net.external"]),
+            _resource("tool.permitted"),
+        )
+
+    def test_a_permitted_extra_candidate_replaces_the_escalation(self) -> None:
+        llm = _two_calls([("send the report", ["tool.blocked"])], [(1, ["tool.permitted"])])
+        selector = RequirementCoverageSelector(llm, max_candidates=1, extra_candidates=2)
+        selection = selector.select(self._pool(), context=SelectionContext(task="t"))
+        self.assertEqual((selection.status, _ids(selection)), ("selected", {"tool.permitted"}))
+        self.assertEqual(selector.last_llm_calls, 2)
+        self.assertEqual(selector.last_requirements[0].ids, ("tool.blocked", "tool.permitted"))
+
+    def test_only_permitted_extras_are_shown_and_only_blocked_requirements_are_asked(self) -> None:
+        llm = _two_calls([("send the report", ["tool.blocked"])], [(1, [])])
+        RequirementCoverageSelector(llm, max_candidates=1, extra_candidates=2).select(
+            self._pool(), context=SelectionContext(task="t"))
+        prompt = llm.requests[1]["messages"][-1]["content"]
+        self.assertIn("1. send the report", prompt)
+        self.assertIn("id=tool.permitted", prompt)
+        self.assertNotIn("tool.also-blocked", prompt)
+
+    def test_it_still_escalates_when_no_extra_candidate_is_credited(self) -> None:
+        llm = _two_calls([("send the report", ["tool.blocked"])], [(1, [])])
+        selector = RequirementCoverageSelector(llm, max_candidates=1, extra_candidates=2)
+        selection = selector.select(self._pool(), context=SelectionContext(task="t"))
+        self.assertEqual((selection.status, selection.missing_permissions), ("escalate", ("net.external",)))
+        self.assertEqual(selector.last_llm_calls, 2)
+
+    def test_one_unresolved_requirement_keeps_the_escalation(self) -> None:
+        results = _results(
+            _resource("tool.blocked", required_permissions=["net.external"]),
+            _resource("tool.pay", required_permissions=["pay.send"]),
+            _resource("tool.permitted"),
+        )
+        llm = _two_calls([("send the report", ["tool.blocked"]), ("pay the invoice", ["tool.pay"])],
+                         [(1, ["tool.permitted"]), (2, [])])
+        selection = RequirementCoverageSelector(llm, max_candidates=2, extra_candidates=1).select(
+            results, context=SelectionContext(task="t"))
+        self.assertEqual((selection.status, selection.missing_permissions), ("escalate", ("pay.send",)))
+
+    def test_no_second_call_without_a_blocked_requirement_or_with_the_option_off(self) -> None:
+        feasible = _judge(("send the report", ["tool.permitted"]))
+        selector = RequirementCoverageSelector(feasible, max_candidates=3, extra_candidates=2)
+        selector.select(self._pool(), context=SelectionContext(task="t"))
+        self.assertEqual(selector.last_llm_calls, 1)
+        off = _judge(("send the report", ["tool.blocked"]))
+        selector = RequirementCoverageSelector(off, max_candidates=1)
+        self.assertEqual(selector.select(self._pool(), context=SelectionContext(task="t")).status, "escalate")
+        self.assertEqual(selector.last_llm_calls, 1)
+
+    def test_an_unmet_requirement_abstains_without_a_second_call(self) -> None:
+        llm = _judge(("send the report", ["tool.blocked"]), ("translate it", []))
+        selector = RequirementCoverageSelector(llm, max_candidates=1, extra_candidates=2)
+        self.assertEqual(selector.select(self._pool(), context=SelectionContext(task="t")).status, "abstain")
+        self.assertEqual(selector.last_llm_calls, 1)
+
+    def test_a_failed_second_call_leaves_the_escalation(self) -> None:
+        llm = MockLLMProvider(script=[
+            LLMResponse(content=json.dumps({"requirements": [{"need": "send", "ids": ["tool.blocked"]}]})),
+            LLMResponse(content="no json here"),
+        ])
+        selection = RequirementCoverageSelector(llm, max_candidates=1, extra_candidates=2).select(
+            self._pool(), context=SelectionContext(task="t"))
+        self.assertEqual(selection.status, "escalate")
+
+
+class JudgePromptTests(unittest.TestCase):
+    def test_strict_judge_adds_the_instruction_and_standard_keeps_the_prompt(self) -> None:
+        results = _results(_resource("tool.a"))
+        systems = {}
+        for judge in ("standard", "strict"):
+            llm = _judge(("do it", ["tool.a"]))
+            RequirementCoverageSelector(llm, judge=judge).select(results, context=SelectionContext(task="t"))
+            systems[judge] = llm.requests[0]["messages"][0]["content"]
+        self.assertNotIn("When in doubt, leave the candidate out.", systems["standard"])
+        self.assertIn("When in doubt, leave the candidate out.", systems["strict"])
+        self.assertIn('{"requirements": [{"need": "...", "ids": ["..."]}]}', systems["standard"])
+
+    def test_invalid_options_are_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            RequirementCoverageSelector(MockLLMProvider(), judge="lenient")
+        with self.assertRaises(ValueError):
+            RequirementCoverageSelector(MockLLMProvider(), extra_candidates=-1)
+
+
+class ParseMatchesTests(unittest.TestCase):
+    def test_last_object_wins_and_bad_entries_credit_nothing(self) -> None:
+        text = ('{"matches": [{"requirement": 1, "ids": ["a"]}]} Correction: '
+                '{"matches": [{"requirement": 1, "ids": ["b", "zzz", "b"]}, {"requirement": 5, "ids": ["a"]}, '
+                '{"requirement": true, "ids": ["a"]}, "junk"]}')
+        self.assertEqual(parse_matches(text, 2, ["a", "b"]), [("b",), ()])
+        self.assertEqual(parse_matches("nothing", 1, ["a"]), [()])
 
 
 if __name__ == "__main__":
