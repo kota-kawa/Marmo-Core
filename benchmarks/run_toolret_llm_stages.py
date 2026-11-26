@@ -113,7 +113,7 @@ def main() -> None:
     )
     parser.add_argument("--per-subset", type=int, default=60)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--model", default="sonnet")
+    parser.add_argument("--model", default="sonnet", help="sonnet or haiku (or a full id of those families)")
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--base", default="hybrid-0.5")
     parser.add_argument("--embed-model", default="sentence-transformers/all-MiniLM-L6-v2")
@@ -127,7 +127,10 @@ def main() -> None:
     if args.split != "all":
         queries = [query for query in queries if split_of(query.id) == args.split]
     tasks = list(dict.fromkeys(query.query for query in queries))
-    llm = ClaudeCLIProvider(args.model)
+    try:
+        llm = ClaudeCLIProvider(args.model)
+    except ValueError as error:
+        parser.error(str(error))
     lock = threading.Lock()
     jobs: list = []
     caches: dict[Path, LockedCache] = {}

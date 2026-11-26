@@ -61,14 +61,17 @@ python3 benchmarks/run_forgery_benchmark.py                                  # L
 |---|---|
 | 計算資源 | CPU 4 コア、RAM 15GB、GPU なし |
 | LLM | `claude -p`（`benchmarks/_claude_cli.py` の `ClaudeCLIProvider`）。API キー不要 |
-| 並列度 | 6〜8 並列で約 1.4 呼び出し/秒（Sonnet、Opus、Haiku とも同程度） |
+| 並列度 | 6〜8 並列で約 1.4 呼び出し/秒（Sonnet。Haiku も同程度） |
+| 使えるモデル | Sonnet と Haiku だけ（`ClaudeCLIProvider` がそれ以外を実行前に拒否する） |
 | 利用上限 | 5 時間ごとの上限と週の上限がある。数千回で達し、`You've hit your 5-hour limit` などで失敗する |
 | 外部ネットワーク | プロキシ経由で HuggingFace（データとモデル）と PyPI に届く |
 | 持続性 | ワーカーが再起動すると、裏で動くプロセスが止まる。リポジトリ内のファイル（`benchmarks/cache/` を含む）と scratchpad は残る |
 
 - **LLM の呼び方**: 評価対象と同じライブラリ部品（`LLMQueryDecomposer`、`LLMSetSelector` など）を、
-  `ClaudeCLIProvider` で動かす。モデルは `--model sonnet` / `opus` / `haiku` で切り替える。
-  アノテータと評価対象は別のモデルにする（例: ラベルは Opus、手法は Sonnet）。
+  `ClaudeCLIProvider` で動かす。モデルは `--model sonnet` / `haiku` で切り替える。
+  `claude-haiku-5-5` のような同じ系列の正式 ID も使える。利用上限の中に収めるため、Opus などそれ以外のモデルは使わない。
+  アノテータと評価対象は別のモデルにする（例: ラベルは Sonnet、手法は Haiku、またはその逆）。
+  この制限より前の ToolRet-SAE（研究ブランチ）のラベルは Opus で付けたものである。
 - **呼び出し数の見積もり**: 1,689 クエリの分解で約 20 分、ラベル付けで約 30 分（並列 6〜8）だった。
   上限に達したら、リセット時刻の後に同じコマンドを再実行する（キャッシュ済みの分は呼ばれない）。
   優先順位を決め、大きな条件（オラクル候補など）は一部のクエリに絞る。
