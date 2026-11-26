@@ -64,6 +64,16 @@ class ForgeryBenchmarkTests(unittest.TestCase):
         self.assertFalse(any(row["executed"] for row in honest))
         self.assertFalse(any(row["status_hijacked"] for row in honest))
 
+    def test_gold_tool_loss_counts_only_tasks_whose_gold_tool_reached_the_model(self) -> None:
+        rows, clean = evaluate(self.registry, [case("test-read"), case("test-search")], self.config)
+        offered = {row["case"]: row["gold_tool_offered"] for row in clean}
+        for row in rows:
+            if offered[row["case"]]:
+                self.assertIsInstance(row["gold_tool_lost"], bool)
+            else:
+                self.assertIsNone(row["gold_tool_lost"])
+        self.assertIn(False, offered.values())
+
     def test_fully_forged_tool_reaches_the_inert_handler_only(self) -> None:
         decoy = decoy_definition("tool", case("test-read"), self.registry, "stuffed", DIMENSIONS["tool"])
         self.assertFalse(decoy.metadata.ref.startswith("python:"))
