@@ -274,6 +274,7 @@ class CachedEmbeddingProvider:
         self.model_name = model
         self._model = TextEmbedding(model, threads=threads)
         self.max_chars = max_chars
+        self.checkpoint_every = 2000
         slug = f"{model.replace('/', '__')}-{max_chars}"
         self.cache_dir = cache_dir or Path(__file__).parent / "cache" / "embeddings"
         self._keys_path = self.cache_dir / f"{slug}.keys.json"
@@ -297,8 +298,13 @@ class CachedEmbeddingProvider:
         if missing:
             unique = sorted(dict(missing).items(), key=lambda item: len(item[1]))
             vectors = self._model.embed([text for _, text in unique], batch_size=32)
-            for (key, _), vector in zip(unique, vectors):
+            for position, ((key, _), vector) in enumerate(zip(unique, vectors), start=1):
                 self._pending[key] = [float(value) for value in vector]
+                # Embedding the corpus takes up to hours on a CPU; persist as it
+                # goes so an interrupted run resumes instead of starting over.
+                if position % self.checkpoint_every == 0:
+                    self.save()
+                    print(f"  embedded {position}/{len(unique)} with {self.model_name}", flush=True)
         output = []
         for key in keys:
             if key in self._pending:
