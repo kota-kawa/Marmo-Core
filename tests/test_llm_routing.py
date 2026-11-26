@@ -523,6 +523,10 @@ class ParseSetReplyTests(unittest.TestCase):
         text = 'Use {braces} sparingly. {"status": "selected", "ids": ["a"], "reason": "r"}'
         self.assertEqual(_parse_set_reply(text, ["a"]), ("selected", ["a"], "r"))
 
+    def test_an_example_object_after_the_answer_does_not_replace_it(self) -> None:
+        text = '{"status": "selected", "ids": ["a"], "reason": "r"}\nfor example {"x": 1}'
+        self.assertEqual(_parse_set_reply(text, ["a"]), ("selected", ["a"], "r"))
+
     def test_non_json_falls_back_to_id_extraction(self) -> None:
         self.assertEqual(
             _parse_set_reply("use b then a", ["a", "b"]),

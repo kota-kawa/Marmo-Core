@@ -595,10 +595,12 @@ def _parse_set_reply(text: str, valid_ids: list[str]) -> tuple[str, list[str], s
 
 
 def _last_json_object(text: str) -> dict[str, object] | None:
-    """The last top-level JSON object in ``text``, or ``None`` when there is none.
+    """The last JSON object in ``text`` that answers, or ``None`` when there is none.
 
-    Objects nested inside an earlier one are not candidates, and text that
-    only looks like an object (a stray brace in prose) is skipped.
+    An answer has a ``status`` or ``ids`` key, so an example object echoed
+    after the answer does not replace it. Objects nested inside an answer are
+    not candidates, and text that only looks like an object (a stray brace in
+    prose) is skipped.
     """
 
     decoder = json.JSONDecoder()
@@ -610,9 +612,11 @@ def _last_json_object(text: str) -> dict[str, object] | None:
         except (ValueError, RecursionError):
             position = text.find("{", position + 1)
             continue
-        if isinstance(parsed, dict):
+        if "status" in parsed or "ids" in parsed:
             last = parsed
-        position = text.find("{", end)
+            position = text.find("{", end)
+        else:
+            position = text.find("{", position + 1)
     return last
 
 
