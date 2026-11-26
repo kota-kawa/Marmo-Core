@@ -83,11 +83,11 @@ marmo validate resources/memory resources/tools resources/agents
 2. `CHANGELOG.md` に `## [x.y.z] - YYYY-MM-DD` の節を追加し、ファイル末尾の比較リンクも更新します。日付付きの節がない新バージョンは `release_check.py` が失敗します。
 3. 上記の検査を実行してから、コミットし `main` にマージします。
 4. 必要に応じて `Release` ワークフローを手動で実行（`workflow_dispatch`）し、先に TestPyPI へ公開して、プロジェクトページの表示を確認します。
-5. タグを作成して push します。
+5. 最新の `main` をチェックアウトし、リリースするコミットにタグを付けて push します。
 
    ```bash
-   git tag v0.4.0
-   git push origin v0.4.0
+   marmo_release_tag="v$(python -c 'from marmo_core import __version__; print(__version__)')"
+   git tag "$marmo_release_tag" && git push origin "$marmo_release_tag"
    ```
 
 アップロードの実行前に `pypi` 環境での承認が必要です。

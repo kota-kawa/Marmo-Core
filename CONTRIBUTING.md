@@ -131,11 +131,11 @@ packaged version disagree.
 3. Run the checks above, then commit and merge to `main`.
 4. Optionally run the `Release` workflow manually (`workflow_dispatch`) to
    publish to TestPyPI first and verify the rendered project page.
-5. Tag and push:
+5. From an up-to-date `main` checkout, tag and push the release commit.
 
    ```bash
-   git tag v0.4.0
-   git push origin v0.4.0
+   marmo_release_tag="v$(python -c 'from marmo_core import __version__; print(__version__)')"
+   git tag "$marmo_release_tag" && git push origin "$marmo_release_tag"
    ```
 
 The `pypi` environment requires an approval before the upload step runs.
