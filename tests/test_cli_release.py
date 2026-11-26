@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
 import json
@@ -8,6 +8,7 @@ import os
 import shlex
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from marmo_core import Kernel, MockLLMProvider, ResourceRegistry
 from marmo_core.cli import (
@@ -40,6 +41,70 @@ def _resource(resource_id: str = "memory.test.default") -> dict:
         "ref": "memory://test/default",
         "tags": ["test"],
     }
+
+
+class CliLanguageTests(unittest.TestCase):
+    def capture_cli(self, language: str, *args: str) -> tuple[int, str, str]:
+        stdout, stderr = StringIO(), StringIO()
+        with patch.dict(os.environ, {"MARMO_CLI_LANGUAGE": language}):
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                try:
+                    status = main(list(args))
+                except SystemExit as exc:
+                    assert isinstance(exc.code, int)
+                    status = exc.code
+        return status, stdout.getvalue(), stderr.getvalue()
+
+    def test_japanese_help_covers_top_level_subcommands_and_nested_commands(self) -> None:
+        for args, translation in (
+            ((), "統合リソース CLI"),
+            (("run",), "実行する目標を自然言語で記述する"),
+            (("resume",), "確認待ちの操作を承認する"),
+            (("package", "verify"), "marmo-package.json があるディレクトリ"),
+        ):
+            with self.subTest(args=args):
+                status, stdout, stderr = self.capture_cli("ja", *args, "--help")
+                self.assertEqual((status, stderr), (0, ""))
+                self.assertIn(translation, stdout)
+                self.assertIn("使い方:", stdout)
+                self.assertIn("オプション", stdout)
+                self.assertIn("--help", stdout)
+
+    def test_english_help_and_error_are_still_available(self) -> None:
+        status, stdout, stderr = self.capture_cli("en", "run", "--help")
+        self.assertEqual((status, stderr), (0, ""))
+        self.assertIn("natural-language goal to execute", stdout)
+        args = ("run", "--task", "test", "--no-default-resources", "--tool-args", "[]")
+        self.assertEqual(
+            self.capture_cli("en", *args),
+            (2, "", "error: --tool-args must be a JSON object mapping tool ids to argument objects\n"),
+        )
+
+    def test_japanese_input_errors_keep_exit_code_and_option_names(self) -> None:
+        status, stdout, stderr = self.capture_cli("ja", "run")
+        self.assertEqual((status, stdout), (2, ""))
+        self.assertIn("引数エラー", stderr)
+        self.assertIn("必須の引数を指定してください: --task", stderr)
+        status, stdout, stderr = self.capture_cli(
+            "ja", "run", "--task", "test", "--no-default-resources", "--tool-args", "[]"
+        )
+        self.assertEqual((status, stdout), (2, ""))
+        self.assertIn("--tool-args には", stderr)
+        self.assertIn("JSON オブジェクト", stderr)
+
+    def test_language_changes_task_labels_but_keeps_json_output(self) -> None:
+        args = ("run", "--task", "test", "--no-default-resources")
+        status, stdout, stderr = self.capture_cli("ja", *args)
+        self.assertEqual((status, stderr), (0, ""))
+        self.assertIn("状態: completed", stdout)
+        self.assertIn("監査:", stdout)
+
+        list_args = ("list", "--no-default-resources", "--format", "json")
+        english = self.capture_cli("en", *list_args)
+        japanese = self.capture_cli("ja", *list_args)
+        self.assertEqual(english[:2], japanese[:2])
+        self.assertEqual(json.loads(japanese[1]), [])
+        self.assertIn("リソース定義が見つかりませんでした", japanese[2])
 
 
 class CliReleaseBehaviorTests(unittest.TestCase):
