@@ -23,6 +23,7 @@ Marmo-Core は、Object Routing を実装する公開 Python ライブラリで�
 - `docs/knowledge/debugging.md`／実モデル・検索・CLI・パッケージングの不具合の切り分け手順／動作がおかしいときに、コードを読み始める前に読む。
 - `docs/knowledge/contracts-and-compatibility.md`／公開 API、リソース定義、状態ファイル、監査ログ、CLI 終了コードの互換性契約と変更手順／これらの表面に触る変更の前に読む。
 - `docs/knowledge/parallel_work.md`／git worktree で作業を分けた後の運用手順／並行作業をするときに読む。
+- `docs/knowledge/experiment_runbook.md`／実験の段取り、評価設計の約束、Claude Code クラウドセッションとローカル PC での LLM・計算資源・長時間ジョブの扱いの違い／ベンチマークや評価実験を始める・再開する前に読む。
 - `docs/knowledge/lessons_from_history.md`／git 履歴と PR から抽出した過去の失敗と教訓／同じ轍を踏まないために、該当領域を触る前に読む。
 - `docs/decisions/README.md`／重要な技術判断（ADR）の索引／判断を変更・追加するときは既存 ADR を確認し、理由と影響を更新・記録する。
 - `docs/decisions/0009-task-budget-reservations.md`／タスク予算の単位・予約・精算と再開時の不変条件／予算処理を変更するとき。
