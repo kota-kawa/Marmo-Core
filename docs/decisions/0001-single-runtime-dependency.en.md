@@ -4,7 +4,7 @@
 
 - Status: Superseded by [0007](0007-minimal-runtime-dependencies-with-user-approval.en.md)
 - Date: 2026-08-07
-- Evidence: 49076f8b (Document minimal dependency policy), `CONTRIBUTING.md` Setup, `pyproject.toml`
+- Evidence: 49076f8b (Document minimal dependency policy), [Setup in the contributing guide](../../CONTRIBUTING.md#setup), `pyproject.toml`
 
 ## Context
 

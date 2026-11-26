@@ -4,7 +4,7 @@
 
 - 状態: Superseded（`0007-minimal-runtime-dependencies-with-user-approval.md`）
 - 日付: 2026-08-07
-- 根拠: 49076f8b（Document minimal dependency policy）、`CONTRIBUTING.md` Setup、`pyproject.toml`
+- 根拠: 49076f8b（Document minimal dependency policy）、[貢献ガイドのセットアップ](../../CONTRIBUTING.ja.md#セットアップ)、`pyproject.toml`
 
 ## 文脈
 
