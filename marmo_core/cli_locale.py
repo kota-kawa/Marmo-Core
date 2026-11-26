@@ -152,6 +152,7 @@ _JAPANESE = {
     "invalid numeric limit for {kind}: {raw_limit}": "{kind} の上限を整数で指定してください（{raw_limit}）",
     "limit for {kind} must be non-negative": "{kind} の上限には 0 以上の値を指定してください",
     # Validation from the configuration objects constructed by the CLI.
+    "goal must be a non-empty string": "--task には空でない目標を指定してください",
     "context_token_budget must be positive or None": "--context-token-budget には正の整数を指定してください",
     "timeout_seconds must be positive": "--timeout には 0 より大きい秒数を指定してください",
     "max_input_repairs must be >= 0": "--max-input-repairs には 0 以上の整数を指定してください",
