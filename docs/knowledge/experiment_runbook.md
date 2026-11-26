@@ -69,7 +69,7 @@ python3 benchmarks/run_forgery_benchmark.py                                  # L
 
 - **LLM の呼び方**: 評価対象と同じライブラリ部品（`LLMQueryDecomposer`、`LLMSetSelector` など）を、
   `ClaudeCLIProvider` で動かす。モデルは `--model sonnet` / `haiku` で切り替える。
-  利用上限の中に収めるため、Opus などそれ以外のモデルは使わない（系列の正式 ID も可）。
+  `claude-haiku-5-5` のような同じ系列の正式 ID も使える。利用上限の中に収めるため、Opus などそれ以外のモデルは使わない。
   アノテータと評価対象は別のモデルにする（例: ラベルは Sonnet、手法は Haiku、またはその逆）。
   この制限より前の ToolRet-SAE（研究ブランチ）のラベルは Opus で付けたものである。
 - **呼び出し数の見積もり**: 1,689 クエリの分解で約 20 分、ラベル付けで約 30 分（並列 6〜8）だった。
