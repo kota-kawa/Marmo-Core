@@ -1,5 +1,7 @@
 # 0004. サードパーティ Skill コーパスは git と配布物から除外する
 
+[English](0004-third-party-skill-corpus-not-redistributed.en.md)
+
 - 状態: Accepted
 - 日付: 2026-09-17
 - 根拠: 6ef6ad03、583473e1（CHANGELOG 0.5.0）、`MANIFEST.in` のコメント、`benchmarks/README.md`

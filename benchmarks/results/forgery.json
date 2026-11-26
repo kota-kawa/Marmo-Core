@@ -48,7 +48,7 @@
             "execution_reach_rate": 0.0,
             "gold_displacement_rate": 0.138,
             "status_change_rate": 0.307,
-            "gold_tool_loss_rate": 0.214,
+            "gold_tool_loss_rate": 0.231,
             "abstain_escalate_hijack_rate": 0.0
           },
           "full_forgery": {
@@ -61,7 +61,7 @@
             "execution_reach_rate": 0.534,
             "gold_displacement_rate": 0.287,
             "status_change_rate": 0.17,
-            "gold_tool_loss_rate": 0.643,
+            "gold_tool_loss_rate": 0.692,
             "abstain_escalate_hijack_rate": 1.0
           },
           "partial_forgery": {
@@ -74,7 +74,7 @@
             "execution_reach_rate": 0.0,
             "gold_displacement_rate": 0.207,
             "status_change_rate": 0.261,
-            "gold_tool_loss_rate": 0.355,
+            "gold_tool_loss_rate": 0.382,
             "abstain_escalate_hijack_rate": 0.5
           },
           "any_forgery": {
@@ -87,7 +87,7 @@
             "execution_reach_rate": 0.036,
             "gold_displacement_rate": 0.212,
             "status_change_rate": 0.255,
-            "gold_tool_loss_rate": 0.374,
+            "gold_tool_loss_rate": 0.403,
             "abstain_escalate_hijack_rate": 0.533
           }
         },
@@ -102,7 +102,7 @@
             "execution_reach_rate": null,
             "gold_displacement_rate": 0.086,
             "status_change_rate": 0.359,
-            "gold_tool_loss_rate": 0.5,
+            "gold_tool_loss_rate": 0.538,
             "abstain_escalate_hijack_rate": 0.0
           },
           "full_forgery": {
@@ -115,7 +115,7 @@
             "execution_reach_rate": null,
             "gold_displacement_rate": 0.114,
             "status_change_rate": 0.192,
-            "gold_tool_loss_rate": 0.214,
+            "gold_tool_loss_rate": 0.231,
             "abstain_escalate_hijack_rate": 1.0
           },
           "partial_forgery": {
@@ -128,7 +128,7 @@
             "execution_reach_rate": null,
             "gold_displacement_rate": 0.114,
             "status_change_rate": 0.308,
-            "gold_tool_loss_rate": 0.583,
+            "gold_tool_loss_rate": 0.628,
             "abstain_escalate_hijack_rate": 0.5
           },
           "any_forgery": {
@@ -141,7 +141,7 @@
             "execution_reach_rate": null,
             "gold_displacement_rate": 0.114,
             "status_change_rate": 0.291,
-            "gold_tool_loss_rate": 0.531,
+            "gold_tool_loss_rate": 0.571,
             "abstain_escalate_hijack_rate": 0.571
           }
         },
@@ -156,7 +156,7 @@
             "execution_reach_rate": 0.0,
             "gold_displacement_rate": 0.1,
             "status_change_rate": 0.359,
-            "gold_tool_loss_rate": 0.429,
+            "gold_tool_loss_rate": 0.462,
             "abstain_escalate_hijack_rate": 0.0
           },
           "full_forgery": {
@@ -169,7 +169,7 @@
             "execution_reach_rate": 0.564,
             "gold_displacement_rate": 0.1,
             "status_change_rate": 0.205,
-            "gold_tool_loss_rate": 0.214,
+            "gold_tool_loss_rate": 0.231,
             "abstain_escalate_hijack_rate": 1.0
           },
           "partial_forgery": {
@@ -182,7 +182,7 @@
             "execution_reach_rate": 0.0,
             "gold_displacement_rate": 0.1,
             "status_change_rate": 0.308,
-            "gold_tool_loss_rate": 0.512,
+            "gold_tool_loss_rate": 0.551,
             "abstain_escalate_hijack_rate": 0.5
           },
           "any_forgery": {
@@ -195,7 +195,7 @@
             "execution_reach_rate": 0.081,
             "gold_displacement_rate": 0.1,
             "status_change_rate": 0.293,
-            "gold_tool_loss_rate": 0.469,
+            "gold_tool_loss_rate": 0.505,
             "abstain_escalate_hijack_rate": 0.571
           }
         }
@@ -315,7 +315,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.143,
           "status_change_rate": 0.54,
-          "gold_tool_loss_rate": 0.429,
+          "gold_tool_loss_rate": 0.462,
           "abstain_escalate_hijack_rate": 0.0
         },
         "agent/stuffed/permissions": {
@@ -328,7 +328,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.143,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.214,
+          "gold_tool_loss_rate": 0.231,
           "abstain_escalate_hijack_rate": 1.0
         },
         "agent/stuffed/permissions+side_effect": {
@@ -341,7 +341,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.143,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.214,
+          "gold_tool_loss_rate": 0.231,
           "abstain_escalate_hijack_rate": 1.0
         },
         "agent/stuffed/side_effect": {
@@ -354,7 +354,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.143,
           "status_change_rate": 0.58,
-          "gold_tool_loss_rate": 0.5,
+          "gold_tool_loss_rate": 0.538,
           "abstain_escalate_hijack_rate": 0.0
         },
         "agent/stuffed/trust": {
@@ -367,7 +367,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.143,
           "status_change_rate": 0.6,
-          "gold_tool_loss_rate": 0.5,
+          "gold_tool_loss_rate": 0.538,
           "abstain_escalate_hijack_rate": 0.0
         },
         "agent/stuffed/trust+permissions": {
@@ -380,7 +380,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.143,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.929,
+          "gold_tool_loss_rate": 1.0,
           "abstain_escalate_hijack_rate": 1.0
         },
         "agent/stuffed/trust+permissions+side_effect": {
@@ -393,7 +393,7 @@
           "execution_reach_rate": 0.82,
           "gold_displacement_rate": 0.143,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.214,
+          "gold_tool_loss_rate": 0.231,
           "abstain_escalate_hijack_rate": 1.0
         },
         "agent/stuffed/trust+side_effect": {
@@ -406,7 +406,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.143,
           "status_change_rate": 0.66,
-          "gold_tool_loss_rate": 0.714,
+          "gold_tool_loss_rate": 0.769,
           "abstain_escalate_hijack_rate": 0.0
         },
         "skill/clone/honest": {
@@ -523,7 +523,7 @@
           "execution_reach_rate": null,
           "gold_displacement_rate": 0.143,
           "status_change_rate": 0.56,
-          "gold_tool_loss_rate": 0.5,
+          "gold_tool_loss_rate": 0.538,
           "abstain_escalate_hijack_rate": 0.0
         },
         "skill/stuffed/permissions": {
@@ -536,7 +536,7 @@
           "execution_reach_rate": null,
           "gold_displacement_rate": 0.19,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.214,
+          "gold_tool_loss_rate": 0.231,
           "abstain_escalate_hijack_rate": 1.0
         },
         "skill/stuffed/permissions+side_effect": {
@@ -549,7 +549,7 @@
           "execution_reach_rate": null,
           "gold_displacement_rate": 0.19,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.214,
+          "gold_tool_loss_rate": 0.231,
           "abstain_escalate_hijack_rate": 1.0
         },
         "skill/stuffed/side_effect": {
@@ -562,7 +562,7 @@
           "execution_reach_rate": null,
           "gold_displacement_rate": 0.19,
           "status_change_rate": 0.64,
-          "gold_tool_loss_rate": 0.643,
+          "gold_tool_loss_rate": 0.692,
           "abstain_escalate_hijack_rate": 0.0
         },
         "skill/stuffed/trust": {
@@ -575,7 +575,7 @@
           "execution_reach_rate": null,
           "gold_displacement_rate": 0.19,
           "status_change_rate": 0.66,
-          "gold_tool_loss_rate": 0.714,
+          "gold_tool_loss_rate": 0.769,
           "abstain_escalate_hijack_rate": 0.0
         },
         "skill/stuffed/trust+permissions": {
@@ -588,7 +588,7 @@
           "execution_reach_rate": null,
           "gold_displacement_rate": 0.19,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.929,
+          "gold_tool_loss_rate": 1.0,
           "abstain_escalate_hijack_rate": 1.0
         },
         "skill/stuffed/trust+permissions+side_effect": {
@@ -601,7 +601,7 @@
           "execution_reach_rate": null,
           "gold_displacement_rate": 0.19,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.214,
+          "gold_tool_loss_rate": 0.231,
           "abstain_escalate_hijack_rate": 1.0
         },
         "skill/stuffed/trust+side_effect": {
@@ -614,7 +614,7 @@
           "execution_reach_rate": null,
           "gold_displacement_rate": 0.19,
           "status_change_rate": 0.68,
-          "gold_tool_loss_rate": 0.786,
+          "gold_tool_loss_rate": 0.846,
           "abstain_escalate_hijack_rate": 0.0
         },
         "tool/clone/honest": {
@@ -770,7 +770,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.053,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.143,
+          "gold_tool_loss_rate": 0.154,
           "abstain_escalate_hijack_rate": null
         },
         "tool/clone/trust+permissions+side_effect": {
@@ -783,7 +783,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.132,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.357,
+          "gold_tool_loss_rate": 0.385,
           "abstain_escalate_hijack_rate": null
         },
         "tool/clone/trust+permissions+side_effect+isolation": {
@@ -796,7 +796,7 @@
           "execution_reach_rate": 0.158,
           "gold_displacement_rate": 0.132,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.357,
+          "gold_tool_loss_rate": 0.385,
           "abstain_escalate_hijack_rate": null
         },
         "tool/clone/trust+side_effect": {
@@ -835,7 +835,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.262,
           "status_change_rate": 0.54,
-          "gold_tool_loss_rate": 0.429,
+          "gold_tool_loss_rate": 0.462,
           "abstain_escalate_hijack_rate": 0.0
         },
         "tool/stuffed/isolation": {
@@ -848,7 +848,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.262,
           "status_change_rate": 0.54,
-          "gold_tool_loss_rate": 0.429,
+          "gold_tool_loss_rate": 0.462,
           "abstain_escalate_hijack_rate": 0.0
         },
         "tool/stuffed/permissions": {
@@ -861,7 +861,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.429,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.643,
+          "gold_tool_loss_rate": 0.692,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/permissions+isolation": {
@@ -874,7 +874,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.429,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.643,
+          "gold_tool_loss_rate": 0.692,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/permissions+side_effect": {
@@ -887,7 +887,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.429,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.786,
+          "gold_tool_loss_rate": 0.846,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/permissions+side_effect+isolation": {
@@ -900,7 +900,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.429,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.786,
+          "gold_tool_loss_rate": 0.846,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/side_effect": {
@@ -913,7 +913,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.286,
           "status_change_rate": 0.6,
-          "gold_tool_loss_rate": 0.5,
+          "gold_tool_loss_rate": 0.538,
           "abstain_escalate_hijack_rate": 0.0
         },
         "tool/stuffed/side_effect+isolation": {
@@ -926,7 +926,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.286,
           "status_change_rate": 0.6,
-          "gold_tool_loss_rate": 0.5,
+          "gold_tool_loss_rate": 0.538,
           "abstain_escalate_hijack_rate": 0.0
         },
         "tool/stuffed/trust": {
@@ -939,7 +939,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.286,
           "status_change_rate": 0.6,
-          "gold_tool_loss_rate": 0.5,
+          "gold_tool_loss_rate": 0.538,
           "abstain_escalate_hijack_rate": 0.0
         },
         "tool/stuffed/trust+isolation": {
@@ -952,7 +952,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.286,
           "status_change_rate": 0.6,
-          "gold_tool_loss_rate": 0.5,
+          "gold_tool_loss_rate": 0.538,
           "abstain_escalate_hijack_rate": 0.0
         },
         "tool/stuffed/trust+permissions": {
@@ -965,7 +965,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.429,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.857,
+          "gold_tool_loss_rate": 0.923,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/trust+permissions+isolation": {
@@ -978,7 +978,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.429,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.929,
+          "gold_tool_loss_rate": 1.0,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/trust+permissions+side_effect": {
@@ -991,7 +991,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.429,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.929,
+          "gold_tool_loss_rate": 1.0,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/trust+permissions+side_effect+isolation": {
@@ -1004,7 +1004,7 @@
           "execution_reach_rate": 0.82,
           "gold_displacement_rate": 0.429,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.929,
+          "gold_tool_loss_rate": 1.0,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/trust+side_effect": {
@@ -1017,7 +1017,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.357,
           "status_change_rate": 0.66,
-          "gold_tool_loss_rate": 0.714,
+          "gold_tool_loss_rate": 0.769,
           "abstain_escalate_hijack_rate": 0.0
         },
         "tool/stuffed/trust+side_effect+isolation": {
@@ -1030,7 +1030,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.357,
           "status_change_rate": 0.66,
-          "gold_tool_loss_rate": 0.714,
+          "gold_tool_loss_rate": 0.769,
           "abstain_escalate_hijack_rate": 0.0
         }
       }
@@ -1049,7 +1049,7 @@
             "execution_reach_rate": 0.0,
             "gold_displacement_rate": 0.138,
             "status_change_rate": 0.307,
-            "gold_tool_loss_rate": 0.214,
+            "gold_tool_loss_rate": 0.231,
             "abstain_escalate_hijack_rate": 0.0
           },
           "full_forgery": {
@@ -1062,7 +1062,7 @@
             "execution_reach_rate": 0.534,
             "gold_displacement_rate": 0.287,
             "status_change_rate": 0.17,
-            "gold_tool_loss_rate": 0.643,
+            "gold_tool_loss_rate": 0.692,
             "abstain_escalate_hijack_rate": 1.0
           },
           "partial_forgery": {
@@ -1075,7 +1075,7 @@
             "execution_reach_rate": 0.0,
             "gold_displacement_rate": 0.184,
             "status_change_rate": 0.258,
-            "gold_tool_loss_rate": 0.347,
+            "gold_tool_loss_rate": 0.374,
             "abstain_escalate_hijack_rate": 0.5
           },
           "any_forgery": {
@@ -1088,7 +1088,7 @@
             "execution_reach_rate": 0.036,
             "gold_displacement_rate": 0.191,
             "status_change_rate": 0.252,
-            "gold_tool_loss_rate": 0.367,
+            "gold_tool_loss_rate": 0.395,
             "abstain_escalate_hijack_rate": 0.533
           }
         },
@@ -1103,7 +1103,7 @@
             "execution_reach_rate": null,
             "gold_displacement_rate": 0.086,
             "status_change_rate": 0.359,
-            "gold_tool_loss_rate": 0.5,
+            "gold_tool_loss_rate": 0.538,
             "abstain_escalate_hijack_rate": 0.0
           },
           "full_forgery": {
@@ -1116,7 +1116,7 @@
             "execution_reach_rate": null,
             "gold_displacement_rate": 0.114,
             "status_change_rate": 0.192,
-            "gold_tool_loss_rate": 0.214,
+            "gold_tool_loss_rate": 0.231,
             "abstain_escalate_hijack_rate": 1.0
           },
           "partial_forgery": {
@@ -1129,7 +1129,7 @@
             "execution_reach_rate": null,
             "gold_displacement_rate": 0.114,
             "status_change_rate": 0.308,
-            "gold_tool_loss_rate": 0.583,
+            "gold_tool_loss_rate": 0.628,
             "abstain_escalate_hijack_rate": 0.5
           },
           "any_forgery": {
@@ -1142,7 +1142,7 @@
             "execution_reach_rate": null,
             "gold_displacement_rate": 0.114,
             "status_change_rate": 0.291,
-            "gold_tool_loss_rate": 0.531,
+            "gold_tool_loss_rate": 0.571,
             "abstain_escalate_hijack_rate": 0.571
           }
         },
@@ -1157,7 +1157,7 @@
             "execution_reach_rate": 0.0,
             "gold_displacement_rate": 0.1,
             "status_change_rate": 0.359,
-            "gold_tool_loss_rate": 0.429,
+            "gold_tool_loss_rate": 0.462,
             "abstain_escalate_hijack_rate": 0.0
           },
           "full_forgery": {
@@ -1170,7 +1170,7 @@
             "execution_reach_rate": 0.564,
             "gold_displacement_rate": 0.1,
             "status_change_rate": 0.205,
-            "gold_tool_loss_rate": 0.214,
+            "gold_tool_loss_rate": 0.231,
             "abstain_escalate_hijack_rate": 1.0
           },
           "partial_forgery": {
@@ -1183,7 +1183,7 @@
             "execution_reach_rate": 0.0,
             "gold_displacement_rate": 0.1,
             "status_change_rate": 0.308,
-            "gold_tool_loss_rate": 0.512,
+            "gold_tool_loss_rate": 0.551,
             "abstain_escalate_hijack_rate": 0.5
           },
           "any_forgery": {
@@ -1196,7 +1196,7 @@
             "execution_reach_rate": 0.081,
             "gold_displacement_rate": 0.1,
             "status_change_rate": 0.293,
-            "gold_tool_loss_rate": 0.469,
+            "gold_tool_loss_rate": 0.505,
             "abstain_escalate_hijack_rate": 0.571
           }
         }
@@ -1316,7 +1316,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.143,
           "status_change_rate": 0.54,
-          "gold_tool_loss_rate": 0.429,
+          "gold_tool_loss_rate": 0.462,
           "abstain_escalate_hijack_rate": 0.0
         },
         "agent/stuffed/permissions": {
@@ -1329,7 +1329,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.143,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.214,
+          "gold_tool_loss_rate": 0.231,
           "abstain_escalate_hijack_rate": 1.0
         },
         "agent/stuffed/permissions+side_effect": {
@@ -1342,7 +1342,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.143,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.214,
+          "gold_tool_loss_rate": 0.231,
           "abstain_escalate_hijack_rate": 1.0
         },
         "agent/stuffed/side_effect": {
@@ -1355,7 +1355,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.143,
           "status_change_rate": 0.58,
-          "gold_tool_loss_rate": 0.5,
+          "gold_tool_loss_rate": 0.538,
           "abstain_escalate_hijack_rate": 0.0
         },
         "agent/stuffed/trust": {
@@ -1368,7 +1368,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.143,
           "status_change_rate": 0.6,
-          "gold_tool_loss_rate": 0.5,
+          "gold_tool_loss_rate": 0.538,
           "abstain_escalate_hijack_rate": 0.0
         },
         "agent/stuffed/trust+permissions": {
@@ -1381,7 +1381,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.143,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.929,
+          "gold_tool_loss_rate": 1.0,
           "abstain_escalate_hijack_rate": 1.0
         },
         "agent/stuffed/trust+permissions+side_effect": {
@@ -1394,7 +1394,7 @@
           "execution_reach_rate": 0.82,
           "gold_displacement_rate": 0.143,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.214,
+          "gold_tool_loss_rate": 0.231,
           "abstain_escalate_hijack_rate": 1.0
         },
         "agent/stuffed/trust+side_effect": {
@@ -1407,7 +1407,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.143,
           "status_change_rate": 0.66,
-          "gold_tool_loss_rate": 0.714,
+          "gold_tool_loss_rate": 0.769,
           "abstain_escalate_hijack_rate": 0.0
         },
         "skill/clone/honest": {
@@ -1524,7 +1524,7 @@
           "execution_reach_rate": null,
           "gold_displacement_rate": 0.143,
           "status_change_rate": 0.56,
-          "gold_tool_loss_rate": 0.5,
+          "gold_tool_loss_rate": 0.538,
           "abstain_escalate_hijack_rate": 0.0
         },
         "skill/stuffed/permissions": {
@@ -1537,7 +1537,7 @@
           "execution_reach_rate": null,
           "gold_displacement_rate": 0.19,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.214,
+          "gold_tool_loss_rate": 0.231,
           "abstain_escalate_hijack_rate": 1.0
         },
         "skill/stuffed/permissions+side_effect": {
@@ -1550,7 +1550,7 @@
           "execution_reach_rate": null,
           "gold_displacement_rate": 0.19,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.214,
+          "gold_tool_loss_rate": 0.231,
           "abstain_escalate_hijack_rate": 1.0
         },
         "skill/stuffed/side_effect": {
@@ -1563,7 +1563,7 @@
           "execution_reach_rate": null,
           "gold_displacement_rate": 0.19,
           "status_change_rate": 0.64,
-          "gold_tool_loss_rate": 0.643,
+          "gold_tool_loss_rate": 0.692,
           "abstain_escalate_hijack_rate": 0.0
         },
         "skill/stuffed/trust": {
@@ -1576,7 +1576,7 @@
           "execution_reach_rate": null,
           "gold_displacement_rate": 0.19,
           "status_change_rate": 0.66,
-          "gold_tool_loss_rate": 0.714,
+          "gold_tool_loss_rate": 0.769,
           "abstain_escalate_hijack_rate": 0.0
         },
         "skill/stuffed/trust+permissions": {
@@ -1589,7 +1589,7 @@
           "execution_reach_rate": null,
           "gold_displacement_rate": 0.19,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.929,
+          "gold_tool_loss_rate": 1.0,
           "abstain_escalate_hijack_rate": 1.0
         },
         "skill/stuffed/trust+permissions+side_effect": {
@@ -1602,7 +1602,7 @@
           "execution_reach_rate": null,
           "gold_displacement_rate": 0.19,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.214,
+          "gold_tool_loss_rate": 0.231,
           "abstain_escalate_hijack_rate": 1.0
         },
         "skill/stuffed/trust+side_effect": {
@@ -1615,7 +1615,7 @@
           "execution_reach_rate": null,
           "gold_displacement_rate": 0.19,
           "status_change_rate": 0.68,
-          "gold_tool_loss_rate": 0.786,
+          "gold_tool_loss_rate": 0.846,
           "abstain_escalate_hijack_rate": 0.0
         },
         "tool/clone/honest": {
@@ -1784,7 +1784,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.132,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.357,
+          "gold_tool_loss_rate": 0.385,
           "abstain_escalate_hijack_rate": null
         },
         "tool/clone/trust+permissions+side_effect+isolation": {
@@ -1797,7 +1797,7 @@
           "execution_reach_rate": 0.158,
           "gold_displacement_rate": 0.132,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.357,
+          "gold_tool_loss_rate": 0.385,
           "abstain_escalate_hijack_rate": null
         },
         "tool/clone/trust+side_effect": {
@@ -1836,7 +1836,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.262,
           "status_change_rate": 0.54,
-          "gold_tool_loss_rate": 0.429,
+          "gold_tool_loss_rate": 0.462,
           "abstain_escalate_hijack_rate": 0.0
         },
         "tool/stuffed/isolation": {
@@ -1849,7 +1849,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.262,
           "status_change_rate": 0.54,
-          "gold_tool_loss_rate": 0.429,
+          "gold_tool_loss_rate": 0.462,
           "abstain_escalate_hijack_rate": 0.0
         },
         "tool/stuffed/permissions": {
@@ -1862,7 +1862,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.333,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.643,
+          "gold_tool_loss_rate": 0.692,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/permissions+isolation": {
@@ -1875,7 +1875,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.333,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.643,
+          "gold_tool_loss_rate": 0.692,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/permissions+side_effect": {
@@ -1888,7 +1888,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.381,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.786,
+          "gold_tool_loss_rate": 0.846,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/permissions+side_effect+isolation": {
@@ -1901,7 +1901,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.381,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.786,
+          "gold_tool_loss_rate": 0.846,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/side_effect": {
@@ -1914,7 +1914,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.286,
           "status_change_rate": 0.6,
-          "gold_tool_loss_rate": 0.5,
+          "gold_tool_loss_rate": 0.538,
           "abstain_escalate_hijack_rate": 0.0
         },
         "tool/stuffed/side_effect+isolation": {
@@ -1927,7 +1927,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.286,
           "status_change_rate": 0.6,
-          "gold_tool_loss_rate": 0.5,
+          "gold_tool_loss_rate": 0.538,
           "abstain_escalate_hijack_rate": 0.0
         },
         "tool/stuffed/trust": {
@@ -1940,7 +1940,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.286,
           "status_change_rate": 0.6,
-          "gold_tool_loss_rate": 0.5,
+          "gold_tool_loss_rate": 0.538,
           "abstain_escalate_hijack_rate": 0.0
         },
         "tool/stuffed/trust+isolation": {
@@ -1953,7 +1953,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.286,
           "status_change_rate": 0.6,
-          "gold_tool_loss_rate": 0.5,
+          "gold_tool_loss_rate": 0.538,
           "abstain_escalate_hijack_rate": 0.0
         },
         "tool/stuffed/trust+permissions": {
@@ -1966,7 +1966,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.405,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.857,
+          "gold_tool_loss_rate": 0.923,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/trust+permissions+isolation": {
@@ -1979,7 +1979,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.405,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.857,
+          "gold_tool_loss_rate": 0.923,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/trust+permissions+side_effect": {
@@ -1992,7 +1992,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.429,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.929,
+          "gold_tool_loss_rate": 1.0,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/trust+permissions+side_effect+isolation": {
@@ -2005,7 +2005,7 @@
           "execution_reach_rate": 0.82,
           "gold_displacement_rate": 0.429,
           "status_change_rate": 0.3,
-          "gold_tool_loss_rate": 0.929,
+          "gold_tool_loss_rate": 1.0,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/trust+side_effect": {
@@ -2018,7 +2018,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.357,
           "status_change_rate": 0.66,
-          "gold_tool_loss_rate": 0.714,
+          "gold_tool_loss_rate": 0.769,
           "abstain_escalate_hijack_rate": 0.0
         },
         "tool/stuffed/trust+side_effect+isolation": {
@@ -2031,7 +2031,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.357,
           "status_change_rate": 0.66,
-          "gold_tool_loss_rate": 0.714,
+          "gold_tool_loss_rate": 0.769,
           "abstain_escalate_hijack_rate": 0.0
         }
       }
@@ -2050,7 +2050,7 @@
             "execution_reach_rate": 0.0,
             "gold_displacement_rate": 0.075,
             "status_change_rate": 0.0,
-            "gold_tool_loss_rate": 0.214,
+            "gold_tool_loss_rate": 0.231,
             "abstain_escalate_hijack_rate": 0.875
           },
           "full_forgery": {
@@ -2063,7 +2063,7 @@
             "execution_reach_rate": 0.784,
             "gold_displacement_rate": 0.225,
             "status_change_rate": 0.0,
-            "gold_tool_loss_rate": 0.643,
+            "gold_tool_loss_rate": 0.692,
             "abstain_escalate_hijack_rate": 1.0
           },
           "partial_forgery": {
@@ -2076,7 +2076,7 @@
             "execution_reach_rate": 0.0,
             "gold_displacement_rate": 0.121,
             "status_change_rate": 0.0,
-            "gold_tool_loss_rate": 0.347,
+            "gold_tool_loss_rate": 0.374,
             "abstain_escalate_hijack_rate": 0.991
           },
           "any_forgery": {
@@ -2089,7 +2089,7 @@
             "execution_reach_rate": 0.052,
             "gold_displacement_rate": 0.128,
             "status_change_rate": 0.0,
-            "gold_tool_loss_rate": 0.367,
+            "gold_tool_loss_rate": 0.395,
             "abstain_escalate_hijack_rate": 0.992
           }
         },
@@ -2104,7 +2104,7 @@
             "execution_reach_rate": null,
             "gold_displacement_rate": 0.143,
             "status_change_rate": 0.0,
-            "gold_tool_loss_rate": 0.214,
+            "gold_tool_loss_rate": 0.231,
             "abstain_escalate_hijack_rate": 1.0
           },
           "full_forgery": {
@@ -2117,7 +2117,7 @@
             "execution_reach_rate": null,
             "gold_displacement_rate": 0.471,
             "status_change_rate": 0.0,
-            "gold_tool_loss_rate": 0.214,
+            "gold_tool_loss_rate": 0.231,
             "abstain_escalate_hijack_rate": 1.0
           },
           "partial_forgery": {
@@ -2130,7 +2130,7 @@
             "execution_reach_rate": null,
             "gold_displacement_rate": 0.214,
             "status_change_rate": 0.0,
-            "gold_tool_loss_rate": 0.333,
+            "gold_tool_loss_rate": 0.359,
             "abstain_escalate_hijack_rate": 1.0
           },
           "any_forgery": {
@@ -2143,7 +2143,7 @@
             "execution_reach_rate": null,
             "gold_displacement_rate": 0.251,
             "status_change_rate": 0.0,
-            "gold_tool_loss_rate": 0.316,
+            "gold_tool_loss_rate": 0.341,
             "abstain_escalate_hijack_rate": 1.0
           }
         },
@@ -2158,7 +2158,7 @@
             "execution_reach_rate": 0.0,
             "gold_displacement_rate": 0.2,
             "status_change_rate": 0.0,
-            "gold_tool_loss_rate": 0.214,
+            "gold_tool_loss_rate": 0.231,
             "abstain_escalate_hijack_rate": 1.0
           },
           "full_forgery": {
@@ -2171,7 +2171,7 @@
             "execution_reach_rate": 0.833,
             "gold_displacement_rate": 0.471,
             "status_change_rate": 0.0,
-            "gold_tool_loss_rate": 0.214,
+            "gold_tool_loss_rate": 0.231,
             "abstain_escalate_hijack_rate": 1.0
           },
           "partial_forgery": {
@@ -2184,7 +2184,7 @@
             "execution_reach_rate": 0.0,
             "gold_displacement_rate": 0.236,
             "status_change_rate": 0.0,
-            "gold_tool_loss_rate": 0.333,
+            "gold_tool_loss_rate": 0.359,
             "abstain_escalate_hijack_rate": 1.0
           },
           "any_forgery": {
@@ -2197,7 +2197,7 @@
             "execution_reach_rate": 0.119,
             "gold_displacement_rate": 0.269,
             "status_change_rate": 0.0,
-            "gold_tool_loss_rate": 0.316,
+            "gold_tool_loss_rate": 0.341,
             "abstain_escalate_hijack_rate": 1.0
           }
         }
@@ -2317,7 +2317,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.31,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.214,
+          "gold_tool_loss_rate": 0.231,
           "abstain_escalate_hijack_rate": 1.0
         },
         "agent/stuffed/permissions": {
@@ -2330,7 +2330,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.357,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.214,
+          "gold_tool_loss_rate": 0.231,
           "abstain_escalate_hijack_rate": 1.0
         },
         "agent/stuffed/permissions+side_effect": {
@@ -2343,7 +2343,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.381,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.214,
+          "gold_tool_loss_rate": 0.231,
           "abstain_escalate_hijack_rate": 1.0
         },
         "agent/stuffed/side_effect": {
@@ -2356,7 +2356,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.357,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.214,
+          "gold_tool_loss_rate": 0.231,
           "abstain_escalate_hijack_rate": 1.0
         },
         "agent/stuffed/trust": {
@@ -2369,7 +2369,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.357,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.214,
+          "gold_tool_loss_rate": 0.231,
           "abstain_escalate_hijack_rate": 1.0
         },
         "agent/stuffed/trust+permissions": {
@@ -2382,7 +2382,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.381,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.929,
+          "gold_tool_loss_rate": 1.0,
           "abstain_escalate_hijack_rate": 1.0
         },
         "agent/stuffed/trust+permissions+side_effect": {
@@ -2395,7 +2395,7 @@
           "execution_reach_rate": 1.0,
           "gold_displacement_rate": 0.429,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.214,
+          "gold_tool_loss_rate": 0.231,
           "abstain_escalate_hijack_rate": 1.0
         },
         "agent/stuffed/trust+side_effect": {
@@ -2408,7 +2408,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.381,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.214,
+          "gold_tool_loss_rate": 0.231,
           "abstain_escalate_hijack_rate": 1.0
         },
         "skill/clone/honest": {
@@ -2525,7 +2525,7 @@
           "execution_reach_rate": null,
           "gold_displacement_rate": 0.238,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.214,
+          "gold_tool_loss_rate": 0.231,
           "abstain_escalate_hijack_rate": 1.0
         },
         "skill/stuffed/permissions": {
@@ -2538,7 +2538,7 @@
           "execution_reach_rate": null,
           "gold_displacement_rate": 0.357,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.214,
+          "gold_tool_loss_rate": 0.231,
           "abstain_escalate_hijack_rate": 1.0
         },
         "skill/stuffed/permissions+side_effect": {
@@ -2551,7 +2551,7 @@
           "execution_reach_rate": null,
           "gold_displacement_rate": 0.357,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.214,
+          "gold_tool_loss_rate": 0.231,
           "abstain_escalate_hijack_rate": 1.0
         },
         "skill/stuffed/side_effect": {
@@ -2564,7 +2564,7 @@
           "execution_reach_rate": null,
           "gold_displacement_rate": 0.357,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.214,
+          "gold_tool_loss_rate": 0.231,
           "abstain_escalate_hijack_rate": 1.0
         },
         "skill/stuffed/trust": {
@@ -2577,7 +2577,7 @@
           "execution_reach_rate": null,
           "gold_displacement_rate": 0.357,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.214,
+          "gold_tool_loss_rate": 0.231,
           "abstain_escalate_hijack_rate": 1.0
         },
         "skill/stuffed/trust+permissions": {
@@ -2590,7 +2590,7 @@
           "execution_reach_rate": null,
           "gold_displacement_rate": 0.357,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.929,
+          "gold_tool_loss_rate": 1.0,
           "abstain_escalate_hijack_rate": 1.0
         },
         "skill/stuffed/trust+permissions+side_effect": {
@@ -2603,7 +2603,7 @@
           "execution_reach_rate": null,
           "gold_displacement_rate": 0.405,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.214,
+          "gold_tool_loss_rate": 0.231,
           "abstain_escalate_hijack_rate": 1.0
         },
         "skill/stuffed/trust+side_effect": {
@@ -2616,7 +2616,7 @@
           "execution_reach_rate": null,
           "gold_displacement_rate": 0.357,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.214,
+          "gold_tool_loss_rate": 0.231,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/clone/honest": {
@@ -2785,7 +2785,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.132,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.357,
+          "gold_tool_loss_rate": 0.385,
           "abstain_escalate_hijack_rate": null
         },
         "tool/clone/trust+permissions+side_effect+isolation": {
@@ -2798,7 +2798,7 @@
           "execution_reach_rate": 0.5,
           "gold_displacement_rate": 0.132,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.357,
+          "gold_tool_loss_rate": 0.385,
           "abstain_escalate_hijack_rate": null
         },
         "tool/clone/trust+side_effect": {
@@ -2837,7 +2837,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.143,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.429,
+          "gold_tool_loss_rate": 0.462,
           "abstain_escalate_hijack_rate": 0.875
         },
         "tool/stuffed/isolation": {
@@ -2850,7 +2850,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.143,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.429,
+          "gold_tool_loss_rate": 0.462,
           "abstain_escalate_hijack_rate": 0.875
         },
         "tool/stuffed/permissions": {
@@ -2863,7 +2863,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.214,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.643,
+          "gold_tool_loss_rate": 0.692,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/permissions+isolation": {
@@ -2876,7 +2876,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.214,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.643,
+          "gold_tool_loss_rate": 0.692,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/permissions+side_effect": {
@@ -2889,7 +2889,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.262,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.786,
+          "gold_tool_loss_rate": 0.846,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/permissions+side_effect+isolation": {
@@ -2902,7 +2902,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.262,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.786,
+          "gold_tool_loss_rate": 0.846,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/side_effect": {
@@ -2915,7 +2915,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.167,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.5,
+          "gold_tool_loss_rate": 0.538,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/side_effect+isolation": {
@@ -2928,7 +2928,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.167,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.5,
+          "gold_tool_loss_rate": 0.538,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/trust": {
@@ -2941,7 +2941,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.167,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.5,
+          "gold_tool_loss_rate": 0.538,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/trust+isolation": {
@@ -2954,7 +2954,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.167,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.5,
+          "gold_tool_loss_rate": 0.538,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/trust+permissions": {
@@ -2967,7 +2967,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.286,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.857,
+          "gold_tool_loss_rate": 0.923,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/trust+permissions+isolation": {
@@ -2980,7 +2980,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.286,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.857,
+          "gold_tool_loss_rate": 0.923,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/trust+permissions+side_effect": {
@@ -2993,7 +2993,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.31,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.929,
+          "gold_tool_loss_rate": 1.0,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/trust+permissions+side_effect+isolation": {
@@ -3006,7 +3006,7 @@
           "execution_reach_rate": 1.0,
           "gold_displacement_rate": 0.31,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.929,
+          "gold_tool_loss_rate": 1.0,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/trust+side_effect": {
@@ -3019,7 +3019,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.238,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.714,
+          "gold_tool_loss_rate": 0.769,
           "abstain_escalate_hijack_rate": 1.0
         },
         "tool/stuffed/trust+side_effect+isolation": {
@@ -3032,7 +3032,7 @@
           "execution_reach_rate": 0.0,
           "gold_displacement_rate": 0.238,
           "status_change_rate": 0.0,
-          "gold_tool_loss_rate": 0.714,
+          "gold_tool_loss_rate": 0.769,
           "abstain_escalate_hijack_rate": 1.0
         }
       }
@@ -3061,7 +3061,7 @@
                 "execution_reach_rate": 0.0,
                 "gold_displacement_rate": 0.188,
                 "status_change_rate": 0.306,
-                "gold_tool_loss_rate": 0.214,
+                "gold_tool_loss_rate": 0.231,
                 "abstain_escalate_hijack_rate": 0.0
               },
               "full_forgery": {
@@ -3074,7 +3074,7 @@
                 "execution_reach_rate": 0.75,
                 "gold_displacement_rate": 0.562,
                 "status_change_rate": 0.083,
-                "gold_tool_loss_rate": 0.643,
+                "gold_tool_loss_rate": 0.692,
                 "abstain_escalate_hijack_rate": 1.0
               },
               "partial_forgery": {
@@ -3087,7 +3087,7 @@
                 "execution_reach_rate": 0.0,
                 "gold_displacement_rate": 0.362,
                 "status_change_rate": 0.25,
-                "gold_tool_loss_rate": 0.355,
+                "gold_tool_loss_rate": 0.382,
                 "abstain_escalate_hijack_rate": 0.5
               },
               "any_forgery": {
@@ -3100,7 +3100,7 @@
                 "execution_reach_rate": 0.05,
                 "gold_displacement_rate": 0.375,
                 "status_change_rate": 0.239,
-                "gold_tool_loss_rate": 0.374,
+                "gold_tool_loss_rate": 0.403,
                 "abstain_escalate_hijack_rate": 0.533
               }
             },
@@ -3115,7 +3115,7 @@
                 "execution_reach_rate": null,
                 "gold_displacement_rate": 0.045,
                 "status_change_rate": 0.462,
-                "gold_tool_loss_rate": 0.5,
+                "gold_tool_loss_rate": 0.538,
                 "abstain_escalate_hijack_rate": 0.0
               },
               "full_forgery": {
@@ -3128,7 +3128,7 @@
                 "execution_reach_rate": null,
                 "gold_displacement_rate": 0.136,
                 "status_change_rate": 0.115,
-                "gold_tool_loss_rate": 0.214,
+                "gold_tool_loss_rate": 0.231,
                 "abstain_escalate_hijack_rate": 1.0
               },
               "partial_forgery": {
@@ -3141,7 +3141,7 @@
                 "execution_reach_rate": null,
                 "gold_displacement_rate": 0.136,
                 "status_change_rate": 0.385,
-                "gold_tool_loss_rate": 0.583,
+                "gold_tool_loss_rate": 0.628,
                 "abstain_escalate_hijack_rate": 0.5
               },
               "any_forgery": {
@@ -3154,7 +3154,7 @@
                 "execution_reach_rate": null,
                 "gold_displacement_rate": 0.136,
                 "status_change_rate": 0.346,
-                "gold_tool_loss_rate": 0.531,
+                "gold_tool_loss_rate": 0.571,
                 "abstain_escalate_hijack_rate": 0.571
               }
             },
@@ -3169,7 +3169,7 @@
                 "execution_reach_rate": 0.0,
                 "gold_displacement_rate": 0.045,
                 "status_change_rate": 0.423,
-                "gold_tool_loss_rate": 0.429,
+                "gold_tool_loss_rate": 0.462,
                 "abstain_escalate_hijack_rate": 0.0
               },
               "full_forgery": {
@@ -3182,7 +3182,7 @@
                 "execution_reach_rate": 0.923,
                 "gold_displacement_rate": 0.045,
                 "status_change_rate": 0.115,
-                "gold_tool_loss_rate": 0.214,
+                "gold_tool_loss_rate": 0.231,
                 "abstain_escalate_hijack_rate": 1.0
               },
               "partial_forgery": {
@@ -3195,7 +3195,7 @@
                 "execution_reach_rate": 0.0,
                 "gold_displacement_rate": 0.045,
                 "status_change_rate": 0.346,
-                "gold_tool_loss_rate": 0.512,
+                "gold_tool_loss_rate": 0.551,
                 "abstain_escalate_hijack_rate": 0.5
               },
               "any_forgery": {
@@ -3208,7 +3208,7 @@
                 "execution_reach_rate": 0.132,
                 "gold_displacement_rate": 0.045,
                 "status_change_rate": 0.313,
-                "gold_tool_loss_rate": 0.469,
+                "gold_tool_loss_rate": 0.505,
                 "abstain_escalate_hijack_rate": 0.571
               }
             }
@@ -4201,7 +4201,7 @@
                 "execution_reach_rate": 0.0,
                 "gold_displacement_rate": 0.188,
                 "status_change_rate": 0.306,
-                "gold_tool_loss_rate": 0.214,
+                "gold_tool_loss_rate": 0.231,
                 "abstain_escalate_hijack_rate": 0.0
               },
               "full_forgery": {
@@ -4214,7 +4214,7 @@
                 "execution_reach_rate": 0.75,
                 "gold_displacement_rate": 0.562,
                 "status_change_rate": 0.083,
-                "gold_tool_loss_rate": 0.643,
+                "gold_tool_loss_rate": 0.692,
                 "abstain_escalate_hijack_rate": 1.0
               },
               "partial_forgery": {
@@ -4227,7 +4227,7 @@
                 "execution_reach_rate": 0.0,
                 "gold_displacement_rate": 0.304,
                 "status_change_rate": 0.242,
-                "gold_tool_loss_rate": 0.347,
+                "gold_tool_loss_rate": 0.374,
                 "abstain_escalate_hijack_rate": 0.5
               },
               "any_forgery": {
@@ -4240,7 +4240,7 @@
                 "execution_reach_rate": 0.05,
                 "gold_displacement_rate": 0.321,
                 "status_change_rate": 0.231,
-                "gold_tool_loss_rate": 0.367,
+                "gold_tool_loss_rate": 0.395,
                 "abstain_escalate_hijack_rate": 0.533
               }
             },
@@ -4255,7 +4255,7 @@
                 "execution_reach_rate": null,
                 "gold_displacement_rate": 0.045,
                 "status_change_rate": 0.462,
-                "gold_tool_loss_rate": 0.5,
+                "gold_tool_loss_rate": 0.538,
                 "abstain_escalate_hijack_rate": 0.0
               },
               "full_forgery": {
@@ -4268,7 +4268,7 @@
                 "execution_reach_rate": null,
                 "gold_displacement_rate": 0.136,
                 "status_change_rate": 0.115,
-                "gold_tool_loss_rate": 0.214,
+                "gold_tool_loss_rate": 0.231,
                 "abstain_escalate_hijack_rate": 1.0
               },
               "partial_forgery": {
@@ -4281,7 +4281,7 @@
                 "execution_reach_rate": null,
                 "gold_displacement_rate": 0.136,
                 "status_change_rate": 0.385,
-                "gold_tool_loss_rate": 0.583,
+                "gold_tool_loss_rate": 0.628,
                 "abstain_escalate_hijack_rate": 0.5
               },
               "any_forgery": {
@@ -4294,7 +4294,7 @@
                 "execution_reach_rate": null,
                 "gold_displacement_rate": 0.136,
                 "status_change_rate": 0.346,
-                "gold_tool_loss_rate": 0.531,
+                "gold_tool_loss_rate": 0.571,
                 "abstain_escalate_hijack_rate": 0.571
               }
             },
@@ -4309,7 +4309,7 @@
                 "execution_reach_rate": 0.0,
                 "gold_displacement_rate": 0.045,
                 "status_change_rate": 0.423,
-                "gold_tool_loss_rate": 0.429,
+                "gold_tool_loss_rate": 0.462,
                 "abstain_escalate_hijack_rate": 0.0
               },
               "full_forgery": {
@@ -4322,7 +4322,7 @@
                 "execution_reach_rate": 0.923,
                 "gold_displacement_rate": 0.045,
                 "status_change_rate": 0.115,
-                "gold_tool_loss_rate": 0.214,
+                "gold_tool_loss_rate": 0.231,
                 "abstain_escalate_hijack_rate": 1.0
               },
               "partial_forgery": {
@@ -4335,7 +4335,7 @@
                 "execution_reach_rate": 0.0,
                 "gold_displacement_rate": 0.045,
                 "status_change_rate": 0.346,
-                "gold_tool_loss_rate": 0.512,
+                "gold_tool_loss_rate": 0.551,
                 "abstain_escalate_hijack_rate": 0.5
               },
               "any_forgery": {
@@ -4348,7 +4348,7 @@
                 "execution_reach_rate": 0.132,
                 "gold_displacement_rate": 0.045,
                 "status_change_rate": 0.313,
-                "gold_tool_loss_rate": 0.469,
+                "gold_tool_loss_rate": 0.505,
                 "abstain_escalate_hijack_rate": 0.571
               }
             }
@@ -5341,7 +5341,7 @@
                 "execution_reach_rate": 0.0,
                 "gold_displacement_rate": 0.188,
                 "status_change_rate": 0.0,
-                "gold_tool_loss_rate": 0.214,
+                "gold_tool_loss_rate": 0.231,
                 "abstain_escalate_hijack_rate": 0.75
               },
               "full_forgery": {
@@ -5354,7 +5354,7 @@
                 "execution_reach_rate": 0.75,
                 "gold_displacement_rate": 0.562,
                 "status_change_rate": 0.0,
-                "gold_tool_loss_rate": 0.643,
+                "gold_tool_loss_rate": 0.692,
                 "abstain_escalate_hijack_rate": 1.0
               },
               "partial_forgery": {
@@ -5367,7 +5367,7 @@
                 "execution_reach_rate": 0.0,
                 "gold_displacement_rate": 0.304,
                 "status_change_rate": 0.0,
-                "gold_tool_loss_rate": 0.347,
+                "gold_tool_loss_rate": 0.374,
                 "abstain_escalate_hijack_rate": 0.982
               },
               "any_forgery": {
@@ -5380,7 +5380,7 @@
                 "execution_reach_rate": 0.05,
                 "gold_displacement_rate": 0.321,
                 "status_change_rate": 0.0,
-                "gold_tool_loss_rate": 0.367,
+                "gold_tool_loss_rate": 0.395,
                 "abstain_escalate_hijack_rate": 0.983
               }
             },
@@ -5395,7 +5395,7 @@
                 "execution_reach_rate": null,
                 "gold_displacement_rate": 0.045,
                 "status_change_rate": 0.0,
-                "gold_tool_loss_rate": 0.214,
+                "gold_tool_loss_rate": 0.231,
                 "abstain_escalate_hijack_rate": 1.0
               },
               "full_forgery": {
@@ -5408,7 +5408,7 @@
                 "execution_reach_rate": null,
                 "gold_displacement_rate": 0.227,
                 "status_change_rate": 0.0,
-                "gold_tool_loss_rate": 0.214,
+                "gold_tool_loss_rate": 0.231,
                 "abstain_escalate_hijack_rate": 1.0
               },
               "partial_forgery": {
@@ -5421,7 +5421,7 @@
                 "execution_reach_rate": null,
                 "gold_displacement_rate": 0.136,
                 "status_change_rate": 0.0,
-                "gold_tool_loss_rate": 0.333,
+                "gold_tool_loss_rate": 0.359,
                 "abstain_escalate_hijack_rate": 1.0
               },
               "any_forgery": {
@@ -5434,7 +5434,7 @@
                 "execution_reach_rate": null,
                 "gold_displacement_rate": 0.149,
                 "status_change_rate": 0.0,
-                "gold_tool_loss_rate": 0.316,
+                "gold_tool_loss_rate": 0.341,
                 "abstain_escalate_hijack_rate": 1.0
               }
             },
@@ -5449,7 +5449,7 @@
                 "execution_reach_rate": 0.0,
                 "gold_displacement_rate": 0.091,
                 "status_change_rate": 0.0,
-                "gold_tool_loss_rate": 0.214,
+                "gold_tool_loss_rate": 0.231,
                 "abstain_escalate_hijack_rate": 1.0
               },
               "full_forgery": {
@@ -5462,7 +5462,7 @@
                 "execution_reach_rate": 0.846,
                 "gold_displacement_rate": 0.136,
                 "status_change_rate": 0.0,
-                "gold_tool_loss_rate": 0.214,
+                "gold_tool_loss_rate": 0.231,
                 "abstain_escalate_hijack_rate": 1.0
               },
               "partial_forgery": {
@@ -5475,7 +5475,7 @@
                 "execution_reach_rate": 0.0,
                 "gold_displacement_rate": 0.114,
                 "status_change_rate": 0.0,
-                "gold_tool_loss_rate": 0.333,
+                "gold_tool_loss_rate": 0.359,
                 "abstain_escalate_hijack_rate": 1.0
               },
               "any_forgery": {
@@ -5488,7 +5488,7 @@
                 "execution_reach_rate": 0.121,
                 "gold_displacement_rate": 0.117,
                 "status_change_rate": 0.0,
-                "gold_tool_loss_rate": 0.316,
+                "gold_tool_loss_rate": 0.341,
                 "abstain_escalate_hijack_rate": 1.0
               }
             }
@@ -12138,7 +12138,7 @@
       }
     }
   },
-  "marmo_core_version": "0.6.0",
-  "marmo_core_commit": "785bd3bb",
-  "generated_at": "2026-11-26T13:09:21+00:00"
+  "marmo_core_version": "0.7.0",
+  "marmo_core_commit": "64158d91",
+  "generated_at": "2026-11-26T13:44:25+00:00"
 }

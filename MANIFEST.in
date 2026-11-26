@@ -1,7 +1,7 @@
 include CHANGELOG.md
 include assets/readme-banner.png
-include CONTRIBUTING.md
-include SECURITY.md
+include CONTRIBUTING.md CONTRIBUTING.ja.md
+include SECURITY.md SECURITY.ja.md
 include .env.example
 include .dockerignore
 include Dockerfile

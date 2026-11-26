@@ -1,5 +1,7 @@
 # 0006. プロバイダ失敗はタスクを `failed` で終端させ、監査ログを残す
 
+[English](0006-provider-failures-terminate-the-task.en.md)
+
 - 状態: Accepted
 - 日付: 2026-09-17
 - 根拠: 2080be3c（PR #12）、CHANGELOG 0.5.0

@@ -9,7 +9,11 @@ RUN python3 -m pip install --no-cache-dir .
 
 COPY examples ./examples
 COPY resources ./resources
-COPY benchmarks/run_evidence_benchmark.py benchmarks/_provenance.py benchmarks/evidence_cases.json ./benchmarks/
+# Benchmark modules that the test suite imports, and the fixtures they read.
+COPY benchmarks/run_evidence_benchmark.py benchmarks/run_forgery_benchmark.py benchmarks/_provenance.py \
+     benchmarks/_claude_cli.py benchmarks/compare_toolret_records.py \
+     benchmarks/evidence_cases.json benchmarks/set_scenarios.json ./benchmarks/
+COPY benchmarks/corpus/set_corpus.json ./benchmarks/corpus/
 COPY scripts ./scripts
 COPY tests ./tests
 

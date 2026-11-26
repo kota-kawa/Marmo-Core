@@ -502,6 +502,31 @@ class ParseSetReplyTests(unittest.TestCase):
         status, _, _ = _parse_set_reply('{"status": "maybe", "ids": ["a"]}', ["a"])
         self.assertEqual(status, "selected")
 
+    def test_a_corrected_reply_is_read_as_its_last_object(self) -> None:
+        text = (
+            '{"status": "selected", "ids": ["tool.a", "tool.b"]}\n\n'
+            'Correction: tool.a cannot do it.\n\n{"status": "selected", "ids": ["tool.b"]}'
+        )
+        self.assertEqual(
+            _parse_set_reply(text, ["tool.a", "tool.b", "tool.c"]),
+            ("selected", ["tool.b"], "no reason given"),
+        )
+
+    def test_a_correction_to_abstain_is_not_read_as_selected(self) -> None:
+        text = (
+            '{"status": "selected", "ids": ["tool.a"]}\n\nActually nothing fits.\n'
+            '{"status": "abstain", "ids": [], "reason": "none"}'
+        )
+        self.assertEqual(_parse_set_reply(text, ["tool.a", "tool.b"]), ("abstain", [], "none"))
+
+    def test_a_stray_brace_in_prose_does_not_hide_the_object(self) -> None:
+        text = 'Use {braces} sparingly. {"status": "selected", "ids": ["a"], "reason": "r"}'
+        self.assertEqual(_parse_set_reply(text, ["a"]), ("selected", ["a"], "r"))
+
+    def test_an_example_object_after_the_answer_does_not_replace_it(self) -> None:
+        text = '{"status": "selected", "ids": ["a"], "reason": "r"}\nfor example {"x": 1}'
+        self.assertEqual(_parse_set_reply(text, ["a"]), ("selected", ["a"], "r"))
+
     def test_non_json_falls_back_to_id_extraction(self) -> None:
         self.assertEqual(
             _parse_set_reply("use b then a", ["a", "b"]),

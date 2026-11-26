@@ -23,6 +23,7 @@ Marmo-Core は、Object Routing を実装する公開 Python ライブラリで�
 - `docs/knowledge/debugging.md`／実モデル・検索・CLI・パッケージングの不具合の切り分け手順／動作がおかしいときに、コードを読み始める前に読む。
 - `docs/knowledge/contracts-and-compatibility.md`／公開 API、リソース定義、状態ファイル、監査ログ、CLI 終了コードの互換性契約と変更手順／これらの表面に触る変更の前に読む。
 - `docs/knowledge/parallel_work.md`／git worktree で作業を分けた後の運用手順／並行作業をするときに読む。
+- `docs/knowledge/experiment_runbook.md`／実験の段取り、評価設計の約束、Claude Code クラウドセッションとローカル PC での LLM・計算資源・長時間ジョブの扱いの違い／ベンチマークや評価実験を始める・再開する前に読む。
 - `docs/knowledge/lessons_from_history.md`／git 履歴と PR から抽出した過去の失敗と教訓／同じ轍を踏まないために、該当領域を触る前に読む。
 - `docs/decisions/README.md`／重要な技術判断（ADR）の索引／判断を変更・追加するときは既存 ADR を確認し、理由と影響を更新・記録する。
 - `docs/decisions/0009-task-budget-reservations.md`／タスク予算の単位・予約・精算と再開時の不変条件／予算処理を変更するとき。
@@ -42,6 +43,17 @@ Marmo-Core は、Object Routing を実装する公開 Python ライブラリで�
 - `要件定義書１.md`、`改善策.md`／初期の要件定義と、2026-09 時点の改善提案メモ／背景を知るための資料であり、現在の実装の説明ではないので、実装判断の根拠として引用しない。実装済みの項目は `CHANGELOG.md` で確認する。
 - `.claude/RESUME.md`／Claude Code のセッション再開用チェックポイント／手で編集せず、内容を作業の根拠にしない。
 
+公開文書の翻訳版は以下のとおり。手順、サポート範囲、評価上の主張を変更する場合は、同じ PR で両版を更新する。
+
+- `ARCHITECTURE.en.md`／アーキテクチャの英語版／英語で内部設計を確認するとき。
+- `benchmarks/README.en.md`／ベンチマークの英語版／英語で評価手順や結果を確認するとき。
+- `docs/decisions/README.en.md` と同ディレクトリの英語版 ADR／設計判断の英語版／英語で設計判断を確認するとき。
+- `docs/local-resource-packages.en.md`／ローカルリソースパッケージの英語版／英語で作成・検証手順を確認するとき。
+- `docs/connectors.ja.md`／組み込みコネクタの日本語版／日本語で設定と使い方を確認するとき。
+- `docs/threat-model.ja.md`／脅威モデルの日本語版／日本語で信頼境界と対策を確認するとき。
+- `CONTRIBUTING.ja.md`／貢献ガイドの日本語版／日本語で開発環境や CI、リリースの手順を確認するとき。
+- `SECURITY.ja.md`／セキュリティポリシーの日本語版／日本語でサポート対象と脆弱性の報告手順を確認するとき。
+
 ドキュメントを追加・削除したら、同じコミットでこの一覧も更新する。文書内のパス参照が存在するかは `python3 scripts/check_doc_paths.py` が CI で検証する。
 
 ## ブランチ・コミット・PR
@@ -52,7 +64,7 @@ Marmo-Core は、Object Routing を実装する公開 Python ライブラリで�
 - 1 つの PR に種類の異なる変更（バグ修正とリファクタリング、機能追加と無関係な整形など）が含まれる場合は、種類ごとに別コミットに分ける。
 - PR のタイトルと本文は日本語と英語の両方を含める（PR titles and descriptions must include both Japanese and English）。タイトルは `<type>: <English summary> / <日本語要約>`。
 - PR 本文は `.github/PULL_REQUEST_TEMPLATE.md` に従い、変更内容、関連 issue（あれば）、テスト（実行したコマンドと結果）、判断が要るところ（既定値・終了コード・スコアの変化など利用者に見える差分）を書く。
-- 利用者に見える変更は `CHANGELOG.md` の `## [Unreleased]` に同じ PR で追記する。バージョン番号を上げるのはメンテナの判断であり、リリースコミットは別に切る（`CONTRIBUTING.md` の Releasing）。
+- 利用者に見える変更は `CHANGELOG.md` の `## [Unreleased]` に同じ PR で英語と日本語の両方を追記する。バージョン番号を上げるのはメンテナの判断であり、リリースコミットは別に切る（`CONTRIBUTING.md` の Releasing）。
 - エージェントは、ユーザーから明示的な指示がない限り PR をマージしない。
 
 ## エージェントの作業ルール

@@ -1,11 +1,13 @@
 # Security Policy
 
+日本語版: [SECURITY.ja.md](SECURITY.ja.md).
+
 ## Supported versions
 
 | Version | Supported |
 | ------- | --------- |
-| 0.6.x   | Yes       |
-| < 0.6   | No        |
+| 0.7.x   | Yes       |
+| < 0.7   | No        |
 
 Only the latest released minor version receives security fixes.
 

@@ -1,11 +1,80 @@
 # Changelog
 
-All notable changes to this project are documented in this file.
+All notable changes to this project are documented in this file. New entries include
+an English description and a Japanese description.
+
+このファイルにはプロジェクトの主な変更を記録します。今後の項目は英語と日本語で記載します。
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- `benchmarks/run_forgery_benchmark.py` tracks how far a resource with forged
+  declarations gets: for Tool, Skill, and Agent decoys, each forged
+  declaration (trust, permissions, side effect, isolation) and every
+  combination of them, it reports the selection rate, activation-gate pass
+  rate, whether `Kernel.run_goal` hands the decoy to the model, and whether a
+  call reaches an inert stand-in handler through the execution gate, plus
+  displaced gold resources and hijacked abstain/escalate decisions. The six
+  legacy cases (`metadata_forgery` 6/6) are re-measured as the baseline. With
+  the greedy selector a fully forged Tool reaches the model in 53% of its 88
+  task variants, and no partial forgery passes activation. See
+  `benchmarks/results/forgery.json` and `benchmarks/README.md`.
+  - 宣言を偽装したリソースがどこまで届くかを測る `benchmarks/run_forgery_benchmark.py` を
+    追加しました。Tool・Skill・Agent の偽装資源について、信頼度・権限・副作用・隔離レベルの
+    各宣言とその全組み合わせごとに、選択率、activation gate の通過率、`Kernel.run_goal` が
+    モデルに渡すか、呼び出しが execution gate を通って何もしない代替ハンドラに届くかを測り、
+    正規の資源の押しのけと abstain / escalate の乗っ取りも記録します。従来の 6 件
+    （`metadata_forgery` 6/6）を基準線として同じ実行で再測定します。greedy では、全偽装の
+    Tool が 88 変種の 53% でモデルに届き、一部だけの偽装は activation を通りませんでした。
+    `benchmarks/results/forgery.json` と `benchmarks/README.md` を参照してください。
+- `EmbeddingProvider.embed_queries()` embeds search queries. It defaults to
+  `embed()`; providers for asymmetric retrieval models (BGE, E5,
+  Arctic-Embed, Nomic), which expect an instruction on the query side only,
+  override it. `HybridRetriever` and `HierarchicalRetriever` now embed goals
+  through it and resources through `embed()`. Providers that only define
+  `embed()`, including ones that do not subclass `EmbeddingProvider`, behave
+  as before. On ToolRet, dropping Arctic-Embed-S's query instruction costs
+  0.065 nDCG@10 in dense retrieval (95% CI [0.056, 0.074]). The ToolRet
+  benchmark takes `--query-prefix` for such models and `--records` for
+  per-query metrics; `benchmarks/compare_toolret_records.py` pairs two runs.
+  - 検索クエリ用の `EmbeddingProvider.embed_queries()` を追加しました。既定は `embed()` と
+    同じです。クエリ側にだけ指示文を付ける非対称な検索モデル（BGE、E5、Arctic-Embed、Nomic）
+    のプロバイダは、これを上書きします。`HybridRetriever` と `HierarchicalRetriever` は、
+    ゴールをこのメソッドで、リソースを `embed()` で埋め込みます。`embed()` だけを持つ
+    既存のプロバイダ（`EmbeddingProvider` を継承しないものも含む）はこれまでどおり動きます。
+    ToolRet では Arctic-Embed-S の指示文を外すと dense 検索の nDCG@10 が 0.065
+    （95% CI [0.056, 0.074]）下がりました。ToolRet ベンチマークに `--query-prefix` と
+    `--records` を、2 回の実行を対応づけて比べる `benchmarks/compare_toolret_records.py` を
+    追加しました。
+- Added English and Japanese editions of the linked user guides, architecture
+  and decision records, benchmark documentation, and contributor and security
+  guides. Each language in the README links to its corresponding guides.
+  - README の各言語から、利用ガイド、アーキテクチャと設計判断、ベンチマーク、
+    貢献・セキュリティ関連の各言語版を読めるようにしました。
+- Set `MARMO_CLI_LANGUAGE=ja` in the process environment for Japanese CLI help,
+  input diagnostics, and main task output labels. English remains the default.
+  - プロセスの環境変数 `MARMO_CLI_LANGUAGE=ja` を設定すると、CLI のヘルプ、
+    入力エラー、タスク結果の主なラベルを日本語で表示します。既定は英語です。
+
+### Fixed
+
+- `LLMSetSelector` reads the last JSON object in a reply instead of everything
+  between the first `{` and the last `}`. A model that follows its answer with a
+  corrected object used to make the reply unparseable, and the selector then
+  fell back to every candidate id mentioned in the text, including retracted
+  ones; a corrected `abstain` came back as `selected`. The prompt and request
+  are unchanged, so cached replies replay with only their interpretation changed.
+  - `LLMSetSelector` が、最初の `{` から最後の `}` までではなく、応答中の最後の JSON
+    オブジェクトを読むようにしました。答えのあとに訂正版を続けるモデルでは、応答を
+    JSON として読めなくなり、撤回した ID を含む本文中のすべての候補 ID を選んでいました。
+    訂正後の `abstain` も `selected` になっていました。プロンプトとリクエストは変えて
+    いないので、キャッシュ済みの応答は解釈だけが変わって再生されます。
+
+## [0.7.0] - 2026-11-24
 
 ### Changed
 
@@ -491,7 +560,8 @@ First release published to PyPI.
 - Typed distribution (`py.typed`) and an optional `benchmark` extra for the
   embedding and cross-encoder integration.
 
-[Unreleased]: https://github.com/kota-kawa/Marmo-Core/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/kota-kawa/Marmo-Core/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/kota-kawa/Marmo-Core/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/kota-kawa/Marmo-Core/releases/tag/v0.6.0
 [0.5.0]: https://github.com/kota-kawa/Marmo-Core/releases/tag/v0.5.0
 [0.4.0]: https://github.com/kota-kawa/Marmo-Core/releases/tag/v0.4.0

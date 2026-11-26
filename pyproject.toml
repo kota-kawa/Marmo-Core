@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "marmo-core"
-version = "0.6.0"
+version = "0.7.0"
 description = "Lightweight AI Agent Kernel primitives: resource registry, search CLI, and guarded execution."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -59,7 +59,7 @@ marmo_core = ["py.typed"]
 [tool.check-manifest]
 # Contributor-only guidance and planning notes: tracked in the repository,
 # excluded from the sdist.
-ignore = ["AGENTS.md", "ARCHITECTURE.md", "要件定義書１.md", "改善策.md"]
+ignore = ["AGENTS.md", "ARCHITECTURE.md", "ARCHITECTURE.en.md", "要件定義書１.md", "改善策.md"]
 
 [tool.ruff]
 target-version = "py310"
