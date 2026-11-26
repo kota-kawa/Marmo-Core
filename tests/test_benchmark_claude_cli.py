@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "benchmarks"))
 
-from _claude_cli import ClaudeCLIProvider  # noqa: E402
+from _claude_cli import ClaudeCLIProvider, ModelRefusalError  # noqa: E402
 from marmo_core import ChatMessage  # noqa: E402
 
 # Mimics the CLI's parsing: ``--tools`` consumes every following value that is
@@ -67,6 +67,23 @@ class ClaudeCLIProviderTests(unittest.TestCase):
                 ChatMessage(role="user", content="- list item"),
             ])
         self.assertEqual(reply.content, "echo:- list item")
+
+    def test_safety_refusal_is_raised_at_once_instead_of_retried(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "claude"
+            path.write_text(
+                f"#!{sys.executable}\n"
+                "import sys\n"
+                "open(sys.argv[0] + '.calls', 'a').write('x')\n"
+                "print(\"API Error: Sonnet's safeguards flagged this message\")\n"
+                "sys.exit(1)\n",
+                encoding="utf-8",
+            )
+            path.chmod(path.stat().st_mode | stat.S_IXUSR)
+            provider = ClaudeCLIProvider(executable=str(path), attempts=4)
+            with self.assertRaises(ModelRefusalError):
+                provider.complete([ChatMessage(role="user", content="hello")])
+            self.assertEqual((Path(directory) / "claude.calls").read_text(), "x")
 
 
 if __name__ == "__main__":

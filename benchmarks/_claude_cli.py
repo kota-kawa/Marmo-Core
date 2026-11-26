@@ -19,6 +19,10 @@ from marmo_core.errors import ProviderError
 from marmo_core.llm import ChatMessage, LLMProvider, LLMResponse, LLMToolSpec
 
 
+class ModelRefusalError(ProviderError):
+    """The model's safety system declined the request: retrying returns the same."""
+
+
 class ClaudeCLIProvider(LLMProvider):
     def __init__(
         self, model: str = "sonnet", *, timeout: float = 180.0, executable: str = "claude", attempts: int = 4
@@ -54,4 +58,6 @@ class ClaudeCLIProvider(LLMProvider):
             if completed.returncode == 0 and completed.stdout.strip():
                 return LLMResponse(content=completed.stdout.strip())
             problem = f"claude CLI exited {completed.returncode}: {(completed.stderr or completed.stdout).strip()[:300]}"
+            if "safeguards flagged" in problem:
+                raise ModelRefusalError(problem)
         raise ProviderError(problem)
