@@ -88,7 +88,10 @@ Agent の 4 種別）を登録し、ゴールに対して必要なものだけ�
    候補プール、無ければレジストリから補い、activation gate で deny される依存先や
    見つからない依存先を持つもの、上位と衝突するものは落として skipped と
    `audit("retrieve")` の `constraint_drops` に残す。`escalate` なら `_pause`
-   （selection ステージの `HitlRequest`）。
+   （selection ステージの `HitlRequest`）。`Kernel(gate_aware_selection=True)` のときは
+   `SelectionContext.policy` にゲートの方針を渡し、対応する Selector は、権限や承認に
+   かかわらずゲートが拒否する候補（`policy.static_denials`）を選ばず、escalate の理由にも
+   しない（既定はオフ、ADR 0014）。
 5. **Activation gate** `activator.activate` → `PolicyGateway.evaluate(gate="activation")`
    → `audit("policy")`。escalate は `_pause`、deny は skipped に入れて
    `recovery.classify_activation`。

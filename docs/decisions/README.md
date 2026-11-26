@@ -20,6 +20,7 @@ Accepted / Superseded / Deprecated。
 | `0010-execution-snapshot.md` | 再開時は保存した選択 Resource と compiled context を検証して復元する | Accepted |
 | `0011-agent-execution-backends-and-structured-tasks.md` | Agent を backend で実行し、structured task は宣言 dependency の子 Kernel に委譲する | Accepted |
 | `0012-multi-intent-retrieval-and-coverage-selection.md` | 複数意図のゴールは分解して検索し、集合はファセット被覆の限界利得で選ぶ（opt-in、既定値は不変） | Accepted |
+| `0014-gate-aware-selection.md` | Selector はゲートが必ず拒否する候補を選ばず、escalate の理由にもしない（opt-in、既定値は不変。0013 は研究ブランチの番号） | Accepted |
 
 ## 書き方
 

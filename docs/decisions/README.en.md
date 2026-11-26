@@ -18,6 +18,7 @@ Records of important technical decisions. When changing or adding a decision, re
 | [0010](0010-execution-snapshot.en.md) | On resume, restore the saved selected Resources and validate the compiled context | Accepted |
 | [0011](0011-agent-execution-backends-and-structured-tasks.en.md) | Run Agents through backends and delegate structured tasks to child Kernels with declared dependencies | Accepted |
 | [0012](0012-multi-intent-retrieval-and-coverage-selection.en.md) | Decompose multi-intent goals for retrieval and select sets by marginal facet coverage (opt-in; defaults unchanged) | Accepted |
+| [0014](0014-gate-aware-selection.en.md) | Selectors neither select nor escalate on a candidate the gate always denies (opt-in; defaults unchanged; 0013 is used on a research branch) | Accepted |
 
 ## Format
 

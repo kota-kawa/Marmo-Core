@@ -12,6 +12,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Kernel(gate_aware_selection=True)` and `SelectionContext.policy` hand the
+  activation gate's policy to the selector. The rule-based, greedy, beam,
+  branch-and-bound, and coverage selectors then leave out every candidate the
+  gate denies whatever is granted or approved (a trust level or side effect
+  outside the policy, an isolation level that is unavailable or too low): it is
+  not selected in place of a usable resource and is not a reason to escalate,
+  and the selection reason names it. Missing permissions still escalate. Off
+  by default, so existing selections do not change. With it on, a Tool that
+  forges only part of its declarations is selected in 3% of benchmark variants
+  instead of 23%, and the legitimate Tool is lost in 17% instead of 37%; one
+  labelled escalate case becomes abstain because its Tool needs an isolation
+  level the default runtime lacks. `policy.static_denials` exposes the check.
+  See ADR 0014 and `benchmarks/README.md`.
+  - `Kernel(gate_aware_selection=True)` と `SelectionContext.policy` で、activation gate の
+    方針を Selector に渡せるようにしました。rule-based・greedy・beam・分枝限定・被覆型の各
+    Selector は、権限や承認にかかわらずゲートが拒否する候補（許可されない信頼度・副作用、
+    使えない・水準に満たない隔離レベル）を、利用できる資源の代わりに選ばず、escalate の理由にも
+    しません。外した候補は選択理由に出ます。権限不足は従来どおり escalate します。既定はオフで、
+    既存の選択結果は変わりません。オンにすると、宣言の一部だけを偽装した Tool が選ばれる割合は
+    ベンチマークで 23% から 3% に、正規の Tool が渡らなくなる割合は 37% から 17% に下がります。
+    一方、escalate がラベルの 1 ケースは、Tool が既定の実行環境に無い隔離レベルを要求するため
+    abstain に変わります。判定は `policy.static_denials` で参照できます。ADR 0014 と
+    `benchmarks/README.md` を参照してください。
+
 - `benchmarks/run_forgery_benchmark.py` tracks how far a resource with forged
   declarations gets: for Tool, Skill, and Agent decoys, each forged
   declaration (trust, permissions, side effect, isolation) and every
