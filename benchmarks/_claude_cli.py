@@ -23,11 +23,28 @@ class ModelRefusalError(ProviderError):
     """The model's safety system declined the request: retrying returns the same."""
 
 
+# Benchmarks may call only these model families through the CLI, to keep
+# their usage within the subscription's limits. A family alias ("sonnet",
+# "haiku") or a full model id of that family ("claude-sonnet-...") is accepted.
+ALLOWED_MODEL_FAMILIES = ("sonnet", "haiku")
+
+
+def check_model(model: str) -> str:
+    """Return ``model`` if it names an allowed family, else raise ``ValueError``."""
+
+    name = model.strip().lower()
+    if name in ALLOWED_MODEL_FAMILIES or any(name.startswith(f"claude-{family}") for family in ALLOWED_MODEL_FAMILIES):
+        return model
+    raise ValueError(
+        f"benchmark Claude CLI calls are limited to {', '.join(ALLOWED_MODEL_FAMILIES)} models; got {model!r}"
+    )
+
+
 class ClaudeCLIProvider(LLMProvider):
     def __init__(
         self, model: str = "sonnet", *, timeout: float = 180.0, executable: str = "claude", attempts: int = 4
     ) -> None:
-        self.model = model
+        self.model = check_model(model)
         self.timeout = timeout
         self.executable = executable
         # The CLI fails transiently under rate limits; a failed call would be

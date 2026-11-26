@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "benchmarks"))
 
-from _claude_cli import ClaudeCLIProvider, ModelRefusalError  # noqa: E402
+from _claude_cli import ClaudeCLIProvider, ModelRefusalError, check_model  # noqa: E402
 from marmo_core import ChatMessage  # noqa: E402
 
 # Mimics the CLI's parsing: ``--tools`` consumes every following value that is
@@ -84,6 +84,15 @@ class ClaudeCLIProviderTests(unittest.TestCase):
             with self.assertRaises(ModelRefusalError):
                 provider.complete([ChatMessage(role="user", content="hello")])
             self.assertEqual((Path(directory) / "claude.calls").read_text(), "x")
+
+    def test_only_sonnet_and_haiku_models_are_accepted(self) -> None:
+        for model in ("sonnet", "haiku", "Haiku", "claude-sonnet-5-5", "claude-haiku-5-5"):
+            self.assertEqual(check_model(model), model)
+        for model in ("opus", "claude-opus-5-5", "fable", "claude-fable-5-2", "", "best"):
+            with self.assertRaisesRegex(ValueError, "limited to sonnet, haiku"):
+                check_model(model)
+        with self.assertRaises(ValueError):
+            ClaudeCLIProvider("opus")
 
 
 if __name__ == "__main__":
