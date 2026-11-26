@@ -572,27 +572,57 @@ def summarize_oracle(rows: list[dict]) -> dict:
     }
 
 
-def per_query_macro(rows: list[dict]) -> dict[str, float]:
-    """Per query, the mean correctness over its valid variants (for paired bootstrap)."""
+def per_query_correct(rows: list[dict]) -> dict[str, dict[str, float]]:
+    """query id -> variant -> correctness, over the S / E / A variants (for the paired bootstrap)."""
 
-    grouped: dict[str, list[float]] = {}
+    grouped: dict[str, dict[str, float]] = {}
     for row in rows:
-        if row["variant"] not in VARIANTS:
-            continue
-        grouped.setdefault(row["id"], []).append(float(row["correct"]))
-    return {key: statistics.mean(values) for key, values in grouped.items()}
+        if row["variant"] in VARIANTS:
+            grouped.setdefault(row["id"], {})[row["variant"]] = float(row["correct"])
+    return grouped
 
 
-def bootstrap_difference(left: dict[str, float], right: dict[str, float], samples: int = 2000) -> dict:
+def _macro(sample: list[dict[str, float]]) -> dict[str, float]:
+    """Per-variant accuracy and their mean, the primary metric, over a sample of queries."""
+
+    scores = {}
+    for variant in VARIANTS:
+        values = [item[variant] for item in sample if variant in item]
+        if values:
+            scores[variant] = statistics.mean(values)
+    scores["macro"] = statistics.mean(scores.values()) if scores else 0.0
+    return scores
+
+
+def bootstrap_difference(left: dict[str, dict[str, float]], right: dict[str, dict[str, float]],
+                         samples: int = 2000) -> dict:
+    """Paired difference in macro and per-variant correctness, resampling queries.
+
+    The primary metric weights the S, E, and A variants equally, so the
+    bootstrap resamples queries (keeping each query's variants together) and
+    recomputes that metric on both sides of every resample.
+    """
+
     keys = sorted(set(left) & set(right))
     if not keys:
         return {"queries": 0}
-    differences = [left[key] - right[key] for key in keys]
     rng = random.Random(0)
-    means = sorted(statistics.mean(rng.choices(differences, k=len(differences))) for _ in range(samples))
-    return {"mean_difference": round(statistics.mean(differences), 4),
-            "ci95": [round(means[int(0.025 * samples)], 4), round(means[int(0.975 * samples) - 1], 4)],
-            "queries": len(keys)}
+    observed_left, observed_right = _macro([left[k] for k in keys]), _macro([right[k] for k in keys])
+    draws: dict[str, list[float]] = {metric: [] for metric in observed_left}
+    for _ in range(samples):
+        chosen = rng.choices(keys, k=len(keys))
+        a, b = _macro([left[k] for k in chosen]), _macro([right[k] for k in chosen])
+        for metric in draws:
+            if metric in a and metric in b:
+                draws[metric].append(a[metric] - b[metric])
+    result: dict = {"queries": len(keys)}
+    for metric, values in draws.items():
+        values.sort()
+        result[metric] = {
+            "difference": round(observed_left[metric] - observed_right[metric], 4),
+            "ci95": [round(values[int(0.025 * len(values))], 4), round(values[int(0.975 * len(values)) - 1], 4)],
+        }
+    return result
 
 
 def kappa(pairs: list[tuple[bool, bool]]) -> dict:
@@ -663,7 +693,7 @@ def stage_score(data: Data, args) -> dict:
             "variant_validity": kappa(validity),
         }
 
-    per_query: dict[str, dict[str, float]] = {}
+    per_query: dict[str, dict[str, dict[str, float]]] = {}
     for name, factory in rule_selectors().items():
         tuning = {}
         for floor in RULE_FLOORS:
@@ -673,13 +703,13 @@ def stage_score(data: Data, args) -> dict:
         rows = evaluate(data, test, substitutes_by_query, lambda variant: factory(best), best, gts)
         report["methods"][name] = {"min_relevance": best, "dev_macro_correct": tuning[best],
                                    "llm_calls_per_selection": 0, "test": summarize(rows)}
-        per_query[name] = per_query_macro(rows)
+        per_query[name] = per_query_correct(rows)
         # The same selector with no floor: what the floor buys.
         if best != 0.0:
             rows = evaluate(data, test, substitutes_by_query, lambda variant: factory(0.0), 0.0, gts)
             report["methods"][f"{name}@0"] = {"min_relevance": 0.0, "llm_calls_per_selection": 0,
                                               "test": summarize(rows)}
-            per_query[f"{name}@0"] = per_query_macro(rows)
+            per_query[f"{name}@0"] = per_query_correct(rows)
 
     replay = ReplayOnly()
     for name in ("llm-set", "req-cover", "req-cover-all"):
@@ -711,14 +741,14 @@ def stage_score(data: Data, args) -> dict:
                 oracle_rows = evaluate(data, oracle_covered, substitutes_by_query, make, 0.0, gts, ORACLE_VARIANTS)
                 entry[split]["oracle_candidates"] = summarize_oracle(oracle_rows) | {"queries": len(oracle_covered)}
             if split == "test":
-                per_query[name] = per_query_macro(rows)
+                per_query[name] = per_query_correct(rows)
 
-    reference = args.reference
-    if reference in per_query:
-        report["paired_vs_" + reference] = {
-            name: bootstrap_difference(values, per_query[reference])
-            for name, values in per_query.items() if name != reference
-        }
+    for reference in args.reference or ["greedy", "llm-set"]:
+        if reference in per_query:
+            report["paired_vs_" + reference] = {
+                name: bootstrap_difference(values, per_query[reference])
+                for name, values in per_query.items() if name != reference
+            }
     return report
 
 
@@ -768,7 +798,8 @@ def main() -> None:
     parser.add_argument("--method-model", default="sonnet")
     parser.add_argument("--method", action="append", choices=["llm-set", "req-cover"])
     parser.add_argument("--oracle", action="store_true", help="run the oracle-candidate S+ / E+ selections instead")
-    parser.add_argument("--reference", default="greedy", help="method the paired differences are taken against")
+    parser.add_argument("--reference", action="append",
+                        help="method the paired differences are taken against (repeatable; default: greedy, llm-set)")
     parser.add_argument("--output", default=str(Path(__file__).parent / "results" / "toolret-sae.json"))
     args = parser.parse_args()
 
