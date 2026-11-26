@@ -61,7 +61,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, MutableMapping
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
@@ -366,11 +366,10 @@ def stage_label(data: Data, queries: list, model: str, workers: int) -> None:
     run_jobs(pending, work, {path: cache}, workers)
 
 
-def method_selectors(model: str, caches: dict[str, LockedCache], llm: LLMProvider) -> dict[str, Any]:
-    return {
-        "llm-set": LLMSetSelector(llm, cache=caches["llm-set"]),
-        "req-cover": RequirementCoverageSelector(llm, cache=caches["req-cover"], max_candidates=POOL),
-    }
+def method_selector(name: str, cache: MutableMapping[str, str], llm: LLMProvider) -> Any:
+    if name == "llm-set":
+        return LLMSetSelector(llm, cache=cache)
+    return RequirementCoverageSelector(llm, cache=cache, max_candidates=POOL)
 
 
 def stage_methods(data: Data, queries: list, model: str, workers: int, methods: list[str], oracle: bool) -> None:
@@ -387,7 +386,7 @@ def stage_methods(data: Data, queries: list, model: str, workers: int, methods: 
         # The selector writes into a per-job view, so a failure is matched to
         # this job's own reply key and never to another thread's.
         view = JobCache(caches[name])
-        selector = method_selectors(model, {**caches, name: view}, llm)[name]
+        selector = method_selector(name, view, llm)
         selector.select(data.pool(query, variant), context=context(query, variant))
         failed = [key for key, value in view.written.items() if value == ""]
         if not failed:
