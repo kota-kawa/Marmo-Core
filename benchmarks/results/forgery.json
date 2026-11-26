@@ -64,6 +64,19 @@
             "gold_tool_loss_rate": 0.643,
             "abstain_escalate_hijack_rate": 1.0
           },
+          "partial_forgery": {
+            "variants": 1232,
+            "retrieval_rate": 0.89,
+            "selection_rate": 0.248,
+            "activation_reach_rate": 0.0,
+            "activation_escalation_rate": 0.036,
+            "offered_to_model_rate": 0.0,
+            "execution_reach_rate": 0.0,
+            "gold_displacement_rate": 0.207,
+            "status_change_rate": 0.261,
+            "gold_tool_loss_rate": 0.355,
+            "abstain_escalate_hijack_rate": 0.5
+          },
           "any_forgery": {
             "variants": 1320,
             "retrieval_rate": 0.891,
@@ -105,6 +118,19 @@
             "gold_tool_loss_rate": 0.214,
             "abstain_escalate_hijack_rate": 1.0
           },
+          "partial_forgery": {
+            "variants": 468,
+            "retrieval_rate": 0.889,
+            "selection_rate": 0.263,
+            "activation_reach_rate": 0.0,
+            "activation_escalation_rate": 0.088,
+            "offered_to_model_rate": 0.0,
+            "execution_reach_rate": null,
+            "gold_displacement_rate": 0.114,
+            "status_change_rate": 0.308,
+            "gold_tool_loss_rate": 0.583,
+            "abstain_escalate_hijack_rate": 0.5
+          },
           "any_forgery": {
             "variants": 546,
             "retrieval_rate": 0.89,
@@ -145,6 +171,19 @@
             "status_change_rate": 0.205,
             "gold_tool_loss_rate": 0.214,
             "abstain_escalate_hijack_rate": 1.0
+          },
+          "partial_forgery": {
+            "variants": 468,
+            "retrieval_rate": 0.885,
+            "selection_rate": 0.274,
+            "activation_reach_rate": 0.0,
+            "activation_escalation_rate": 0.092,
+            "offered_to_model_rate": 0.0,
+            "execution_reach_rate": 0.0,
+            "gold_displacement_rate": 0.1,
+            "status_change_rate": 0.308,
+            "gold_tool_loss_rate": 0.512,
+            "abstain_escalate_hijack_rate": 0.5
           },
           "any_forgery": {
             "variants": 546,
@@ -1026,6 +1065,19 @@
             "gold_tool_loss_rate": 0.643,
             "abstain_escalate_hijack_rate": 1.0
           },
+          "partial_forgery": {
+            "variants": 1232,
+            "retrieval_rate": 0.89,
+            "selection_rate": 0.226,
+            "activation_reach_rate": 0.0,
+            "activation_escalation_rate": 0.032,
+            "offered_to_model_rate": 0.0,
+            "execution_reach_rate": 0.0,
+            "gold_displacement_rate": 0.184,
+            "status_change_rate": 0.258,
+            "gold_tool_loss_rate": 0.347,
+            "abstain_escalate_hijack_rate": 0.5
+          },
           "any_forgery": {
             "variants": 1320,
             "retrieval_rate": 0.891,
@@ -1067,6 +1119,19 @@
             "gold_tool_loss_rate": 0.214,
             "abstain_escalate_hijack_rate": 1.0
           },
+          "partial_forgery": {
+            "variants": 468,
+            "retrieval_rate": 0.889,
+            "selection_rate": 0.263,
+            "activation_reach_rate": 0.0,
+            "activation_escalation_rate": 0.088,
+            "offered_to_model_rate": 0.0,
+            "execution_reach_rate": null,
+            "gold_displacement_rate": 0.114,
+            "status_change_rate": 0.308,
+            "gold_tool_loss_rate": 0.583,
+            "abstain_escalate_hijack_rate": 0.5
+          },
           "any_forgery": {
             "variants": 546,
             "retrieval_rate": 0.89,
@@ -1107,6 +1172,19 @@
             "status_change_rate": 0.205,
             "gold_tool_loss_rate": 0.214,
             "abstain_escalate_hijack_rate": 1.0
+          },
+          "partial_forgery": {
+            "variants": 468,
+            "retrieval_rate": 0.885,
+            "selection_rate": 0.274,
+            "activation_reach_rate": 0.0,
+            "activation_escalation_rate": 0.092,
+            "offered_to_model_rate": 0.0,
+            "execution_reach_rate": 0.0,
+            "gold_displacement_rate": 0.1,
+            "status_change_rate": 0.308,
+            "gold_tool_loss_rate": 0.512,
+            "abstain_escalate_hijack_rate": 0.5
           },
           "any_forgery": {
             "variants": 546,
@@ -1988,6 +2066,19 @@
             "gold_tool_loss_rate": 0.643,
             "abstain_escalate_hijack_rate": 1.0
           },
+          "partial_forgery": {
+            "variants": 1232,
+            "retrieval_rate": 0.89,
+            "selection_rate": 0.518,
+            "activation_reach_rate": 0.0,
+            "activation_escalation_rate": 0.038,
+            "offered_to_model_rate": 0.0,
+            "execution_reach_rate": 0.0,
+            "gold_displacement_rate": 0.121,
+            "status_change_rate": 0.0,
+            "gold_tool_loss_rate": 0.347,
+            "abstain_escalate_hijack_rate": 0.991
+          },
           "any_forgery": {
             "variants": 1320,
             "retrieval_rate": 0.891,
@@ -2029,6 +2120,19 @@
             "gold_tool_loss_rate": 0.214,
             "abstain_escalate_hijack_rate": 1.0
           },
+          "partial_forgery": {
+            "variants": 468,
+            "retrieval_rate": 0.889,
+            "selection_rate": 0.615,
+            "activation_reach_rate": 0.0,
+            "activation_escalation_rate": 0.103,
+            "offered_to_model_rate": 0.0,
+            "execution_reach_rate": null,
+            "gold_displacement_rate": 0.214,
+            "status_change_rate": 0.0,
+            "gold_tool_loss_rate": 0.333,
+            "abstain_escalate_hijack_rate": 1.0
+          },
           "any_forgery": {
             "variants": 546,
             "retrieval_rate": 0.89,
@@ -2068,6 +2172,19 @@
             "gold_displacement_rate": 0.471,
             "status_change_rate": 0.0,
             "gold_tool_loss_rate": 0.214,
+            "abstain_escalate_hijack_rate": 1.0
+          },
+          "partial_forgery": {
+            "variants": 468,
+            "retrieval_rate": 0.885,
+            "selection_rate": 0.609,
+            "activation_reach_rate": 0.0,
+            "activation_escalation_rate": 0.103,
+            "offered_to_model_rate": 0.0,
+            "execution_reach_rate": 0.0,
+            "gold_displacement_rate": 0.236,
+            "status_change_rate": 0.0,
+            "gold_tool_loss_rate": 0.333,
             "abstain_escalate_hijack_rate": 1.0
           },
           "any_forgery": {
@@ -2960,6 +3077,19 @@
                 "gold_tool_loss_rate": 0.643,
                 "abstain_escalate_hijack_rate": 1.0
               },
+              "partial_forgery": {
+                "variants": 504,
+                "retrieval_rate": 0.972,
+                "selection_rate": 0.331,
+                "activation_reach_rate": 0.0,
+                "activation_escalation_rate": 0.048,
+                "offered_to_model_rate": 0.0,
+                "execution_reach_rate": 0.0,
+                "gold_displacement_rate": 0.362,
+                "status_change_rate": 0.25,
+                "gold_tool_loss_rate": 0.355,
+                "abstain_escalate_hijack_rate": 0.5
+              },
               "any_forgery": {
                 "variants": 540,
                 "retrieval_rate": 0.972,
@@ -3001,6 +3131,19 @@
                 "gold_tool_loss_rate": 0.214,
                 "abstain_escalate_hijack_rate": 1.0
               },
+              "partial_forgery": {
+                "variants": 156,
+                "retrieval_rate": 1.0,
+                "selection_rate": 0.423,
+                "activation_reach_rate": 0.0,
+                "activation_escalation_rate": 0.141,
+                "offered_to_model_rate": 0.0,
+                "execution_reach_rate": null,
+                "gold_displacement_rate": 0.136,
+                "status_change_rate": 0.385,
+                "gold_tool_loss_rate": 0.583,
+                "abstain_escalate_hijack_rate": 0.5
+              },
               "any_forgery": {
                 "variants": 182,
                 "retrieval_rate": 1.0,
@@ -3041,6 +3184,19 @@
                 "status_change_rate": 0.115,
                 "gold_tool_loss_rate": 0.214,
                 "abstain_escalate_hijack_rate": 1.0
+              },
+              "partial_forgery": {
+                "variants": 156,
+                "retrieval_rate": 1.0,
+                "selection_rate": 0.455,
+                "activation_reach_rate": 0.0,
+                "activation_escalation_rate": 0.154,
+                "offered_to_model_rate": 0.0,
+                "execution_reach_rate": 0.0,
+                "gold_displacement_rate": 0.045,
+                "status_change_rate": 0.346,
+                "gold_tool_loss_rate": 0.512,
+                "abstain_escalate_hijack_rate": 0.5
               },
               "any_forgery": {
                 "variants": 182,
@@ -4061,6 +4217,19 @@
                 "gold_tool_loss_rate": 0.643,
                 "abstain_escalate_hijack_rate": 1.0
               },
+              "partial_forgery": {
+                "variants": 504,
+                "retrieval_rate": 0.972,
+                "selection_rate": 0.288,
+                "activation_reach_rate": 0.0,
+                "activation_escalation_rate": 0.042,
+                "offered_to_model_rate": 0.0,
+                "execution_reach_rate": 0.0,
+                "gold_displacement_rate": 0.304,
+                "status_change_rate": 0.242,
+                "gold_tool_loss_rate": 0.347,
+                "abstain_escalate_hijack_rate": 0.5
+              },
               "any_forgery": {
                 "variants": 540,
                 "retrieval_rate": 0.972,
@@ -4102,6 +4271,19 @@
                 "gold_tool_loss_rate": 0.214,
                 "abstain_escalate_hijack_rate": 1.0
               },
+              "partial_forgery": {
+                "variants": 156,
+                "retrieval_rate": 1.0,
+                "selection_rate": 0.423,
+                "activation_reach_rate": 0.0,
+                "activation_escalation_rate": 0.141,
+                "offered_to_model_rate": 0.0,
+                "execution_reach_rate": null,
+                "gold_displacement_rate": 0.136,
+                "status_change_rate": 0.385,
+                "gold_tool_loss_rate": 0.583,
+                "abstain_escalate_hijack_rate": 0.5
+              },
               "any_forgery": {
                 "variants": 182,
                 "retrieval_rate": 1.0,
@@ -4142,6 +4324,19 @@
                 "status_change_rate": 0.115,
                 "gold_tool_loss_rate": 0.214,
                 "abstain_escalate_hijack_rate": 1.0
+              },
+              "partial_forgery": {
+                "variants": 156,
+                "retrieval_rate": 1.0,
+                "selection_rate": 0.455,
+                "activation_reach_rate": 0.0,
+                "activation_escalation_rate": 0.154,
+                "offered_to_model_rate": 0.0,
+                "execution_reach_rate": 0.0,
+                "gold_displacement_rate": 0.045,
+                "status_change_rate": 0.346,
+                "gold_tool_loss_rate": 0.512,
+                "abstain_escalate_hijack_rate": 0.5
               },
               "any_forgery": {
                 "variants": 182,
@@ -5162,6 +5357,19 @@
                 "gold_tool_loss_rate": 0.643,
                 "abstain_escalate_hijack_rate": 1.0
               },
+              "partial_forgery": {
+                "variants": 504,
+                "retrieval_rate": 0.972,
+                "selection_rate": 0.518,
+                "activation_reach_rate": 0.0,
+                "activation_escalation_rate": 0.042,
+                "offered_to_model_rate": 0.0,
+                "execution_reach_rate": 0.0,
+                "gold_displacement_rate": 0.304,
+                "status_change_rate": 0.0,
+                "gold_tool_loss_rate": 0.347,
+                "abstain_escalate_hijack_rate": 0.982
+              },
               "any_forgery": {
                 "variants": 540,
                 "retrieval_rate": 0.972,
@@ -5203,6 +5411,19 @@
                 "gold_tool_loss_rate": 0.214,
                 "abstain_escalate_hijack_rate": 1.0
               },
+              "partial_forgery": {
+                "variants": 156,
+                "retrieval_rate": 1.0,
+                "selection_rate": 0.846,
+                "activation_reach_rate": 0.0,
+                "activation_escalation_rate": 0.141,
+                "offered_to_model_rate": 0.0,
+                "execution_reach_rate": null,
+                "gold_displacement_rate": 0.136,
+                "status_change_rate": 0.0,
+                "gold_tool_loss_rate": 0.333,
+                "abstain_escalate_hijack_rate": 1.0
+              },
               "any_forgery": {
                 "variants": 182,
                 "retrieval_rate": 1.0,
@@ -5242,6 +5463,19 @@
                 "gold_displacement_rate": 0.136,
                 "status_change_rate": 0.0,
                 "gold_tool_loss_rate": 0.214,
+                "abstain_escalate_hijack_rate": 1.0
+              },
+              "partial_forgery": {
+                "variants": 156,
+                "retrieval_rate": 1.0,
+                "selection_rate": 0.827,
+                "activation_reach_rate": 0.0,
+                "activation_escalation_rate": 0.141,
+                "offered_to_model_rate": 0.0,
+                "execution_reach_rate": 0.0,
+                "gold_displacement_rate": 0.114,
+                "status_change_rate": 0.0,
+                "gold_tool_loss_rate": 0.333,
                 "abstain_escalate_hijack_rate": 1.0
               },
               "any_forgery": {
@@ -6270,6 +6504,19 @@
                 "gold_tool_loss_rate": null,
                 "abstain_escalate_hijack_rate": 1.0
               },
+              "partial_forgery": {
+                "variants": 728,
+                "retrieval_rate": 0.834,
+                "selection_rate": 0.19,
+                "activation_reach_rate": 0.0,
+                "activation_escalation_rate": 0.027,
+                "offered_to_model_rate": 0.0,
+                "execution_reach_rate": 0.0,
+                "gold_displacement_rate": 0.104,
+                "status_change_rate": 0.269,
+                "gold_tool_loss_rate": null,
+                "abstain_escalate_hijack_rate": 0.5
+              },
               "any_forgery": {
                 "variants": 780,
                 "retrieval_rate": 0.835,
@@ -6311,6 +6558,19 @@
                 "gold_tool_loss_rate": null,
                 "abstain_escalate_hijack_rate": 1.0
               },
+              "partial_forgery": {
+                "variants": 312,
+                "retrieval_rate": 0.833,
+                "selection_rate": 0.183,
+                "activation_reach_rate": 0.0,
+                "activation_escalation_rate": 0.061,
+                "offered_to_model_rate": 0.0,
+                "execution_reach_rate": null,
+                "gold_displacement_rate": 0.104,
+                "status_change_rate": 0.269,
+                "gold_tool_loss_rate": null,
+                "abstain_escalate_hijack_rate": 0.5
+              },
               "any_forgery": {
                 "variants": 364,
                 "retrieval_rate": 0.835,
@@ -6351,6 +6611,19 @@
                 "status_change_rate": 0.25,
                 "gold_tool_loss_rate": null,
                 "abstain_escalate_hijack_rate": 1.0
+              },
+              "partial_forgery": {
+                "variants": 312,
+                "retrieval_rate": 0.827,
+                "selection_rate": 0.183,
+                "activation_reach_rate": 0.0,
+                "activation_escalation_rate": 0.061,
+                "offered_to_model_rate": 0.0,
+                "execution_reach_rate": 0.0,
+                "gold_displacement_rate": 0.125,
+                "status_change_rate": 0.288,
+                "gold_tool_loss_rate": null,
+                "abstain_escalate_hijack_rate": 0.5
               },
               "any_forgery": {
                 "variants": 364,
@@ -8119,6 +8392,19 @@
                 "gold_tool_loss_rate": null,
                 "abstain_escalate_hijack_rate": 1.0
               },
+              "partial_forgery": {
+                "variants": 728,
+                "retrieval_rate": 0.834,
+                "selection_rate": 0.184,
+                "activation_reach_rate": 0.0,
+                "activation_escalation_rate": 0.026,
+                "offered_to_model_rate": 0.0,
+                "execution_reach_rate": 0.0,
+                "gold_displacement_rate": 0.104,
+                "status_change_rate": 0.269,
+                "gold_tool_loss_rate": null,
+                "abstain_escalate_hijack_rate": 0.5
+              },
               "any_forgery": {
                 "variants": 780,
                 "retrieval_rate": 0.835,
@@ -8160,6 +8446,19 @@
                 "gold_tool_loss_rate": null,
                 "abstain_escalate_hijack_rate": 1.0
               },
+              "partial_forgery": {
+                "variants": 312,
+                "retrieval_rate": 0.833,
+                "selection_rate": 0.183,
+                "activation_reach_rate": 0.0,
+                "activation_escalation_rate": 0.061,
+                "offered_to_model_rate": 0.0,
+                "execution_reach_rate": null,
+                "gold_displacement_rate": 0.104,
+                "status_change_rate": 0.269,
+                "gold_tool_loss_rate": null,
+                "abstain_escalate_hijack_rate": 0.5
+              },
               "any_forgery": {
                 "variants": 364,
                 "retrieval_rate": 0.835,
@@ -8200,6 +8499,19 @@
                 "status_change_rate": 0.25,
                 "gold_tool_loss_rate": null,
                 "abstain_escalate_hijack_rate": 1.0
+              },
+              "partial_forgery": {
+                "variants": 312,
+                "retrieval_rate": 0.827,
+                "selection_rate": 0.183,
+                "activation_reach_rate": 0.0,
+                "activation_escalation_rate": 0.061,
+                "offered_to_model_rate": 0.0,
+                "execution_reach_rate": 0.0,
+                "gold_displacement_rate": 0.125,
+                "status_change_rate": 0.288,
+                "gold_tool_loss_rate": null,
+                "abstain_escalate_hijack_rate": 0.5
               },
               "any_forgery": {
                 "variants": 364,
@@ -9968,6 +10280,19 @@
                 "gold_tool_loss_rate": null,
                 "abstain_escalate_hijack_rate": 1.0
               },
+              "partial_forgery": {
+                "variants": 728,
+                "retrieval_rate": 0.834,
+                "selection_rate": 0.518,
+                "activation_reach_rate": 0.0,
+                "activation_escalation_rate": 0.036,
+                "offered_to_model_rate": 0.0,
+                "execution_reach_rate": 0.0,
+                "gold_displacement_rate": 0.0,
+                "status_change_rate": 0.0,
+                "gold_tool_loss_rate": null,
+                "abstain_escalate_hijack_rate": 1.0
+              },
               "any_forgery": {
                 "variants": 780,
                 "retrieval_rate": 0.835,
@@ -10009,6 +10334,19 @@
                 "gold_tool_loss_rate": null,
                 "abstain_escalate_hijack_rate": 1.0
               },
+              "partial_forgery": {
+                "variants": 312,
+                "retrieval_rate": 0.833,
+                "selection_rate": 0.5,
+                "activation_reach_rate": 0.0,
+                "activation_escalation_rate": 0.083,
+                "offered_to_model_rate": 0.0,
+                "execution_reach_rate": null,
+                "gold_displacement_rate": 0.25,
+                "status_change_rate": 0.0,
+                "gold_tool_loss_rate": null,
+                "abstain_escalate_hijack_rate": 1.0
+              },
               "any_forgery": {
                 "variants": 364,
                 "retrieval_rate": 0.835,
@@ -10046,6 +10384,19 @@
                 "offered_to_model_rate": 0.827,
                 "execution_reach_rate": 0.827,
                 "gold_displacement_rate": 0.625,
+                "status_change_rate": 0.0,
+                "gold_tool_loss_rate": null,
+                "abstain_escalate_hijack_rate": 1.0
+              },
+              "partial_forgery": {
+                "variants": 312,
+                "retrieval_rate": 0.827,
+                "selection_rate": 0.5,
+                "activation_reach_rate": 0.0,
+                "activation_escalation_rate": 0.083,
+                "offered_to_model_rate": 0.0,
+                "execution_reach_rate": 0.0,
+                "gold_displacement_rate": 0.292,
                 "status_change_rate": 0.0,
                 "gold_tool_loss_rate": null,
                 "abstain_escalate_hijack_rate": 1.0
@@ -11788,6 +12139,6 @@
     }
   },
   "marmo_core_version": "0.6.0",
-  "marmo_core_commit": "2177219d",
-  "generated_at": "2026-11-24T11:40:34+00:00"
+  "marmo_core_commit": "785bd3bb",
+  "generated_at": "2026-11-26T13:09:21+00:00"
 }

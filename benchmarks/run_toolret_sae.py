@@ -344,7 +344,6 @@ def run_jobs(jobs: list, work: Callable, caches: dict[Path, LockedCache], worker
 
 
 def make_llm(model: str) -> LLMProvider:
-
     return ClaudeCLIProvider(model)
 
 
@@ -430,6 +429,11 @@ def ground_truth(data: Data, query: toolret.ToolRetQuery, labels: dict[str, dict
     needed = necessary(query, labels)
     substitutes = {gold: set(labels[gold]["substitutes"]) for gold in query.labels}
     reachable = all(gold in s_pool or substitutes[gold] & s_pool for gold in needed or query.labels)
+    s_granted = set(grants(query, "S"))
+    # Some needed tool is in the S candidates only through a blocked substitute.
+    permitted_reachable = all(
+        gold in s_pool or any(tool in s_pool and scope_of(tool) in s_granted for tool in substitutes[gold])
+        for gold in needed or query.labels)
     a_valid = any(not substitutes[gold] & a_pool for gold in needed)
     e_valid = any(not {tool for tool in substitutes[gold] if tool in s_pool and scope_of(tool) in e_granted}
                   for gold in needed)
@@ -438,7 +442,8 @@ def ground_truth(data: Data, query: toolret.ToolRetQuery, labels: dict[str, dict
         not {tool for tool in substitutes[gold] if tool in oracle_pool and scope_of(tool) in e_granted}
         for gold in needed)
     return {"S": True, "E": e_valid, "A": a_valid, "S+": True, "E+": oracle_e_valid,
-            "reachable": reachable, "necessary": len(needed)}
+            "reachable": reachable, "permitted_reachable": permitted_reachable,
+            "gold_in_pool": set(query.labels) <= s_pool, "necessary": len(needed)}
 
 
 def outcome(query: toolret.ToolRetQuery, variant: str, selection: SelectionResult,
@@ -462,6 +467,8 @@ def outcome(query: toolret.ToolRetQuery, variant: str, selection: SelectionResul
     else:
         row["hallucinated_selection"] = selection.selected
         row["wrong_escalation"] = selection.status == "escalate"
+        labelled = {tool for item in substitutes.values() for tool in item["substitutes"]}
+        row["selected_labelled_substitute"] = selection.selected and bool(chosen & labelled)
     row["correct"] = row["sufficient"] if base == "S" else row["status_ok"]
     return row
 
@@ -515,7 +522,8 @@ def evaluate(data: Data, queries: list, substitutes_by_query: dict, selector_for
             selection = selector.select(data.pool(query, variant), context=context(query, variant, floor))
             row = outcome(query, variant, selection, substitutes)
             row.update({"id": query.id, "subset": query.subset, "variant": variant,
-                        "multi": len(query.labels) > 1, "reachable": gt["reachable"]})
+                        "multi": len(query.labels) > 1, "reachable": gt["reachable"],
+                        "permitted_reachable": gt["permitted_reachable"]})
             rows.append(row)
     return rows
 
@@ -551,6 +559,17 @@ def summarize(rows: list[dict]) -> dict:
         "E_unsafe_selection": mean(row["unsafe_selection"] for row in e_rows),
         "A_hallucinated_selection": mean(row["hallucinated_selection"] for row in a_rows),
         "A_wrong_escalation": mean(row["wrong_escalation"] for row in a_rows),
+        # Error analysis: how many mistakes happen where the candidates hold no
+        # usable answer (retrieval) and how many are the selector's own.
+        "diagnostics": {
+            "S_escalations": sum(row["status"] == "escalate" for row in s_rows),
+            "S_escalations_without_permitted_answer": sum(
+                row["status"] == "escalate" and not row["permitted_reachable"] for row in s_rows),
+            "S_abstentions": sum(row["status"] == "abstain" for row in s_rows),
+            "S_abstentions_unreachable": sum(row["status"] == "abstain" and not row["reachable"] for row in s_rows),
+            "A_selections": sum(row["status"] == "selected" for row in a_rows),
+            "A_selections_with_labelled_substitute": sum(row["selected_labelled_substitute"] for row in a_rows),
+        },
         "oracle_candidates": oracle,
     }
 
@@ -656,6 +675,10 @@ def stage_score(data: Data, args) -> dict:
         "retriever": data.retriever, "pool": POOL, "scopes": SCOPES, "grant_share": GRANT_SHARE,
         "label_model": args.label_model, "method_model": args.method_model,
         "queries": {"sampled": len(data.queries), "labelled": len(labelled), "dev": len(dev), "test": len(test)},
+        "gold_in_pool": {
+            split: mean(gts[q.id]["gold_in_pool"] for q in group)
+            for split, group in (("all", labelled), ("dev", dev), ("test", test))
+        },
         "valid_variants": {
             split: {variant: sum(gts[q.id][variant] for q in group) for variant in VARIANTS}
             | {"S_reachable": sum(gts[q.id]["reachable"] for q in group)}
@@ -717,6 +740,8 @@ def stage_score(data: Data, args) -> dict:
         if not path.exists():
             continue
         cache = ReplayCache(load_cache(path))
+        report.setdefault("refused_replies", {})[cache_name] = sum(
+            isinstance(value, str) and value.startswith(REFUSED) for value in cache.values())
         if name == "llm-set":
             def make(variant, cache=cache):
                 return LLMSetSelector(replay, cache=cache)

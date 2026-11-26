@@ -386,7 +386,7 @@ python3 benchmarks/run_forgery_benchmark.py            # 約 90 秒、LLM なし
 |---|---|---|---:|---:|---:|---:|---:|---:|
 | lexical + greedy | Tool | 正直 | 0.000 | 0.000 | 0.000 | 0.000 | 0.214 | 0.000 |
 | lexical + greedy | Tool | 全偽装 | 0.534 | 0.534 | 0.534 | 0.534 | 0.643 | 1.000 |
-| lexical + greedy | Tool | いずれかを偽装 | 0.247 | 0.036 | 0.036 | 0.036 | 0.367 | 0.533 |
+| lexical + greedy | Tool | 一部だけ偽装 | 0.226 | 0.000 | 0.000 | 0.000 | 0.347 | 0.500 |
 | lexical + greedy | Skill | 全偽装 | 0.526 | 0.526 | 0.526 | — | 0.214 | 1.000 |
 | lexical + greedy | Agent | 全偽装 | 0.564 | 0.564 | 0.564 | 0.564 | 0.214 | 1.000 |
 | lexical + 被覆型 | Tool | 全偽装 | 0.534 | 0.534 | 0.534 | 0.534 | 0.643 | 1.000 |
@@ -400,12 +400,12 @@ Skill と Agent の「正直」は 3 構成とも activation 通過 0、Skill �
 **読み方**
 
 - **止めているのは activation gate で、Selector ではありません**。greedy と被覆型は宣言された権限が足りない資源を選ばないので、権限の宣言だけを偽装した Tool（信頼度は `untrusted`、副作用は `external` のまま）は stuffed で 74%（両スイート合計。全偽装は 82%）選ばれ、activation gate で拒否されます。Selector は信頼度・副作用・隔離レベルを見ません。ゲートを通るのは 4 項目すべてを偽装した場合だけで、1 項目でも正直なら activation 通過は 0 でした（stuffed の Tool 16 通り）。
-- **拒否されても被害は残ります**。選ばれてから拒否された偽装資源は gold を押しのけたままなので、一部だけ偽装した Tool でも gold Tool の喪失は 37% です。正直な宣言の stuffed Tool でさえ、greedy は「権限だけで阻まれた上位の単位」として escalate を返し（権限不足の上位候補を escalate する既定の挙動）、gold Tool が 21% のケースで渡らなくなります。人に `net.external` と `message.send` の付与を求める経路でもあります。
+- **拒否されても被害は残ります**。選ばれてから拒否された偽装資源は gold を押しのけたままなので、一部だけ偽装した Tool でも gold Tool の喪失は 35% です（`tracked` の `partial_forgery`）。正直な宣言の stuffed Tool でさえ、greedy は「権限だけで阻まれた上位の単位」として escalate を返し（権限不足の上位候補を escalate する既定の挙動）、gold Tool が 43% のケースで渡らなくなります（clone では 0%、表の「正直」の 0.214 は両方の平均）。人に `net.external` と `message.send` の付与を求める経路でもあります。
 - **`clone`（正規の資源の複製）は stuffed より通りにくい**。同点の gold と並ぶため、全偽装でも Tool 36%（evidence）、集合コーパスでは 4% でした。
 - Kernel 既定の rule-based Selector は権限を見ないので、正直な宣言の偽装資源も 42〜58% 選ばれます（ゲートで拒否）。
 - 宣言の真正性を確かめる対策（署名・出所の検証）はこのベンチマークの対象外です。対策を入れたら、同じコマンドで `tracked` の全偽装の行が下がるかを確かめます。
 
-**検索・選択・ルーティングを変える PR での手順**: 変更前のブランチと変更後のブランチで `python3 benchmarks/run_forgery_benchmark.py --output /tmp/forgery-before.json`（後は `-after.json`）を実行し、`tracked.<構成>.tracked.<種別>.{honest,full_forgery,any_forgery}` の `selection_rate`、`activation_reach_rate`、`execution_reach_rate`、`gold_tool_loss_rate`、`abstain_escalate_hijack_rate` を PR 本文に並べます。新しい Retriever / Selector は `CONFIGS` に足してから測ります。結果 JSON を更新する場合はこの表も揃えます。
+**検索・選択・ルーティングを変える PR での手順**: 変更前のブランチと変更後のブランチで `python3 benchmarks/run_forgery_benchmark.py --output /tmp/forgery-before.json`（後は `-after.json`）を実行し、`tracked.<構成>.tracked.<種別>.{honest,full_forgery,partial_forgery,any_forgery}` の `selection_rate`、`activation_reach_rate`、`execution_reach_rate`、`gold_tool_loss_rate`、`abstain_escalate_hijack_rate` を PR 本文に並べます。新しい Retriever / Selector は `CONFIGS` に足してから測ります。結果 JSON を更新する場合はこの表も揃えます。
 
 ## 100k の flat ANN 比較
 
@@ -647,8 +647,8 @@ python3 benchmarks/run_toolret_sae.py --stage score
 - **関連度の下限では状態を決められません**。dev でマクロ正答率を最大化した下限 0.75 は、ほぼ常に棄権する解（A 正答 0.95、S 正答 0.02）で、0.344 は「常に棄権」（0.333）とほぼ同じです。下限なしでは A で一度も棄権しません。上の「棄権は Coverage と Selective Accuracy のトレードオフ」の観測が、作者以外のラベルでも再現しました。
 - **LLM に集合と状態をまとめて決めさせると、選んでしまいます**。`LLMSetSelector` は S では最良ですが、A の 76%、E の 68% で何かを選び、調整済みの下限にもマクロで劣りました（−0.047）。正解を候補に入れても、E+ の半分で権限の無い正解の代わりに別のツールを選びます。リポジトリ内の宣言制約つき合成ベンチマーク（abstain / escalate 精度 100%）とは逆の結果です。
 - **状態を宣言制約からソルバーが決めると、マクロ正答率が最も高くなります**（greedy 比 +0.103、`LLMSetSelector` 比 +0.149）。LLM には「要求ごとに満たす候補」だけを判定させ、権限は見せません。E+ の escalate は 0.475 → 0.796 に上がりました。
-- **事前登録の基準 3 は満たしませんでした**。S での不要な escalate が 0.060 で、上限（0.023 + 0.02）を超えたため、推奨・既定化はしません（ADR 0013）。誤りを分析すると、S の escalate 51 件中 42 件は候補 20 件に「許可された正解・代替」が無く権限の無い類似ツールしか無い状況で、S の誤った棄権 184 件中 166 件も候補に必要なツールが無い状況でした。主な原因は検索の上限（上位 20 件に正解が揃うのは 32%）です。
-- **残る本質的な誤りは能力判定の甘さです**。A で何かを選んだ 194 件のうち、ラベル上の代替を含むのは 30 件でした。
+- **事前登録の基準 3 は満たしませんでした**。S での不要な escalate が 0.060 で、上限（0.023 + 0.02）を超えたため、推奨・既定化はしません（ADR 0013）。誤りを分析すると、S の escalate 51 件中 42 件は候補 20 件に「許可された正解・代替」が無く権限の無い類似ツールしか無い状況で、S の誤った棄権 184 件中 166 件も候補に必要なツールが無い状況でした。主な原因は検索の上限（上位 20 件に正解が揃うのは標本全体で 32%、`gold_in_pool`）です。件数は各手法の `diagnostics` にあります。
+- **残る本質的な誤りは能力判定の甘さです**。A で何かを選んだ 194 件のうち、ラベル上の代替を含むのは 40 件でした（`LLMSetSelector` は 361 件中 118 件）。
 - **限界**: 正解の状態は LLM アノテータの判定で、人のラベルではありません。手法も同系統の Sonnet なので、モデル間の相関が提案手法を有利にしている可能性は残ります。権限は意味を持たないハッシュのスコープです。LLM の応答はキャッシュに依存し、再実行で変わります。
 
 ## 注意

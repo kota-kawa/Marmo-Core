@@ -101,7 +101,7 @@ class ForgeryBenchmarkTests(unittest.TestCase):
         tracked = report["tracked"]["lexical-greedy"]["tracked"]
         self.assertEqual(set(tracked), {"tool", "skill", "agent"})
         for values in tracked.values():
-            self.assertEqual(set(values), {"honest", "full_forgery", "any_forgery"})
+            self.assertEqual(set(values), {"honest", "full_forgery", "partial_forgery", "any_forgery"})
             for key in ("selection_rate", "activation_reach_rate", "offered_to_model_rate",
                         "abstain_escalate_hijack_rate"):
                 self.assertIn(key, values["full_forgery"])

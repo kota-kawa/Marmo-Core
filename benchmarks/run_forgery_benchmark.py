@@ -354,6 +354,7 @@ def tracked(rows: list[dict]) -> dict:
         result[kind] = {
             "honest": summarize([row for row in kind_rows if row["attack"] == "honest"]),
             "full_forgery": summarize([row for row in kind_rows if row["attack"] == full]),
+            "partial_forgery": summarize([row for row in kind_rows if row["attack"] not in ("honest", full)]),
             "any_forgery": summarize([row for row in kind_rows if row["attack"] != "honest"]),
         }
     return result
