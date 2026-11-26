@@ -425,7 +425,15 @@ def stage_methods(data: Data, queries: list, model: str, workers: int, methods: 
             return
         raise RuntimeError(f"{name} failed for {query.id}/{variant}: {selector.last_failure}")
 
-    run_jobs(jobs, work, {method_cache_path(cache, model): replies for cache, replies in shared.items()}, workers)
+    # Methods that add a second call run after the others: they share the first
+    # reply with their base method, and two threads asking for it at once would
+    # each get a different reply, leaving a second call keyed to the one that
+    # was overwritten.
+    paths = {method_cache_path(cache, model): replies for cache, replies in shared.items()}
+    for second_pass in (False, True):
+        batch = [job for job in jobs if bool(METHODS[job[0]].get("extra")) == second_pass]
+        if batch:
+            run_jobs(batch, work, paths, workers)
 
 
 def context(query: toolret.ToolRetQuery, variant: str, min_relevance: float = 0.0) -> SelectionContext:
