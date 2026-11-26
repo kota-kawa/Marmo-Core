@@ -60,6 +60,28 @@ class EmbeddingProvider(ABC):
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         """Return one vector per input text. All vectors share one dimension."""
 
+    def embed_queries(self, texts: Sequence[str]) -> list[list[float]]:
+        """Embed search queries; by default the same as :meth:`embed`.
+
+        Retrieval-tuned models such as BGE, E5, Arctic-Embed, and Nomic are
+        asymmetric: they expect an instruction or prefix on the query side
+        and none on documents. Override this for such a model, so retrievers
+        embed resources with :meth:`embed` and goals with this method.
+        """
+
+        return self.embed(texts)
+
+
+def embed_queries(provider: EmbeddingProvider, texts: Sequence[str]) -> list[list[float]]:
+    """``provider.embed_queries``, or ``provider.embed`` for providers without it.
+
+    Providers written against the original interface, including duck-typed
+    ones that do not subclass :class:`EmbeddingProvider`, only have ``embed``.
+    """
+
+    method = getattr(provider, "embed_queries", None)
+    return method(texts) if callable(method) else provider.embed(texts)
+
 
 class HashingEmbeddingProvider(EmbeddingProvider):
     """Deterministic zero-dependency embeddings via token feature hashing.
@@ -279,12 +301,12 @@ class HybridRetriever(Retriever):
         """Embed one task string, reusing the last ``query_cache_size`` of them."""
 
         if self.query_cache_size == 0:
-            return self.embedding_provider.embed([task])[0]
+            return embed_queries(self.embedding_provider, [task])[0]
         cached = self._query_vectors.get(task)
         if cached is not None:
             self._query_vectors.move_to_end(task)
             return cached
-        vector = self.embedding_provider.embed([task])[0]
+        vector = embed_queries(self.embedding_provider, [task])[0]
         self._query_vectors[task] = vector
         while len(self._query_vectors) > self.query_cache_size:
             self._query_vectors.popitem(last=False)

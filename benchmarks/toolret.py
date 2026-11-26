@@ -262,7 +262,13 @@ class CachedEmbeddingProvider:
     """
 
     def __init__(
-        self, model: str, cache_dir: Path | None = None, *, threads: int | None = None, max_chars: int = 512
+        self,
+        model: str,
+        cache_dir: Path | None = None,
+        *,
+        threads: int | None = None,
+        max_chars: int = 512,
+        query_prefix: str = "",
     ) -> None:
         try:
             from fastembed import TextEmbedding
@@ -274,6 +280,8 @@ class CachedEmbeddingProvider:
         self.model_name = model
         self._model = TextEmbedding(model, threads=threads)
         self.max_chars = max_chars
+        # Asymmetric retrieval models expect an instruction on queries only.
+        self.query_prefix = query_prefix
         self.checkpoint_every = 2000
         slug = f"{model.replace('/', '__')}-{max_chars}"
         self.cache_dir = cache_dir or Path(__file__).parent / "cache" / "embeddings"
@@ -313,6 +321,9 @@ class CachedEmbeddingProvider:
                 assert self._vectors is not None
                 output.append(self._vectors[self._index[key]].tolist())
         return output
+
+    def embed_queries(self, texts: Sequence[str]) -> list[list[float]]:
+        return self.embed([self.query_prefix + text for text in texts])
 
     def save(self) -> None:
         if not self._pending:

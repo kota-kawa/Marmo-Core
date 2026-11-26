@@ -39,7 +39,7 @@ import random
 from .models import ResourceDefinition, SearchQuery, SearchResult
 from .registry import ResourceRegistry
 from .retriever import _BM25_B, _BM25_K1, Retriever, _resource_search_text, _tokens
-from .semantic import EmbeddingProvider, HybridRetriever, _cosine_01, _embedding_text
+from .semantic import EmbeddingProvider, HybridRetriever, _cosine_01, _embedding_text, embed_queries
 
 
 class GroupingStrategy(ABC):
@@ -239,7 +239,7 @@ class HierarchicalRetriever(Retriever):
         provider = self.embedding_provider
         weight = self.route_semantic_weight if provider is not None else 0.0
         if weight > 0.0 and query.task.strip() and provider is not None:
-            query_vector = provider.embed([query.task])[0]
+            query_vector = embed_queries(provider, [query.task])[0]
             centroids = state.centroids(provider)
             semantic = {
                 group: _cosine_01(query_vector, centroid) for group, centroid in centroids.items()
