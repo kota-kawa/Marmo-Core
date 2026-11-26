@@ -73,6 +73,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `EmbeddingProvider.embed_queries()` embeds search queries. It defaults to
+  `embed()`; providers for asymmetric retrieval models (BGE, E5,
+  Arctic-Embed, Nomic), which expect an instruction on the query side only,
+  override it. `HybridRetriever` and `HierarchicalRetriever` now embed goals
+  through it and resources through `embed()`. Providers that only define
+  `embed()`, including ones that do not subclass `EmbeddingProvider`, behave
+  as before. The ToolRet benchmark takes `--query-prefix` for such models and
+  `--records` for per-query metrics that can be paired across runs.
 - Opt-in multi-intent retrieval: `DecomposedRetriever` splits a goal into
   sub-tasks with a `QueryDecomposer`, searches the goal and every sub-task with
   an inner retriever, and fuses the rankings (default `fusion="blend"`:
