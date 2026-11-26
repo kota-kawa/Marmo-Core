@@ -25,7 +25,7 @@ class ModelRefusalError(ProviderError):
 
 # Benchmarks may call only these model families through the CLI, to keep
 # their usage within the subscription's limits. A family alias ("sonnet",
-# "haiku") or a full model id of that family ("claude-sonnet-...") is accepted.
+# "haiku") or a full model id of that family is accepted.
 ALLOWED_MODEL_FAMILIES = ("sonnet", "haiku")
 
 
@@ -33,7 +33,11 @@ def check_model(model: str) -> str:
     """Return ``model`` if it names an allowed family, else raise ``ValueError``."""
 
     name = model.strip().lower()
-    if name in ALLOWED_MODEL_FAMILIES or any(name.startswith(f"claude-{family}") for family in ALLOWED_MODEL_FAMILIES):
+    # Full ids name the family as one dash-separated part, at any position
+    # ("claude-haiku-5-5", "claude-3-5-sonnet-20241022").
+    if name in ALLOWED_MODEL_FAMILIES or (
+        name.startswith("claude-") and any(family in name.split("-") for family in ALLOWED_MODEL_FAMILIES)
+    ):
         return model
     raise ValueError(
         f"benchmark Claude CLI calls are limited to {', '.join(ALLOWED_MODEL_FAMILIES)} models; got {model!r}"

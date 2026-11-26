@@ -86,9 +86,9 @@ class ClaudeCLIProviderTests(unittest.TestCase):
             self.assertEqual((Path(directory) / "claude.calls").read_text(), "x")
 
     def test_only_sonnet_and_haiku_models_are_accepted(self) -> None:
-        for model in ("sonnet", "haiku", "Haiku", "claude-sonnet-5-5", "claude-haiku-5-5"):
+        for model in ("sonnet", "haiku", "Haiku", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-3-5-sonnet-20241022"):
             self.assertEqual(check_model(model), model)
-        for model in ("opus", "claude-opus-5-5", "fable", "claude-fable-5-2", "", "best"):
+        for model in ("opus", "claude-opus-5-5", "fable", "claude-fable-5-2", "claude-sonnetx", "", "best"):
             with self.assertRaisesRegex(ValueError, "limited to sonnet, haiku"):
                 check_model(model)
         with self.assertRaises(ValueError):
