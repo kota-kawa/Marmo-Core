@@ -539,6 +539,30 @@ dev 分割または開発中のオフライン分析で、次はいずれも改�
 - **被覆型の上積みは全件では有意です**（top-1 比 +0.012）。標本 856 件では +0.004 で区間が 0 を含んでいたので、効果は小さく、検出に件数が要る大きさです。`include_within=0.95` を加えると相対しきい値を上回る 0.229 になり、正解件数を知っている oracle（0.234）との差は 0.005 です。
 - 分解されたクエリ 1,900 件の既知語率は平均 0.93 で、英語のゴールでは割引がほとんど効かないことも全件で確認できます。
 
+### 埋め込みモデルとクエリ側の指示文
+
+検索ベンチマーク（MTEB）で MiniLM-L6 より強い検索特化モデル **Snowflake Arctic-Embed-S**（33M パラメータ、384 次元）に替えると第1層が上がるか、同じ 1,689 クエリで測りました。Arctic-Embed は非対称なモデルで、クエリ側にだけ指示文（`Represent this sentence for searching relevant passages: `）を付けて学習されています。`EmbeddingProvider.embed_queries()` で文書とクエリを別々に埋め込み、指示文の有無も比べています（`--query-prefix`）。
+
+```bash
+python3 benchmarks/run_toolret_benchmark.py --per-subset 60 --retrievers hybrid-0.5,dense --records /tmp/minilm.json
+python3 benchmarks/run_toolret_benchmark.py --per-subset 60 --retrievers hybrid-0.5,dense \
+    --embed-model snowflake/snowflake-arctic-embed-s \
+    --query-prefix "Represent this sentence for searching relevant passages: " --records /tmp/arctic.json
+python3 benchmarks/compare_toolret_records.py minilm=/tmp/minilm.json arctic-s=/tmp/arctic.json --output /tmp/cmp.json
+```
+
+結果は [`results/toolret-arctic-s.json`](results/toolret-arctic-s.json)、[`results/toolret-arctic-s-no-instruction.json`](results/toolret-arctic-s-no-instruction.json)、対応のある差は [`results/toolret-embeddings.json`](results/toolret-embeddings.json)（MiniLM との差）と [`results/toolret-query-instruction.json`](results/toolret-query-instruction.json)（指示文の有無の差）です。MiniLM-L6 の行は [`results/toolret.json`](results/toolret.json) と同じ値です。差は 1,689 クエリの micro 平均の差と 95% ブートストラップ区間です。
+
+| 埋め込み | hybrid-0.5 macro nDCG@10 | hybrid-0.5 macro C@10 | dense macro nDCG@10 | dense macro C@10 | MiniLM との差（dense nDCG@10） |
+|---|---:|---:|---:|---:|---:|
+| **MiniLM-L6**（既定） | **0.256** | **0.247** | **0.205** | **0.199** | — |
+| Arctic-Embed-S（指示文あり） | 0.241 | 0.221 | 0.178 | 0.163 | −0.026 [−0.037, −0.016] |
+| Arctic-Embed-S（指示文なし） | 0.229 | 0.214 | 0.110 | 0.107 | −0.091 [−0.103, −0.078] |
+
+- **MTEB で強いモデルが ToolRet で強いとは限りません**。Arctic-Embed-S は hybrid でも dense でも MiniLM に有意に劣りました（hybrid nDCG@10 −0.014 [−0.022, −0.007]、C@100 −0.045 [−0.060, −0.031]）。ToolRet 論文の「検索モデルはツール検索が苦手」という結論と同じ向きで、既定の MiniLM-L6 は変えません。
+- **非対称モデルにはクエリ側の指示文が必須です**。指示文を外すと dense の nDCG@10 が 0.065 [0.056, 0.074]、C@100 が 0.098 [0.082, 0.114] 下がります。`embed()` しか無かった以前の `EmbeddingProvider` では、この種のモデルを指示文なしの状態でしか使えませんでした。
+- CPU 4 コアでの 44,453 件の文書埋め込みは、MiniLM-L6 が約 40 分、Arctic-Embed-S が約 90 分、bge-small-en-v1.5 が約 4 時間、bge-base-en-v1.5 が 10 時間以上でした（他の処理と CPU を共有した状態の見積もり）。大型モデルはこの環境では測っていません。
+
 ### 日本語のゴールで英語のカタログから選ぶ
 
 ToolRet のツール記述は英語です。test 分割から各サブセット 6 件（206 件）を Claude Sonnet で自然な日本語に訳し（`run_toolret_llm_stages.py --stage translate-ja`）、同じ 206 件を英語のまま検索した場合と比べました（[`results/toolret-ja.json`](results/toolret-ja.json)、[`results/toolret-ja-english-baseline.json`](results/toolret-ja-english-baseline.json)）。`!` は既知語率による割引なし、`@1` は下位タスク重み 1 です。
