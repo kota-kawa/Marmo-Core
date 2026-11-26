@@ -574,28 +574,46 @@ class LLMSetSelector(_LLMFailureTracker, SetSelector):
 def _parse_set_reply(text: str, valid_ids: list[str]) -> tuple[str, list[str], str] | None:
     """Parse the set-selection reply into (status, ids, reason).
 
-    Accepts a JSON object (possibly wrapped in prose or a code fence); falls
-    back to treating any valid ids appearing verbatim as a selected set.
+    Accepts JSON objects (possibly wrapped in prose or a code fence) and takes
+    the last one, so a reply that corrects itself is read as its correction;
+    falls back to treating any valid ids appearing verbatim as a selected set.
     """
 
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if match:
-        try:
-            parsed = json.loads(match.group(0))
-        except (ValueError, RecursionError):
-            parsed = None
-        if isinstance(parsed, dict):
-            status = str(parsed.get("status", "selected"))
-            if status not in ("selected", "abstain", "escalate"):
-                status = "selected"
-            raw_ids = parsed.get("ids", [])
-            ids = [str(item) for item in raw_ids] if isinstance(raw_ids, list) else []
-            reason = str(parsed.get("reason", "")).strip() or "no reason given"
-            return status, ids, reason
+    parsed = _last_json_object(text)
+    if parsed is not None:
+        status = str(parsed.get("status", "selected"))
+        if status not in ("selected", "abstain", "escalate"):
+            status = "selected"
+        raw_ids = parsed.get("ids", [])
+        ids = [str(item) for item in raw_ids] if isinstance(raw_ids, list) else []
+        reason = str(parsed.get("reason", "")).strip() or "no reason given"
+        return status, ids, reason
     fallback = _extract_ids(text, valid_ids)
     if fallback:
         return "selected", fallback, "ids recovered from a non-JSON reply"
     return None
+
+
+def _last_json_object(text: str) -> dict[str, object] | None:
+    """The last top-level JSON object in ``text``, or ``None`` when there is none.
+
+    Objects nested inside an earlier one are not candidates, and text that
+    only looks like an object (a stray brace in prose) is skipped.
+    """
+
+    decoder = json.JSONDecoder()
+    last: dict[str, object] | None = None
+    position = text.find("{")
+    while position != -1:
+        try:
+            parsed, end = decoder.raw_decode(text, position)
+        except (ValueError, RecursionError):
+            position = text.find("{", position + 1)
+            continue
+        if isinstance(parsed, dict):
+            last = parsed
+        position = text.find("{", end)
+    return last
 
 
 def _named_candidate(item: object, valid_ids: list[str], valid: set[str], accept_positions: bool) -> str | None:

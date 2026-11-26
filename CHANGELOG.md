@@ -60,6 +60,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - プロセスの環境変数 `MARMO_CLI_LANGUAGE=ja` を設定すると、CLI のヘルプ、
     入力エラー、タスク結果の主なラベルを日本語で表示します。既定は英語です。
 
+### Fixed
+
+- `LLMSetSelector` reads the last JSON object in a reply instead of everything
+  between the first `{` and the last `}`. A model that follows its answer with a
+  corrected object used to make the reply unparseable, and the selector then
+  fell back to every candidate id mentioned in the text, including retracted
+  ones; a corrected `abstain` came back as `selected`. The prompt and request
+  are unchanged, so cached replies replay with only their interpretation changed.
+  - `LLMSetSelector` が、最初の `{` から最後の `}` までではなく、応答中の最後の JSON
+    オブジェクトを読むようにしました。答えのあとに訂正版を続けるモデルでは、応答を
+    JSON として読めなくなり、撤回した ID を含む本文中のすべての候補 ID を選んでいました。
+    訂正後の `abstain` も `selected` になっていました。プロンプトとリクエストは変えて
+    いないので、キャッシュ済みの応答は解釈だけが変わって再生されます。
+
 ## [0.7.0] - 2026-11-24
 
 ### Changed
