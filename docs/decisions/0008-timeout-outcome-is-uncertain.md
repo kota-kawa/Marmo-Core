@@ -1,5 +1,7 @@
 # 0008. timeout 後の操作結果は不明として扱う
 
+[English](0008-timeout-outcome-is-uncertain.en.md)
+
 - 状態: Accepted
 - 日付: 2026-09-25
 - 根拠: `marmo_core/tool_runtime.py`、`marmo_core/recovery.py`

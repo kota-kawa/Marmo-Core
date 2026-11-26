@@ -1,5 +1,7 @@
 # ルーティングベンチマーク
 
+[English](README.en.md)
+
 Marmo-Core の中核主張 —「大量のリソースから、必要なものだけを速く・安全に・コンテキスト汚染なしに選べる」— を実測で検証するスイートです。約 1,000 件のサードパーティ Skill コーパス(`resources/skills`)に対して、ラベル付きシナリオ 120 件を実行します。
 
 ## コーパスの入手について
@@ -10,7 +12,7 @@ Marmo-Core の中核主張 —「大量のリソースから、必要なもの�
 
 - `--resources PATH` で手持ちのリソースディレクトリを指定する
 - `tools/collect_skills.py` でコーパスを再収集する(GitHub トークンが必要)
-- コーパス同梱の他のベンチマーク(`run_set_benchmark.py` / `run_scale_benchmark.py` / `run_adaptive_benchmark.py`)を使う。これらは `benchmarks/corpus/set_corpus.json` と生成スクリプトだけで完結するため、`pip install` で入れた配布物からでもそのまま動きます
+- コーパス同梱の他のベンチマーク(`run_set_benchmark.py` / `run_scale_benchmark.py` / `run_adaptive_benchmark.py`)を使う。これらは `benchmarks/corpus/set_corpus.json` と生成スクリプトだけで完結するため、チェックアウトまたは展開した sdist のルートからそのまま実行できます
 
 ## 実行方法
 

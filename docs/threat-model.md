@@ -1,5 +1,7 @@
 # Marmo-Core threat model
 
+日本語版: [threat-model.ja.md](threat-model.ja.md).
+
 Last reviewed: 2026-11-09
 
 ## Scope and assets

@@ -1,5 +1,7 @@
 # 0010. 再開時は選択済み実行 Snapshot を復元する
 
+[English](0010-execution-snapshot.en.md)
+
 - 状態: Accepted
 - 日付: 2026-09-25
 - 根拠: `marmo_core/execution_snapshot.py`、`marmo_core/kernel.py`

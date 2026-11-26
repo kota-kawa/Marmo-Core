@@ -1,4 +1,4 @@
-> 一番下に日本語版もあります
+> [日本語版](#日本語版)
 
 # Marmo-Core
 
@@ -95,7 +95,7 @@ flowchart TB
     execution --> boundary
 ```
 
-The kernel holds no algorithms of its own. Retrieval decides order and relevance, selection decides the set, and the gates decide whether an operation may run. Each of these is an interface passed to `Kernel(...)`, which is how new routing methods are tried without touching the default behaviour. [ARCHITECTURE.md](ARCHITECTURE.md) lists every module and extension point.
+The kernel holds no algorithms of its own. Retrieval decides order and relevance, selection decides the set, and the gates decide whether an operation may run. Each of these is an interface passed to `Kernel(...)`, which is how new routing methods are tried without touching the default behaviour. [ARCHITECTURE.en.md](ARCHITECTURE.en.md) lists every module and extension point.
 
 ### Task lifecycle
 
@@ -222,7 +222,7 @@ The Kernel's default selector is the simpler `RuleBasedSetSelector`. The constra
 
 ## Measured results
 
-All numbers are read from the JSON files committed in `benchmarks/results/`. [benchmarks/README.md](benchmarks/README.md) has the full tables, the scenario design, and the negative results.
+All numbers are read from the JSON files committed in `benchmarks/results/`. [benchmarks/README.en.md](benchmarks/README.en.md) has the full tables, the scenario design, and the negative results.
 
 **Finding the right resource** (120 labelled goals, 1,000 third-party skills):
 
@@ -251,7 +251,7 @@ All numbers are read from the JSON files committed in `benchmarks/results/`. [be
 
 At 100,000 resources the hierarchy trades some accuracy for the latency gain. That table predates a change that stops lexical scoring once the top results are settled, with identical results: at the current defaults, flat lexical search over the same 100,063 resources now takes p50 15 ms / p95 101 ms, down from 40 ms / 839 ms ([before](benchmarks/results/scale-lexical-100000-before.json), [after](benchmarks/results/scale-lexical-100000-after.json)). The 1,000-skill corpus is third-party material and is not redistributed, so the first table needs that corpus to reproduce; the other two run from files in this repository.
 
-**Choosing tools from a large public catalog** ([ToolRet](benchmarks/README.md): 44,453 tools and 1,689 queries from 35 public tool-use datasets, 726 of them needing several tools; labels by the original authors; held-out test split):
+**Choosing tools from a large public catalog** ([ToolRet](benchmarks/README.en.md): 44,453 tools and 1,689 queries from 35 public tool-use datasets, 726 of them needing several tools; labels by the original authors; held-out test split):
 
 | | nDCG@10 | Completeness@10 | Set F1 |
 | --- | --- | --- | --- |
@@ -463,7 +463,7 @@ selection = LLMSetSelector(OpenAICompatibleLLMProvider()).select(
 )
 ```
 
-On the public ToolRet benchmark (44,453 tools), decomposition improved the ranking and `LLMSetSelector` chose the best sets (Set F1 0.243 against 0.18–0.19 for the rules). The ToolRet section of [benchmarks/README.md](benchmarks/README.md) has the numbers and the methods that did not help.
+On the public ToolRet benchmark (44,453 tools), decomposition improved the ranking and `LLMSetSelector` chose the best sets (Set F1 0.243 against 0.18–0.19 for the rules). The ToolRet section of [benchmarks/README.en.md](benchmarks/README.en.md) has the numbers and the methods that did not help.
 
 ## Execution notes
 
@@ -476,26 +476,38 @@ On the public ToolRet benchmark (44,453 tools), decomposition improved the ranki
 - CLI commands discover `resources`, `skills`, or `examples/resources` in the current directory when no path is given. For a connector-only run, use `--no-default-resources`.
 - Bundled filesystem examples operate within the current working directory. External examples require their declared permissions and human approval. The notification example reads `MARMO_NOTIFICATION_<DESTINATION>_URL` from the environment, and the `format-code` example requires the `.[dev]` extra for Ruff.
 
-Run `marmo --help` or `marmo run --help` for all CLI options.
+Run `marmo --help` or `marmo run --help` for all CLI options. English is the default.
+Set the process environment variable `MARMO_CLI_LANGUAGE=ja` to see Japanese help, CLI input
+diagnostics, and the main task output labels. For example, on a POSIX shell:
+
+```bash
+MARMO_CLI_LANGUAGE=ja marmo run --help
+```
+
+JSON output, option names, and status values use the same format in both languages.
+Details supplied by Python, providers, tools, and resources retain their original wording.
 
 ## Learn more and contribute
 
 | Guide | Contents |
 | --- | --- |
 | [Project website](https://project-kk.com/en/marmo) | Library overview, concepts, and usage guide. |
-| [Architecture](ARCHITECTURE.md) | Layers, the request path, contracts, and extension points. |
-| [Decision records](docs/decisions/README.md) | Design choices and the alternatives that were rejected. |
+| [Architecture](ARCHITECTURE.en.md) | Layers, the request path, contracts, and extension points. |
+| [Decision records](docs/decisions/README.en.md) | Design choices and the alternatives that were rejected. |
 | [Threat model](docs/threat-model.md) | Trust boundaries, controls, and residual risks. |
-| [Benchmarks](benchmarks/README.md) | Routing evaluation and committed results. |
+| [Benchmarks](benchmarks/README.en.md) | Routing evaluation and committed results. |
 | [Built-in Connectors](docs/connectors.md) | Connector setup and usage. |
-| [Local Resource Packages](docs/local-resource-packages.md) | Packaging and loading local resources. |
+| [Local Resource Packages](docs/local-resource-packages.en.md) | Packaging and loading local resources. |
 | [Contributing](CONTRIBUTING.md) | Development setup, checks, and pull requests. |
+| [Security policy](SECURITY.md) | Supported versions and how to report a vulnerability. |
 | [Changelog](CHANGELOG.md) | Released and upcoming changes. |
 
 For a bug report or feature request, use [GitHub Issues](https://github.com/kota-kawa/Marmo-Core/issues). Marmo-Core is distributed under the [Apache License 2.0](LICENSE).
 
+## 日本語版
+
 <details>
-<summary>日本語版 (クリックして展開)</summary>
+<summary>クリックして展開</summary>
 
 ## Marmo-Core とは
 
@@ -523,7 +535,7 @@ Tool や Skill が千件あるエージェントは、その全部をプロン�
 | Tool | 入力スキーマと必要な権限を宣言した呼び出し可能な処理。 |
 | Agent | 別の実行境界で委任するタスク。 |
 
-カーネルは目標ごとに登録済みリソースを検索・選択し、有効化と実行の前にポリシーを確認します。Tool と Agent は拒否されたり、人の承認待ちになったりします。保護の対象と限界は[脅威モデル](docs/threat-model.md)を参照してください。
+カーネルは目標ごとに登録済みリソースを検索・選択し、有効化と実行の前にポリシーを確認します。Tool と Agent は拒否されたり、人の承認待ちになったりします。保護の対象と限界は[脅威モデル](docs/threat-model.ja.md)を参照してください。
 
 ### 数字で見る
 
@@ -689,7 +701,7 @@ audit hash chain verified.
 | 委任先の Agent に全部が見える | `structured_task` の Agent は、宣言した依存先と権限だけを持つ子 Kernel で動きます。予算と人の承認は親と共有します。 |
 | 履歴の改ざん | 監査レコードは SHA-256 のハッシュチェーンになっています。`AuditLog.verify()` と `marmo resume` がチェーンを検証します。 |
 
-これらはプロセス内の対策で、限界があります。Tool のハンドラはサンドボックス化されておらず、リソースパッケージの署名は未実装で、プロンプトインジェクションの検知は意図的に網羅していません。[脅威モデル](docs/threat-model.md)に、対策ごとの残るリスクを書いています。
+これらはプロセス内の対策で、限界があります。Tool のハンドラはサンドボックス化されておらず、リソースパッケージの署名は未実装で、プロンプトインジェクションの検知は意図的に網羅していません。[脅威モデル](docs/threat-model.ja.md)に、対策ごとの残るリスクを書いています。
 
 ### 技術選定
 
@@ -966,7 +978,16 @@ selection = LLMSetSelector(OpenAICompatibleLLMProvider()).select(
 - パスを省略した CLI コマンドは、カレントディレクトリの `resources`、`skills`、`examples/resources` を自動検出します。コネクタだけを使う場合は `--no-default-resources` を指定します。
 - 同梱のファイル操作サンプルはカレントディレクトリ内を対象にします。外部へ作用するサンプルには、宣言された権限と人の承認が必要です。通知サンプルは環境変数 `MARMO_NOTIFICATION_<DESTINATION>_URL` を読み、`format-code` サンプルには Ruff を含む `.[dev]` が必要です。
 
-CLI の全オプションは `marmo --help` または `marmo run --help` で確認できます。
+CLI の全オプションは `marmo --help` または `marmo run --help` で確認できます。既定の表示は英語です。
+プロセスの環境変数 `MARMO_CLI_LANGUAGE=ja` を設定すると、ヘルプ、CLI の入力エラー、タスク結果の
+主なラベルを日本語で表示します。POSIX シェルでの例です。
+
+```bash
+MARMO_CLI_LANGUAGE=ja marmo run --help
+```
+
+JSON 出力、オプション名、状態の値はどちらの表示言語でも共通です。
+Python、プロバイダー、ツール、リソースが返す詳細は元の文言で表示します。
 
 ### 詳しい資料と貢献
 
@@ -975,11 +996,12 @@ CLI の全オプションは `marmo --help` または `marmo run --help` で確�
 | [プロジェクトサイト](https://project-kk.com/marmo) | ライブラリの概要、機能、使い方。 |
 | [アーキテクチャ](ARCHITECTURE.md) | レイヤー構成、リクエスト経路、契約、拡張点。 |
 | [技術判断の記録](docs/decisions/README.md) | 設計上の判断と、採らなかった代替案。 |
-| [脅威モデル](docs/threat-model.md) | 信頼境界、対策、残るリスク。 |
+| [脅威モデル](docs/threat-model.ja.md) | 信頼境界、対策、残るリスク。 |
 | [ベンチマーク](benchmarks/README.md) | ルーティングの評価と測定結果。 |
-| [組み込みコネクタ](docs/connectors.md) | コネクタの設定と使い方。 |
+| [組み込みコネクタ](docs/connectors.ja.md) | コネクタの設定と使い方。 |
 | [ローカルリソースパッケージ](docs/local-resource-packages.md) | ローカルリソースの梱包と読み込み。 |
-| [貢献ガイド](CONTRIBUTING.md) | 開発環境、チェック、PR の手順。 |
+| [貢献ガイド](CONTRIBUTING.ja.md) | 開発環境、チェック、PR の手順。 |
+| [セキュリティポリシー](SECURITY.ja.md) | サポート対象のバージョンと脆弱性の報告手順。 |
 | [変更履歴](CHANGELOG.md) | 公開済み・今後の変更。 |
 
 不具合や機能の要望は [GitHub Issues](https://github.com/kota-kawa/Marmo-Core/issues) に報告してください。Marmo-Core は [Apache License 2.0](LICENSE) で配布しています。

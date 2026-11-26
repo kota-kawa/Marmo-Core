@@ -1,5 +1,7 @@
 # 0001. 実行時依存は `python-dotenv` のみ
 
+[English](0001-single-runtime-dependency.en.md)
+
 - 状態: Superseded（`0007-minimal-runtime-dependencies-with-user-approval.md`）
 - 日付: 2026-08-07
 - 根拠: 49076f8b（Document minimal dependency policy）、`CONTRIBUTING.md` Setup、`pyproject.toml`

@@ -1,5 +1,7 @@
 # Architecture Decision Records
 
+[English](README.en.md)
+
 重要な技術判断の記録。判断を変更・追加するときは、既存 ADR を確認し、理由と影響を
 更新または新しい ADR として記録する。ファイル名は `NNNN-<slug>.md`、状態は
 Accepted / Superseded / Deprecated。

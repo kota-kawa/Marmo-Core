@@ -1,5 +1,7 @@
 # Marmo-Core Architecture
 
+English version: [ARCHITECTURE.en.md](ARCHITECTURE.en.md).
+
 内部設計の正本。公開向けの説明は `README.md`、契約の変更手順は
 `docs/knowledge/contracts-and-compatibility.md`、判断の経緯は `docs/decisions/`
 にある。ここには「今どう動いているか」だけを書く。実装と食い違いを見つけたら、

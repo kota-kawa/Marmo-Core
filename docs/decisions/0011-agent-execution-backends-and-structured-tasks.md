@@ -1,5 +1,7 @@
 # 0011. Agent は実行 backend を選び、structured task は子 Kernel に委譲する
 
+[English](0011-agent-execution-backends-and-structured-tasks.en.md)
+
 - 状態: Accepted
 - 日付: 2026-09-25
 - 根拠: `marmo_core/agent_runtime.py`、`marmo_core/kernel.py`

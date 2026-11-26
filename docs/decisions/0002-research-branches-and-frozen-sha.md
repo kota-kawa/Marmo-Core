@@ -1,5 +1,7 @@
 # 0002. 研究手法は `research/*` ブランチで実装し、評価は commit SHA を固定する
 
+[English](0002-research-branches-and-frozen-sha.en.md)
+
 - 状態: Accepted
 - 日付: 2026-09-22
 - 根拠: 2aa8ff19（PR #14）、`AGENTS.md`、ワークスペース直下の `AGENTS.md`、`benchmarks/_provenance.py`

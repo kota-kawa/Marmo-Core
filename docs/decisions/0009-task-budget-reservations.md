@@ -1,5 +1,7 @@
 # 0009. タスク予算は実行前の予約と追記型の精算で管理する
 
+[English](0009-task-budget-reservations.en.md)
+
 - 状態: Accepted
 - 日付: 2026-09-25
 - 根拠: `marmo_core/budget.py`、`marmo_core/kernel.py`

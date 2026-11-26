@@ -1,5 +1,7 @@
 # Contributing to Marmo-Core
 
+日本語版: [CONTRIBUTING.ja.md](CONTRIBUTING.ja.md).
+
 ## Setup
 
 Marmo-Core supports Python 3.10 through 3.14 and keeps its runtime dependency
