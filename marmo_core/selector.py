@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Iterable, Mapping
 
 from .models import KINDS, SearchResult, SelectionResult
+from .policy import PolicyContext, static_denials
 from .routing_contracts import TaskSpec
 
 
@@ -56,6 +57,14 @@ class SelectionContext:
     the summed ``cost_estimate`` of the selected set. ``task`` carries the
     task statement for selectors that reason over intent (LLM Set Selector);
     constraint-only solvers ignore it.
+
+    ``policy`` is the policy the activation gate will apply. With it set, the
+    selectors in this module and ``CoverageSetSelector`` leave out every
+    candidate the gate denies whatever is granted or approved
+    (``policy.static_denials``): it is not selected, not counted as an
+    available dependency, and not a reason to escalate. Missing permissions
+    are not such a denial and keep escalating. ``TopKSetSelector``,
+    ``RepairingSetSelector``, and the LLM selectors do not read it.
     """
 
     task: str = ""
@@ -68,6 +77,7 @@ class SelectionContext:
     enforce_permissions: bool = True
     task_spec: TaskSpec | None = None
     context_token_budget: int | None = None
+    policy: PolicyContext | None = None
 
 
 class SetSelector(ABC):
@@ -127,6 +137,7 @@ class RuleBasedSetSelector(SetSelector):
         counts: dict[str, int] = defaultdict(int)
         total_cost = Decimal(0)
         budget = Decimal(str(context.budget_cost)) if context and context.budget_cost is not None else None
+        results, gate_notes = _gate_admissible(results, context or SelectionContext())
         for result in results:
             kind = result.resource.metadata.kind
             if kind not in KINDS:
@@ -149,6 +160,8 @@ class RuleBasedSetSelector(SetSelector):
             reason = "selected top-ranked resources per kind after active filters: " + ", ".join(parts)
         else:
             reason = "no resource met the active filters, minimum score, and minimum relevance"
+        if gate_notes:
+            reason += "; skipped: " + "; ".join(gate_notes[:4])
         return SelectionResult(tuple(selected), reason)
 
 
@@ -182,6 +195,7 @@ class GreedyConstrainedSetSelector(SetSelector):
         self, results: list[SearchResult], *, context: SelectionContext | None = None
     ) -> SelectionResult:
         ctx = context or self.default_context
+        results, notes = _gate_admissible(results, ctx)
         pool = {result.resource.metadata.id: result for result in results}
         # min_score gates on the composite score; min_relevance gates on the
         # text-relevance component alone. The composite mixes cost/trust/
@@ -195,15 +209,12 @@ class GreedyConstrainedSetSelector(SetSelector):
             and float(r.components.get("relevance", 1.0)) >= ctx.min_relevance
         ]
         if not candidates:
-            return SelectionResult(
-                (), "no candidate met the minimum score and relevance thresholds", status="abstain"
-            )
+            return _no_candidates(notes)
 
         picked: dict[str, SearchResult] = {}
         counts: dict[str, int] = defaultdict(int)
         total_cost = Decimal(0)
         budget = Decimal(str(ctx.budget_cost)) if ctx.budget_cost is not None else None
-        notes: list[str] = []
         units, blocked = _build_units(candidates, pool, ctx, notes)
 
         for unit_entry in units:
@@ -279,6 +290,7 @@ class BeamSearchSetSelector(SetSelector):
         self, results: list[SearchResult], *, context: SelectionContext | None = None
     ) -> SelectionResult:
         ctx = context or self.default_context
+        results, notes = _gate_admissible(results, ctx)
         pool = {result.resource.metadata.id: result for result in results}
 
         candidates = [
@@ -288,11 +300,8 @@ class BeamSearchSetSelector(SetSelector):
             and float(r.components.get("relevance", 1.0)) >= ctx.min_relevance
         ]
         if not candidates:
-            return SelectionResult(
-                (), "no candidate met the minimum score and relevance thresholds", status="abstain"
-            )
+            return _no_candidates(notes)
 
-        notes: list[str] = []
         units, blocked = _build_units(candidates, pool, ctx, notes)
 
         # State: picked_ids -> (utility, cost, counts)
@@ -405,6 +414,7 @@ class BranchAndBoundSetSelector(SetSelector):
         self, results: list[SearchResult], *, context: SelectionContext | None = None
     ) -> SelectionResult:
         ctx = context or self.default_context
+        results, notes = _gate_admissible(results, ctx)
         pool = {result.resource.metadata.id: result for result in results}
 
         candidates = [
@@ -414,11 +424,8 @@ class BranchAndBoundSetSelector(SetSelector):
             and float(r.components.get("relevance", 1.0)) >= ctx.min_relevance
         ]
         if not candidates:
-            return SelectionResult(
-                (), "no candidate met the minimum score and relevance thresholds", status="abstain"
-            )
+            return _no_candidates(notes)
 
-        notes: list[str] = []
         ordered_units, blocked = _build_units(candidates, pool, ctx, notes)
         # Admissible bound: the utility still reachable from unit i onward can
         # never exceed the summed (full, non-overlap-corrected) utilities of
@@ -689,6 +696,35 @@ def _repair_selection(
     if notes:
         reason += "; post-processing: " + "; ".join(notes[:4])
     return SelectionResult(ordered, reason)
+
+
+def _gate_admissible(
+    results: list[SearchResult], ctx: SelectionContext
+) -> tuple[list[SearchResult], list[str]]:
+    """Leave out the candidates the activation gate denies under ``ctx.policy``.
+
+    Returns the remaining candidates in their order and one note per
+    candidate left out. Without a policy every candidate stays.
+    """
+
+    if ctx.policy is None:
+        return results, []
+    kept: list[SearchResult] = []
+    notes: list[str] = []
+    for result in results:
+        denials = static_denials(result.resource, ctx.policy)
+        if denials:
+            notes.append(f"{result.resource.metadata.id}: the activation gate would deny it ({'; '.join(denials)})")
+        else:
+            kept.append(result)
+    return kept, notes
+
+
+def _no_candidates(gate_notes: list[str]) -> SelectionResult:
+    reason = "no candidate met the minimum score and relevance thresholds"
+    if gate_notes:
+        reason += "; skipped: " + "; ".join(gate_notes[:4])
+    return SelectionResult((), reason, status="abstain")
 
 
 @dataclass(frozen=True)

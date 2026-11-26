@@ -51,6 +51,8 @@ from .selector import (
     SelectionContext,
     SetSelector,
     _build_units,
+    _gate_admissible,
+    _no_candidates,
     _conflicts,
     _permission_escalation,
     _total_cost,
@@ -107,6 +109,7 @@ class CoverageSetSelector(SetSelector):
         self, results: list[SearchResult], *, context: SelectionContext | None = None
     ) -> SelectionResult:
         ctx = context or self.default_context
+        results, notes = _gate_admissible(results, ctx)
         pool = {result.resource.metadata.id: result for result in results}
         candidates = [
             r
@@ -114,9 +117,8 @@ class CoverageSetSelector(SetSelector):
             if r.score >= ctx.min_score and float(r.components.get("relevance", 1.0)) >= ctx.min_relevance
         ]
         if not candidates:
-            return SelectionResult((), "no candidate met the minimum score and relevance thresholds", status="abstain")
+            return _no_candidates(notes)
 
-        notes: list[str] = []
         units, blocked = _build_units(candidates, pool, ctx, notes)
         facets = _facet_keys(candidates)
         weights = [self.goal_weight if key == f"{FACET_PREFIX}0" else 1.0 for key in facets]
