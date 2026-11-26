@@ -4,7 +4,15 @@ from __future__ import annotations
 
 import unittest
 
-from marmo_core import HybridRetriever, ResourceDefinition, ResourceRegistry, SearchQuery
+from marmo_core import (
+    HierarchicalRetriever,
+    HybridRetriever,
+    LexicalRetriever,
+    NamespaceGrouping,
+    ResourceDefinition,
+    ResourceRegistry,
+    SearchQuery,
+)
 from marmo_core.semantic import EmbeddingProvider, HashingEmbeddingProvider, embed_queries
 
 
@@ -58,6 +66,14 @@ class QueryEmbeddingTests(unittest.TestCase):
         self.assertEqual(provider.queries, ["weather tomorrow"])
         self.assertNotIn("weather tomorrow", provider.documents)
         self.assertTrue(provider.documents)
+
+    def test_hierarchical_routing_embeds_the_goal_as_a_query(self) -> None:
+        provider = RecordingAsymmetricProvider()
+        retriever = HierarchicalRetriever(LexicalRetriever(), NamespaceGrouping(), route_k=1,
+                                          embedding_provider=provider)
+        retriever.search(_registry(), SearchQuery(task="weather tomorrow", top_k=2))
+        self.assertEqual(provider.queries, ["weather tomorrow"])
+        self.assertNotIn("weather tomorrow", provider.documents)
 
     def test_providers_without_embed_queries_still_work(self) -> None:
         provider = DuckTypedProvider()
