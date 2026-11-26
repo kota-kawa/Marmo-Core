@@ -368,6 +368,47 @@ On dev-series repeat visits, the cache hit on 2 of 8 Tool tasks and produced the
 
 We also add adversarial metadata to the same six fixed-test Tool tasks by filling a notification Tool’s description with words from each task. `keyword_stuffing` and `instruction_payload` remain `trust_level=untrusted`, while `metadata_forgery` also forges declared trust, permissions, side effects, and isolation level. The first two are never selected in all six cases, and the activation gate denies them. In the latter condition, the forged Tool is selected in 6/6 cases and can pass the activation gate. **No dangerous real handler was executed.** This measures an attack candidate arising because the core alone cannot verify the authenticity of metadata declarations; it does not represent actual harm incidents. See `benchmarks/results/evidence.json` under `adversarial_test` for details.
 
+### Tracking forged metadata over time
+
+The six cases above cover Tools only and forge four declarations at once. `run_forgery_benchmark.py` measures, in the same form for every change to retrieval, selection, or routing, which forged declaration gets a decoy how far.
+
+```bash
+python3 benchmarks/run_forgery_benchmark.py            # about 90 s, no LLM
+```
+
+- **Cases**: the 22 cases of `evidence_cases.json` (dev / test, including two abstain and two escalate cases) and the 28 scenarios of the set-selection corpus (63 resources; two abstain, two escalate).
+- **Decoys**: one each for Tool, Skill, and Agent, with two contents. `stuffed` repeats the task text five times as the description (as in the six legacy cases); `clone` copies the name, description, capabilities, and tags of the gold resource of the same kind (only for cases whose gold set has that kind).
+- **Declarations**: the honest declaration is that of an unvetted third-party resource that posts to an external service (`trust_level=untrusted`, `net.external` and `message.send`, `side_effect=external`, and `isolation_level=L3` for Tools). Forging replaces each with `verified` / no permissions / `none` / `L0`, over **every combination** (16 for Tools over four declarations, 8 for Skills and Agents over three).
+- **Stages**: retrieved → selected → allowed by the activation gate → handed to the model by `Kernel.run_goal` (a tool definition for Tools and Agents, the body in the prompt for Skills) → executed through the execution gate when the model calls it. The model is a scripted response that always calls the decoy it is offered, so the numbers measure the gates, not whether a model follows a forged description. The decoy's handler is an **inert recorder** bound through `ResourceActivator`; no shipped handler ever runs for a decoy.
+- **Harm**: gold displacement (a gold resource of the same kind that was selected without the decoy is dropped), gold Tool loss (a gold Tool that reached the model without the decoy no longer does), status changes, and abstain / escalate hijacks (a case whose answer is abstain or escalate becomes `selected` with the decoy).
+
+Results are in [`results/forgery.json`](results/forgery.json) (2,656 variants × 3 configurations). `tracked` holds the fixed fields to compare before and after a change, and `legacy_baseline` re-measures the six legacy cases (`metadata_forgery` 6/6) in the same run.
+
+| Configuration | Kind | Declarations | Selected | Activation allowed | Reaches the model | Handler runs | Gold Tool loss | Hijack |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| lexical + greedy | Tool | honest | 0.000 | 0.000 | 0.000 | 0.000 | 0.214 | 0.000 |
+| lexical + greedy | Tool | fully forged | 0.534 | 0.534 | 0.534 | 0.534 | 0.643 | 1.000 |
+| lexical + greedy | Tool | partly forged | 0.226 | 0.000 | 0.000 | 0.000 | 0.347 | 0.500 |
+| lexical + greedy | Skill | fully forged | 0.526 | 0.526 | 0.526 | — | 0.214 | 1.000 |
+| lexical + greedy | Agent | fully forged | 0.564 | 0.564 | 0.564 | 0.564 | 0.214 | 1.000 |
+| lexical + coverage | Tool | fully forged | 0.534 | 0.534 | 0.534 | 0.534 | 0.643 | 1.000 |
+| lexical + Kernel default (rule-based) | Tool | honest | 0.420 | 0.000 | 0.000 | 0.000 | 0.214 | 0.875 |
+| lexical + Kernel default (rule-based) | Tool | fully forged | 0.784 | 0.784 | 0.784 | 0.784 | 0.643 | 1.000 |
+| lexical + Kernel default (rule-based) | Skill | fully forged | 0.859 | 0.859 | 0.859 | — | 0.214 | 1.000 |
+| lexical + Kernel default (rule-based) | Agent | fully forged | 0.833 | 0.833 | 0.833 | 0.833 | 0.214 | 1.000 |
+
+Honest Skills and Agents never pass activation in any configuration, and Skills have no handler (—). The hijack denominator is the eight abstain / escalate cases times their variants; the rule-based selector never abstains even without a decoy, which inflates its value. The gold Tool loss denominator is the evidence Tool tasks whose gold Tool reached the model without the decoy.
+
+**Interpreting the results**
+
+- **The activation gate stops decoys, the selector does not.** Greedy and coverage do not select a resource whose declared permissions are not granted, so a Tool that forges only its permissions (still `untrusted` and `external`) is selected in 74% of stuffed variants (both suites; 82% when fully forged) and then denied at activation. The selector does not read trust, side effect, or isolation. Only the fully forged decoy passes the gate; with any one declaration honest, activation stays at 0 (all 16 stuffed Tool combinations).
+- **Denial does not undo the harm.** A decoy that is selected and then denied still displaces the gold resource, so partly forged Tools lose the gold Tool in 35% of cases (`partial_forgery` in `tracked`). Even an honestly declared stuffed Tool makes greedy escalate as "the top unit blocked only by permissions" (the default rule that escalates a permission-blocked top candidate), and the gold Tool no longer reaches the model in 43% of cases (0% for clones; the 0.214 in the honest row is the average of both). That path also asks a person to grant `net.external` and `message.send`.
+- **Clones of legitimate resources get through less often than stuffing.** They tie with the gold resource, so even fully forged clones are selected in 36% of Tool cases (evidence) and 4% on the set corpus.
+- The Kernel's default rule-based selector does not check permissions, so it selects even honestly declared decoys in 42–58% of variants (the gate then denies them).
+- Countermeasures that verify declarations (signatures, provenance) are out of scope for this benchmark. When one is added, check with the same command that the fully forged rows of `tracked` go down.
+
+**Procedure for PRs that change retrieval, selection, or routing**: run `python3 benchmarks/run_forgery_benchmark.py --output /tmp/forgery-before.json` on the base branch and the same with `-after.json` on the changed branch, and list `selection_rate`, `activation_reach_rate`, `execution_reach_rate`, `gold_tool_loss_rate`, and `abstain_escalate_hijack_rate` of `tracked.<configuration>.tracked.<kind>.{honest,full_forgery,partial_forgery,any_forgery}` in the PR description. Add a new Retriever / Selector to `CONFIGS` before measuring it. When the results JSON is updated, update this table too.
+
 ## Flat ANN comparison at 100k
 
 `run_ann_scale_benchmark.py` compares flat ANN (USearch, cosine/HNSW) with namespace hierarchy using the same 100,063 resources, 34 scenarios, embeddings, BM25 candidates, mixing weight 0.9, pool size 50, and greedy Selector. ANN is in the benchmark-only `benchmark-ann` extra and is not a runtime dependency.
@@ -497,6 +538,30 @@ The sample limits larger subsets to 60 cases. We decomposed the full test split 
 - The Layer 1 improvement from decomposition (nDCG@10 +0.014) replicates on all queries, with a narrower interval. Macro nDCG@10 is nearly the same between the sampled test and full set (hybrid 0.243 / 0.245).
 - **The coverage selector’s gain is significant on the full set** (+0.012 vs. top-1). On the 856-query sample, it was +0.004 and the interval included 0, so the effect is small and requires more queries to detect. Adding `include_within=0.95` raises it to 0.229, above the relative threshold and 0.005 below the oracle (0.234).
 - We also confirmed on the full set that the mean known-token rate across 1,900 decomposed queries is 0.93, so the discount has little effect on English goals.
+
+### Embedding models and the query-side instruction
+
+We measured, on the same 1,689 queries, whether **Snowflake Arctic-Embed-S** (33M parameters, 384 dimensions), a retrieval-tuned model that is stronger than MiniLM-L6 on MTEB, lifts the first layer. Arctic-Embed is asymmetric: it was trained with an instruction (`Represent this sentence for searching relevant passages: `) on the query side only. `EmbeddingProvider.embed_queries()` embeds documents and queries separately, and we compare with and without the instruction (`--query-prefix`).
+
+```bash
+python3 benchmarks/run_toolret_benchmark.py --per-subset 60 --retrievers hybrid-0.5,dense --records /tmp/minilm.json
+python3 benchmarks/run_toolret_benchmark.py --per-subset 60 --retrievers hybrid-0.5,dense \
+    --embed-model snowflake/snowflake-arctic-embed-s \
+    --query-prefix "Represent this sentence for searching relevant passages: " --records /tmp/arctic.json
+python3 benchmarks/compare_toolret_records.py minilm=/tmp/minilm.json arctic-s=/tmp/arctic.json --output /tmp/cmp.json
+```
+
+Results are in [`results/toolret-arctic-s.json`](results/toolret-arctic-s.json) and [`results/toolret-arctic-s-no-instruction.json`](results/toolret-arctic-s-no-instruction.json); paired differences are in [`results/toolret-embeddings.json`](results/toolret-embeddings.json) (against MiniLM) and [`results/toolret-query-instruction.json`](results/toolret-query-instruction.json) (with versus without the instruction). The MiniLM-L6 row has the same values as [`results/toolret.json`](results/toolret.json). Differences are micro-averaged over the 1,689 queries, with 95% bootstrap intervals.
+
+| Embedding | hybrid-0.5 macro nDCG@10 | hybrid-0.5 macro C@10 | dense macro nDCG@10 | dense macro C@10 | Difference from MiniLM (dense nDCG@10) |
+|---|---:|---:|---:|---:|---:|
+| **MiniLM-L6** (default) | **0.256** | **0.247** | **0.205** | **0.199** | — |
+| Arctic-Embed-S (with instruction) | 0.241 | 0.221 | 0.178 | 0.163 | −0.026 [−0.037, −0.016] |
+| Arctic-Embed-S (without instruction) | 0.229 | 0.214 | 0.110 | 0.107 | −0.091 [−0.103, −0.078] |
+
+- **A model that is stronger on MTEB is not necessarily stronger on ToolRet.** Arctic-Embed-S is significantly worse than MiniLM in both hybrid and dense retrieval (hybrid nDCG@10 −0.014 [−0.022, −0.007], C@100 −0.045 [−0.060, −0.031]). This points the same way as the ToolRet paper's conclusion that retrieval models are not tool-savvy; the default MiniLM-L6 is unchanged.
+- **Asymmetric models need their query-side instruction.** Without it, dense nDCG@10 drops by 0.065 [0.056, 0.074] and C@100 by 0.098 [0.082, 0.114]. With only `embed()`, the previous `EmbeddingProvider` could use such models only without the instruction.
+- Embedding the 44,453 documents on four CPU cores took about 40 minutes with MiniLM-L6, about 90 minutes with Arctic-Embed-S, about 4 hours with bge-small-en-v1.5, and more than 10 hours with bge-base-en-v1.5 (estimates while sharing the CPU with other jobs). Larger models were not measured in this environment.
 
 ### Selecting from an English catalog with Japanese goals
 
