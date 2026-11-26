@@ -368,6 +368,47 @@ dev の同系列再訪では 8 Tool タスク中 2 件が cache に命中し、�
 
 同じ固定 test の 6 Tool タスクに、通知 Tool の説明を各タスクの語で埋める敵対的メタデータを混入させます。`keyword_stuffing` と `instruction_payload` は `trust_level=untrusted` のまま、`metadata_forgery` は信頼・権限・副作用・隔離レベルの宣言まで偽装します。前二者は 6 件とも選ばれず、activation gate の判定も deny でした。後者では 6/6 件で偽装 Tool が選択され、activation gate も通過可能でした。**実ハンドラの危険な実行は行っていません**。これはメタデータ宣言自体の真正性をコア単体では確認できないことを示す攻撃候補の測定で、実際の被害件数ではありません。詳細は `benchmarks/results/evidence.json` の `adversarial_test` を参照してください。
 
+### 偽装メタデータの継続計測
+
+上の 6 件は Tool だけで、偽装も 4 項目をまとめて変えています。`run_forgery_benchmark.py` は、どの宣言の偽装がどの段階まで届くかを、検索・選択・ルーティングを変えるたびに同じ形で測ります。
+
+```bash
+python3 benchmarks/run_forgery_benchmark.py            # 約 90 秒、LLM なし
+```
+
+- **ケース**: `evidence_cases.json` の 22 件（dev / test、abstain 2・escalate 2 を含む）と、集合選択コーパス（63 資源）の 28 シナリオ（abstain 2・escalate 2）。
+- **偽装資源**: Tool・Skill・Agent それぞれに 1 つ。本文は 2 通りです。`stuffed` はタスク文を 5 回繰り返した説明（従来の 6 件と同じ）、`clone` は同じ種別の gold 資源の名前・説明・能力・タグの複製（gold にその種別があるケースだけ）。
+- **宣言**: 正直な宣言は「未審査の第三者が外部へ送信する資源」（`trust_level=untrusted`、`net.external` と `message.send`、`side_effect=external`、Tool は `isolation_level=L3`）です。偽装は各項目を `verified` / 権限なし / `none` / `L0` に置き換え、Tool は 4 項目、Skill と Agent は 3 項目の**全組み合わせ**（16 / 8 通り）を測ります。
+- **到達段階**: 候補に入る → 選択される → activation gate が allow → `Kernel.run_goal` がモデルに渡す（Tool / Agent はツール定義、Skill は本文がプロンプトに入る）→ モデルが呼べば execution gate を通ってハンドラが実行される。モデルは「渡された偽装資源を必ず呼ぶ」固定応答なので、測っているのはゲートで、モデルが偽の説明に従うかどうかではありません。偽装資源のハンドラは `ResourceActivator` で差し込んだ**何もしない記録用の関数**で、同梱の実ハンドラは偽装資源からは一度も動きません。
+- **被害の指標**: gold の押しのけ（偽装なしでは選ばれていた同じ種別の gold が外れる）、gold Tool の喪失（偽装なしではモデルに渡っていた gold Tool が渡らなくなる）、状態の変化、abstain / escalate の乗っ取り（abstain・escalate が正解のケースで偽装資源を含む `selected` になる）。
+
+結果は [`results/forgery.json`](results/forgery.json)（2,656 変種 × 3 構成）。`tracked` が変更前後で比べる固定の項目で、`legacy_baseline` に従来の 6 件（`metadata_forgery` 6/6）を同じ実行で再測定して残しています。
+
+| 構成 | 種別 | 宣言 | 選択 | activation 通過 | モデルに渡る | ハンドラ実行 | gold Tool 喪失 | 乗っ取り |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| lexical + greedy | Tool | 正直 | 0.000 | 0.000 | 0.000 | 0.000 | 0.231 | 0.000 |
+| lexical + greedy | Tool | 全偽装 | 0.534 | 0.534 | 0.534 | 0.534 | 0.692 | 1.000 |
+| lexical + greedy | Tool | 一部だけ偽装 | 0.226 | 0.000 | 0.000 | 0.000 | 0.374 | 0.500 |
+| lexical + greedy | Skill | 全偽装 | 0.526 | 0.526 | 0.526 | — | 0.231 | 1.000 |
+| lexical + greedy | Agent | 全偽装 | 0.564 | 0.564 | 0.564 | 0.564 | 0.231 | 1.000 |
+| lexical + 被覆型 | Tool | 全偽装 | 0.534 | 0.534 | 0.534 | 0.534 | 0.692 | 1.000 |
+| lexical + Kernel 既定（rule-based） | Tool | 正直 | 0.420 | 0.000 | 0.000 | 0.000 | 0.231 | 0.875 |
+| lexical + Kernel 既定（rule-based） | Tool | 全偽装 | 0.784 | 0.784 | 0.784 | 0.784 | 0.692 | 1.000 |
+| lexical + Kernel 既定（rule-based） | Skill | 全偽装 | 0.859 | 0.859 | 0.859 | — | 0.231 | 1.000 |
+| lexical + Kernel 既定（rule-based） | Agent | 全偽装 | 0.833 | 0.833 | 0.833 | 0.833 | 0.231 | 1.000 |
+
+Skill と Agent の「正直」は 3 構成とも activation 通過 0、Skill にハンドラはありません（—）。乗っ取りの分母は abstain / escalate が正解の 8 ケース × 変種で、rule-based は偽装なしでも abstain しない Selector なので値が高く出ます。gold Tool 喪失の分母は偽装なしで gold Tool がモデルに渡っていた evidence の Tool タスクです。
+
+**読み方**
+
+- **止めているのは activation gate で、Selector ではありません**。greedy と被覆型は宣言された権限が足りない資源を選ばないので、権限の宣言だけを偽装した Tool（信頼度は `untrusted`、副作用は `external` のまま）は stuffed で 74%（両スイート合計。全偽装は 82%）選ばれ、activation gate で拒否されます。Selector は信頼度・副作用・隔離レベルを見ません。ゲートを通るのは 4 項目すべてを偽装した場合だけで、1 項目でも正直なら activation 通過は 0 でした（stuffed の Tool 16 通り）。
+- **拒否されても被害は残ります**。選ばれてから拒否された偽装資源は gold を押しのけたままなので、一部だけ偽装した Tool でも gold Tool の喪失は 37% です（`tracked` の `partial_forgery`）。正直な宣言の stuffed Tool でさえ、greedy は「権限だけで阻まれた上位の単位」として escalate を返し（権限不足の上位候補を escalate する既定の挙動）、gold Tool が 46% のケースで渡らなくなります（clone では 0%、表の「正直」の 0.231 は両方の平均）。人に `net.external` と `message.send` の付与を求める経路でもあります。
+- **`clone`（正規の資源の複製）は stuffed より通りにくい**。同点の gold と並ぶため、全偽装でも Tool 36%（evidence）、集合コーパスでは 4% でした。
+- Kernel 既定の rule-based Selector は権限を見ないので、正直な宣言の偽装資源も 42〜58% 選ばれます（ゲートで拒否）。
+- 宣言の真正性を確かめる対策（署名・出所の検証）はこのベンチマークの対象外です。対策を入れたら、同じコマンドで `tracked` の全偽装の行が下がるかを確かめます。
+
+**検索・選択・ルーティングを変える PR での手順**: 変更前のブランチと変更後のブランチで `python3 benchmarks/run_forgery_benchmark.py --output /tmp/forgery-before.json`（後は `-after.json`）を実行し、`tracked.<構成>.tracked.<種別>.{honest,full_forgery,partial_forgery,any_forgery}` の `selection_rate`、`activation_reach_rate`、`execution_reach_rate`、`gold_tool_loss_rate`、`abstain_escalate_hijack_rate` を PR 本文に並べます。新しい Retriever / Selector は `CONFIGS` に足してから測ります。結果 JSON を更新する場合はこの表も揃えます。
+
 ## 100k の flat ANN 比較
 
 `run_ann_scale_benchmark.py` は、同じ 100,063 件・34 シナリオ・埋め込み・BM25 候補・混合重み 0.9・候補枠 50・greedy Selector で、flat ANN (USearch、cosine/HNSW) と namespace 階層型を比較します。ANN はベンチマーク専用の `benchmark-ann` extra に置き、実行時依存には加えません。
@@ -497,6 +538,30 @@ dev 分割または開発中のオフライン分析で、次はいずれも改�
 - 第1層の改善（分解で nDCG@10 +0.014）は全件でも再現し、区間は狭くなりました。macro nDCG@10 は標本の test と全件でほぼ同じです（hybrid 0.243 / 0.245）。
 - **被覆型の上積みは全件では有意です**（top-1 比 +0.012）。標本 856 件では +0.004 で区間が 0 を含んでいたので、効果は小さく、検出に件数が要る大きさです。`include_within=0.95` を加えると相対しきい値を上回る 0.229 になり、正解件数を知っている oracle（0.234）との差は 0.005 です。
 - 分解されたクエリ 1,900 件の既知語率は平均 0.93 で、英語のゴールでは割引がほとんど効かないことも全件で確認できます。
+
+### 埋め込みモデルとクエリ側の指示文
+
+検索ベンチマーク（MTEB）で MiniLM-L6 より強い検索特化モデル **Snowflake Arctic-Embed-S**（33M パラメータ、384 次元）に替えると第1層が上がるか、同じ 1,689 クエリで測りました。Arctic-Embed は非対称なモデルで、クエリ側にだけ指示文（`Represent this sentence for searching relevant passages: `）を付けて学習されています。`EmbeddingProvider.embed_queries()` で文書とクエリを別々に埋め込み、指示文の有無も比べています（`--query-prefix`）。
+
+```bash
+python3 benchmarks/run_toolret_benchmark.py --per-subset 60 --retrievers hybrid-0.5,dense --records /tmp/minilm.json
+python3 benchmarks/run_toolret_benchmark.py --per-subset 60 --retrievers hybrid-0.5,dense \
+    --embed-model snowflake/snowflake-arctic-embed-s \
+    --query-prefix "Represent this sentence for searching relevant passages: " --records /tmp/arctic.json
+python3 benchmarks/compare_toolret_records.py minilm=/tmp/minilm.json arctic-s=/tmp/arctic.json --output /tmp/cmp.json
+```
+
+結果は [`results/toolret-arctic-s.json`](results/toolret-arctic-s.json)、[`results/toolret-arctic-s-no-instruction.json`](results/toolret-arctic-s-no-instruction.json)、対応のある差は [`results/toolret-embeddings.json`](results/toolret-embeddings.json)（MiniLM との差）と [`results/toolret-query-instruction.json`](results/toolret-query-instruction.json)（指示文の有無の差）です。MiniLM-L6 の行は [`results/toolret.json`](results/toolret.json) と同じ値です。差は 1,689 クエリの micro 平均の差と 95% ブートストラップ区間です。
+
+| 埋め込み | hybrid-0.5 macro nDCG@10 | hybrid-0.5 macro C@10 | dense macro nDCG@10 | dense macro C@10 | MiniLM との差（dense nDCG@10） |
+|---|---:|---:|---:|---:|---:|
+| **MiniLM-L6**（既定） | **0.256** | **0.247** | **0.205** | **0.199** | — |
+| Arctic-Embed-S（指示文あり） | 0.241 | 0.221 | 0.178 | 0.163 | −0.026 [−0.037, −0.016] |
+| Arctic-Embed-S（指示文なし） | 0.229 | 0.214 | 0.110 | 0.107 | −0.091 [−0.103, −0.078] |
+
+- **MTEB で強いモデルが ToolRet で強いとは限りません**。Arctic-Embed-S は hybrid でも dense でも MiniLM に有意に劣りました（hybrid nDCG@10 −0.014 [−0.022, −0.007]、C@100 −0.045 [−0.060, −0.031]）。ToolRet 論文の「検索モデルはツール検索が苦手」という結論と同じ向きで、既定の MiniLM-L6 は変えません。
+- **非対称モデルにはクエリ側の指示文が必須です**。指示文を外すと dense の nDCG@10 が 0.065 [0.056, 0.074]、C@100 が 0.098 [0.082, 0.114] 下がります。`embed()` しか無かった以前の `EmbeddingProvider` では、この種のモデルを指示文なしの状態でしか使えませんでした。
+- CPU 4 コアでの 44,453 件の文書埋め込みは、MiniLM-L6 が約 40 分、Arctic-Embed-S が約 90 分、bge-small-en-v1.5 が約 4 時間、bge-base-en-v1.5 が 10 時間以上でした（他の処理と CPU を共有した状態の見積もり）。大型モデルはこの環境では測っていません。
 
 ### 日本語のゴールで英語のカタログから選ぶ
 

@@ -256,7 +256,7 @@ Details and change procedures are in
 | Candidate pool | `CandidatePool.build(CandidatePoolRequest)` (default: `KindBalancedCandidatePool`; `RetrieverCandidatePool` passes search results through as-is) | `candidate_pool=` |
 | Selector | `SetSelector.select(results, *, context)` (optionally `default_limits`, `min_score`) | `selector=` |
 | LLM | `LLMProvider.complete(messages, tools)` | Positional argument `llm` |
-| Embeddings | `EmbeddingProvider.embed(texts)` | Through `HybridRetriever` / `HierarchicalRetriever` / `CaseBasedRouter` |
+| Embeddings | `EmbeddingProvider.embed(texts)` (and `embed_queries(texts)` for asymmetric models that need an instruction on queries) | Through `HybridRetriever` / `HierarchicalRetriever` / `CaseBasedRouter` |
 | Cross-encoder | `CrossEncoderProvider.score` | Through `CrossEncoderRerankRetriever` |
 | Grouping | `GroupingStrategy.partition` | Through `HierarchicalRetriever` |
 | Connector | `Connector.tools()` | `connectors=` (automatically integrated with the registry and handlers) |

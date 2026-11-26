@@ -344,6 +344,8 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--retrievers", default="lexical")
     parser.add_argument("--embed-model", default="sentence-transformers/all-MiniLM-L6-v2")
+    parser.add_argument("--query-prefix", default="", help="instruction prepended to queries only (asymmetric models)")
+    parser.add_argument("--embed-threads", type=int, default=None)
     parser.add_argument(
         "--language",
         choices=["en", "ja", "en-translated"],
@@ -353,6 +355,8 @@ def main() -> None:
     )
     parser.add_argument("--split", choices=["all", "dev", "test"], default="all", help="restrict the queries to one split")
     parser.add_argument("--output", default=str(Path(__file__).parent / "results" / "toolret.json"))
+    parser.add_argument("--records", default=None,
+                        help="also write per-query ranking metrics here, for paired comparisons across runs")
     args = parser.parse_args()
 
     if args.download:
@@ -374,7 +378,8 @@ def main() -> None:
     decompositions = load_cache(DECOMPOSITION_CACHE)
     provider = None
     if any(name != "lexical" for name in names):
-        provider = toolret.CachedEmbeddingProvider(args.embed_model)
+        provider = toolret.CachedEmbeddingProvider(args.embed_model, threads=args.embed_threads,
+                                                   query_prefix=args.query_prefix)
 
     report: dict = {
         "benchmark": "ToolRet (mangopy/ToolRet-Queries, mangopy/ToolRet-Tools)",
@@ -385,6 +390,7 @@ def main() -> None:
         "split": args.split,
         "seed": args.seed,
         "embedding_model": args.embed_model if provider else None,
+        "query_prefix": args.query_prefix if provider else None,
         "pool": POOL,
         "retrievers": {},
     }
@@ -416,6 +422,11 @@ def main() -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(stamp(report), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"wrote {output}")
+    if args.records:
+        keys = ("subset", "split", "ndcg@10", "complete@10", "recall@100", "complete@100")
+        per_query = {name: {record["id"]: {key: record[key] for key in keys} for record in records}
+                     for name, records in records_by_retriever.items()}
+        Path(args.records).write_text(json.dumps(per_query) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

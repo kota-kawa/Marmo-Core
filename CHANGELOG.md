@@ -12,6 +12,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `benchmarks/run_forgery_benchmark.py` tracks how far a resource with forged
+  declarations gets: for Tool, Skill, and Agent decoys, each forged
+  declaration (trust, permissions, side effect, isolation) and every
+  combination of them, it reports the selection rate, activation-gate pass
+  rate, whether `Kernel.run_goal` hands the decoy to the model, and whether a
+  call reaches an inert stand-in handler through the execution gate, plus
+  displaced gold resources and hijacked abstain/escalate decisions. The six
+  legacy cases (`metadata_forgery` 6/6) are re-measured as the baseline. With
+  the greedy selector a fully forged Tool reaches the model in 53% of its 88
+  task variants, and no partial forgery passes activation. See
+  `benchmarks/results/forgery.json` and `benchmarks/README.md`.
+  - 宣言を偽装したリソースがどこまで届くかを測る `benchmarks/run_forgery_benchmark.py` を
+    追加しました。Tool・Skill・Agent の偽装資源について、信頼度・権限・副作用・隔離レベルの
+    各宣言とその全組み合わせごとに、選択率、activation gate の通過率、`Kernel.run_goal` が
+    モデルに渡すか、呼び出しが execution gate を通って何もしない代替ハンドラに届くかを測り、
+    正規の資源の押しのけと abstain / escalate の乗っ取りも記録します。従来の 6 件
+    （`metadata_forgery` 6/6）を基準線として同じ実行で再測定します。greedy では、全偽装の
+    Tool が 88 変種の 53% でモデルに届き、一部だけの偽装は activation を通りませんでした。
+    `benchmarks/results/forgery.json` と `benchmarks/README.md` を参照してください。
+- `EmbeddingProvider.embed_queries()` embeds search queries. It defaults to
+  `embed()`; providers for asymmetric retrieval models (BGE, E5,
+  Arctic-Embed, Nomic), which expect an instruction on the query side only,
+  override it. `HybridRetriever` and `HierarchicalRetriever` now embed goals
+  through it and resources through `embed()`. Providers that only define
+  `embed()`, including ones that do not subclass `EmbeddingProvider`, behave
+  as before. On ToolRet, dropping Arctic-Embed-S's query instruction costs
+  0.065 nDCG@10 in dense retrieval (95% CI [0.056, 0.074]). The ToolRet
+  benchmark takes `--query-prefix` for such models and `--records` for
+  per-query metrics; `benchmarks/compare_toolret_records.py` pairs two runs.
+  - 検索クエリ用の `EmbeddingProvider.embed_queries()` を追加しました。既定は `embed()` と
+    同じです。クエリ側にだけ指示文を付ける非対称な検索モデル（BGE、E5、Arctic-Embed、Nomic）
+    のプロバイダは、これを上書きします。`HybridRetriever` と `HierarchicalRetriever` は、
+    ゴールをこのメソッドで、リソースを `embed()` で埋め込みます。`embed()` だけを持つ
+    既存のプロバイダ（`EmbeddingProvider` を継承しないものも含む）はこれまでどおり動きます。
+    ToolRet では Arctic-Embed-S の指示文を外すと dense 検索の nDCG@10 が 0.065
+    （95% CI [0.056, 0.074]）下がりました。ToolRet ベンチマークに `--query-prefix` と
+    `--records` を、2 回の実行を対応づけて比べる `benchmarks/compare_toolret_records.py` を
+    追加しました。
 - Added English and Japanese editions of the linked user guides, architecture
   and decision records, benchmark documentation, and contributor and security
   guides. Each language in the README links to its corresponding guides.

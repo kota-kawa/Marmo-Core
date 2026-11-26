@@ -211,7 +211,7 @@ Agent 委譲を許し、その子からさらに Agent を呼ぶには明示的�
 | 候補プール | `CandidatePool.build(CandidatePoolRequest)`（既定は `KindBalancedCandidatePool`、検索結果をそのまま渡す `RetrieverCandidatePool`） | `candidate_pool=` |
 | Selector | `SetSelector.select(results, *, context)`（任意で `default_limits`、`min_score`） | `selector=` |
 | LLM | `LLMProvider.complete(messages, tools)` | 位置引数 `llm` |
-| 埋め込み | `EmbeddingProvider.embed(texts)` | `HybridRetriever` / `HierarchicalRetriever` / `CaseBasedRouter` 経由 |
+| 埋め込み | `EmbeddingProvider.embed(texts)`（クエリ側に指示文が要る非対称モデルは `embed_queries(texts)` も） | `HybridRetriever` / `HierarchicalRetriever` / `CaseBasedRouter` 経由 |
 | Cross-encoder | `CrossEncoderProvider.score` | `CrossEncoderRerankRetriever` 経由 |
 | グルーピング | `GroupingStrategy.partition` | `HierarchicalRetriever` 経由 |
 | Connector | `Connector.tools()` | `connectors=`（registry と handler に自動統合） |
