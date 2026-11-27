@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from copy import copy
-from dataclasses import dataclass, replace as dataclass_replace
+from dataclasses import dataclass, field, replace as dataclass_replace
 from decimal import Decimal
 from hashlib import sha256
 from typing import Any, Callable, Iterable, Mapping, Sequence, cast
@@ -79,7 +79,7 @@ from .selector import (
 from .safety import redact_sensitive_arguments
 from .security import PromptInjectionInspector, label_untrusted_content
 from .secrets import SecretResolver, ensure_secret_refs, serialize_secret_refs
-from .state import InMemoryStateStore, StateStore, TaskState
+from .state import InMemoryStateStore, StateConflictError, StateStore, TaskState
 from .tool_runtime import ToolResult, ToolRuntime, validate_arguments
 
 
@@ -154,6 +154,12 @@ class _RunState:
     skipped: list[dict[str, str]]
     recovery_state: dict[str, dict[str, Any]]
     frame: Callable[[], dict[str, Any]]
+    # Callables dispatched so far, shared by the model loop and the plan
+    # path so both stop at the same ``max_tool_calls``.
+    executed_calls: int = 0
+    # Calls the saved continuation has moved past since the last frame was
+    # written; the next frame or pause closes their journal entries.
+    consumed_calls: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -248,6 +254,13 @@ class _StructuredTaskBackend(AgentExecutionBackend):
         )
 
 
+# Error recorded for a call whose start is on record but whose result is not:
+# the process stopped in between, so the handler may or may not have run.
+INTERRUPTED_CALL_ERROR = (
+    "an earlier run stopped after starting this call and before recording its result; "
+    "the outcome is unknown, so inspect the external system before trying it again"
+)
+
 # Detail attached to a completed task when retrieval matched nothing and the
 # model answered from its own knowledge. Callers that need a tool to have run
 # (and ``marmo run --strict``) treat it as a failure signal; a genuinely
@@ -338,12 +351,13 @@ class Kernel:
                         f"Connector resource conflicts with registered definition: "
                         f"{binding.definition.identity}"
                     )
-            existing_handler = merged_tool_implementations.get(binding.resource_id)
-            if existing_handler is not None and existing_handler is not binding.handler:
+            if binding.resource_id in merged_tool_implementations:
                 raise ValueError(
                     f"Connector handler conflicts with tool_implementations: {binding.resource_id}"
                 )
-            merged_tool_implementations[binding.resource_id] = binding.handler
+            # Keyed by id@version: two versions of one Connector Tool each keep
+            # their own handler instead of the later one replacing the earlier.
+            merged_tool_implementations[binding.definition.identity] = binding.handler
         registry.extend(connector_definitions_to_add)
 
         self.registry = registry
@@ -376,7 +390,7 @@ class Kernel:
         else:
             self.activator = activator
             for binding in connector_bindings:
-                self.activator.bind_tool(binding.resource_id, binding.handler)
+                self.activator.bind_tool(binding.definition.identity, binding.handler)
         self.tool_runtime = tool_runtime or ToolRuntime(
             gateway,
             timeout_seconds=timeout_seconds,
@@ -496,11 +510,14 @@ class Kernel:
         return task_id
 
     def run(self, task_id: str) -> TaskResult:
-        state = self.state_store.load(task_id)
-        if state.terminal:
-            return self._results.get(task_id) or self._result_from_state(state)
-        self._verify_task_budget(task_id)
-        return self._drive(state)
+        # The right to execute is taken before anything can have a side
+        # effect, so a second kernel on the same store stops here.
+        with self.state_store.execution(task_id):
+            state = self.state_store.load(task_id)
+            if state.terminal:
+                return self._results.get(task_id) or self._result_from_state(state)
+            self._verify_task_budget(task_id)
+            return self._drive(state)
 
     def run_goal(self, goal: str) -> TaskResult:
         return self.run(self.submit(goal))
@@ -508,26 +525,32 @@ class Kernel:
     def resume(self, task_id: str, hitl_response: HitlResponse | Mapping[str, Any] | None = None) -> TaskResult:
         """Continue a paused task, optionally applying a human answer (F-HITL-04)."""
 
-        state = self.state_store.load(task_id)
-        if state.terminal:
-            return self._results.get(task_id) or self._result_from_state(state)
-        self._verify_task_budget(task_id)
-        if hitl_response is not None:
-            if state.pending is None:
-                raise HitlError(
-                    f"task {task_id} is not waiting for a human answer (status {state.status}); "
-                    "call run() to start or continue it"
-                )
-            request = HitlRequest.from_dict(state.pending)
-            response = self.hitl.accept(_coerce_response(hitl_response), request)
-            outcome = self._apply_response(state, request, response)
-            if isinstance(outcome, TaskResult):
-                return outcome
-            state = outcome
-        return self._drive(state)
+        with self.state_store.execution(task_id):
+            state = self.state_store.load(task_id)
+            if state.terminal:
+                return self._results.get(task_id) or self._result_from_state(state)
+            self._verify_task_budget(task_id)
+            if hitl_response is not None:
+                if state.pending is None:
+                    raise HitlError(
+                        f"task {task_id} is not waiting for a human answer (status {state.status}); "
+                        "call run() to start or continue it"
+                    )
+                request = HitlRequest.from_dict(state.pending)
+                response = self.hitl.accept(_coerce_response(hitl_response), request)
+                outcome = self._apply_response(state, request, response)
+                if isinstance(outcome, TaskResult):
+                    return outcome
+                state = outcome
+            return self._drive(state)
 
     def cancel(self, task_id: str) -> None:
-        """Stop a task for good; the state and audit trail are kept."""
+        """Stop a task for good; the state and audit trail are kept.
+
+        Safe to call while another thread or kernel is running the task: the
+        runner starts no further call once it sees the cancellation, and a
+        result that arrives afterwards does not change the terminal status.
+        """
 
         state = self.state_store.load(task_id)
         if state.terminal:
@@ -612,7 +635,17 @@ class Kernel:
                 response = self.hitl.request(request)
                 if response is None:
                     return result or self._result_from_state(state)
-                outcome = self._apply_response(state, request, response)
+                try:
+                    outcome = self._apply_response(state, request, response)
+                except HitlError as exc:
+                    # The channel answered with something that cannot be
+                    # applied; the request stays pending for a usable answer.
+                    self.audit_log.append(
+                        "hitl",
+                        {"event": "response_rejected", "request_id": request.request_id, "reason": str(exc)},
+                        trace_id=state.trace_id or uuid.uuid4().hex,
+                    )
+                    return result or self._result_from_state(state)
                 if isinstance(outcome, TaskResult):
                     return outcome
                 state = outcome
@@ -657,6 +690,16 @@ class Kernel:
         """Fold a human answer into the task, or end it (F-HITL-03)."""
 
         trace_id = state.trace_id or uuid.uuid4().hex
+        delegated_task_id = str((request.decision or {}).get("delegated_task_id", ""))
+        delegated_request_id = str((request.decision or {}).get("delegated_request_id", ""))
+        delegated = bool(delegated_task_id and delegated_request_id)
+        modifies = (
+            response.kind == "modify" and response.arguments is not None and request.stage == "execution"
+        )
+        if modifies and not delegated:
+            # Checked before anything is recorded, so an unusable edit leaves
+            # the request pending for a corrected answer.
+            self._check_modified_arguments(request, response.arguments or {})
         self.audit_log.append(
             "hitl",
             {"event": "responded", "request": request.to_dict(), "response": response.to_dict()},
@@ -686,19 +729,16 @@ class Kernel:
             if granted is None and request.arguments:
                 granted = request.arguments.get("missing_permissions")
             payload["granted_permissions"] = list(granted or ())
-        # The escalated call is the head of the saved queue.
-        call_id = (state.frame.get("calls") or [{}])[0].get("id", "")
+        # The pause names the call it stopped on; a frame saved before that
+        # was recorded has the escalated call at the head of its queue.
+        call_id = str(
+            state.frame.get("paused_call") or (state.frame.get("calls") or [{}])[0].get("id", "")
+        )
         frame = dict(state.frame)
         touched = False
-        delegated_task_id = str((request.decision or {}).get("delegated_task_id", ""))
-        delegated_request_id = str((request.decision or {}).get("delegated_request_id", ""))
-        if (
-            response.kind == "modify"
-            and response.arguments is not None
-            and request.stage == "execution"
-            and delegated_task_id
-            and delegated_request_id
-        ):
+        plan = Plan.from_dict(state.plan) if state.plan else None
+        plan_step = plan.step(call_id) if plan is not None and call_id else None
+        if modifies and delegated:
             delegated_responses = dict(frame.get("delegated_responses") or {})
             delegated_responses[delegated_task_id] = HitlResponse(
                 kind="modify",
@@ -709,9 +749,25 @@ class Kernel:
             ).to_dict()
             frame["delegated_responses"] = delegated_responses
             touched = True
-        elif response.kind == "modify" and response.arguments is not None and request.stage == "execution":
+        elif modifies and plan is not None and plan_step is not None:
+            # A plan step takes its arguments from the plan, so the reviewed
+            # values are stored on that step and are what the resume runs.
+            reviewed = dict(response.arguments or {})
+            revised = plan.with_step(dataclass_replace(plan_step, arguments=reviewed))
+            self.state_store.append(state.task_id, "plan", {"plan": revised.to_dict()})
+            self.audit_log.append(
+                "hitl",
+                {
+                    "event": "arguments_modified",
+                    "step": plan_step.id,
+                    "resource": plan_step.resource_id,
+                    "arguments": serialize_secret_refs(reviewed),
+                },
+                trace_id=trace_id,
+            )
+        elif modifies:
             # Tag the replacement to that call id so it can apply to nothing else.
-            frame["override"] = {"call_id": call_id, "arguments": dict(response.arguments)}
+            frame["override"] = {"call_id": call_id, "arguments": dict(response.arguments or {})}
             touched = True
         if request.decision and "recovery" in request.decision:
             # Approving a recovery escalation means "try it properly again",
@@ -726,7 +782,29 @@ class Kernel:
             # through) must not be able to turn it off (F-RECOV-07).
         if touched:
             payload["frame"] = frame
-        return self.state_store.append(state.task_id, "resumed", payload)
+        resumed = self._transition(state.task_id, "resumed", payload)
+        if resumed is None:
+            return self._result_from_state(self.state_store.load(state.task_id))
+        return resumed
+
+    def _check_modified_arguments(self, request: HitlRequest, arguments: Mapping[str, Any]) -> None:
+        """Reject a reviewer's replacement arguments the tool could not accept."""
+
+        resource_id, _, version = request.resource.partition("@")
+        try:
+            definition = self.registry.get(resource_id, version or None)
+        except ResourceNotFoundError:
+            return
+        schema = definition.extras.get("input_schema")
+        if definition.metadata.kind != "tool" or not isinstance(schema, Mapping):
+            return
+        issues = validate_arguments(schema, arguments)
+        if issues:
+            raise HitlError(
+                f"the modified arguments for {request.resource} are invalid: "
+                + "; ".join(issues)
+                + "; answer again with arguments that match the tool input_schema"
+            )
 
     # -- execution loop --------------------------------------------------------
 
@@ -830,7 +908,10 @@ class Kernel:
                 "cannot safely resume this task because its earlier execution snapshot was not saved"
             )
         context = self._effective_context(state)
-        state = self.state_store.append(task_id, "status", {"status": "running", "trace_id": trace_id})
+        running = self._transition(task_id, "status", {"status": "running", "trace_id": trace_id})
+        if running is None:
+            return self._result_from_state(self.state_store.load(task_id))
+        state = running
 
         def audit(kind: str, payload: Mapping[str, Any]) -> None:
             self.audit_log.append(kind, payload, trace_id=trace_id)
@@ -894,7 +975,7 @@ class Kernel:
             results = prefetched_results if prefetched_results is not None else self._candidate_pool(goal, context)
             callable_candidates = any(result.resource.kind in ("tool", "agent") for result in results)
             candidate_count = len(results)
-            catalog_nonempty = bool(self.registry.list())
+            catalog_nonempty = self.registry.has_enabled()
             selected = self.selector.select(results, context=selection_context)
             selected, constraint_drops = _enforce_set_constraints(
                 selected, self._dependency_resolver(results, context)
@@ -1135,9 +1216,6 @@ class Kernel:
         # Corrections already handed back to the model, so a pause cannot hand
         # a model that keeps emitting bad arguments a fresh budget on resume.
         input_repairs = int(frame.get("input_repairs", 0))
-        # Counts callables actually dispatched, not model rounds: one round can
-        # request several calls, and it is the side effects that need bounding.
-        executed_calls = int(frame.get("executed_calls", 0))
         tool_results = [ToolResult.from_dict(item) for item in state.step_results if "tool_id" in item]
         agent_results = [AgentResult.from_dict(item) for item in state.step_results if "agent_id" in item]
         # A human's replacement arguments, carried until the call they name runs.
@@ -1157,7 +1235,7 @@ class Kernel:
                 "messages": [message.to_dict() for message in messages],
                 "calls": [call.to_dict() for call in pending_calls],
                 "llm_calls": llm_calls,
-                "executed_calls": executed_calls,
+                "executed_calls": run.executed_calls,
             }
             if input_repairs:
                 saved["input_repairs"] = input_repairs
@@ -1201,6 +1279,10 @@ class Kernel:
             skipped=skipped,
             recovery_state=recovery_state,
             frame=current_frame,
+            # Counts callables actually dispatched, not model rounds: one round
+            # can request several calls, and it is the side effects that need
+            # bounding.
+            executed_calls=int(frame.get("executed_calls", 0)),
         )
 
         # A Planner decomposes the goal up front; without one the model
@@ -1213,6 +1295,9 @@ class Kernel:
             if not pending_calls:
                 call_untrusted_sources = tuple(untrusted_sources)
                 call_prompt_findings = tuple(prompt_findings)
+                ended = self._ended(run)
+                if ended is not None:
+                    return ended
                 try:
                     response = self.llm.complete(messages, compiled.tools)
                 except ProviderError as exc:
@@ -1229,8 +1314,25 @@ class Kernel:
                         "tool_calls": [call.to_dict() for call in response.tool_calls],
                         "usage": response.usage,
                         "content_chars": len(response.content),
+                        "finish_reason": response.finish_reason,
                     },
                 )
+                if response.finish_reason == "length":
+                    # A reply cut off at the output limit is not an answer, and
+                    # a tool call cut off there may carry partial arguments.
+                    return self._finish(
+                        state,
+                        trace_id,
+                        "failed",
+                        output=response.content,
+                        detail=(
+                            "the model reply was truncated at its output token limit "
+                            "(finish_reason=length); raise the provider's max tokens or shorten the task"
+                        ),
+                        tool_results=tool_results,
+                        agent_results=agent_results,
+                        skipped=skipped,
+                    )
                 if not response.tool_calls:
                     detail = ""
                     if skipped:
@@ -1260,9 +1362,13 @@ class Kernel:
                     ChatMessage(role="assistant", content=response.content, tool_calls=response.tool_calls)
                 )
                 pending_calls = list(response.tool_calls)
+                # Saved before the first call runs: a process that stops in
+                # the middle of the round resumes these exact calls instead
+                # of asking the model again.
+                self.state_store.append(task_id, "frame", {"frame": current_frame()})
 
             while pending_calls:
-                if executed_calls >= self.max_tool_calls:
+                if run.executed_calls >= self.max_tool_calls:
                     return failed(
                         f"exceeded max_tool_calls={self.max_tool_calls}; raise the limit or simplify the task"
                     )
@@ -1279,6 +1385,7 @@ class Kernel:
                         return failed(unavailable)
                     input_repairs += 1
                     pending_calls.pop(0)
+                    run.consumed_calls.append(call.id)
                     available = ", ".join(sorted({*tools_by_name, *agents_by_name})) or "(none)"
                     messages.append(
                         ChatMessage(
@@ -1322,6 +1429,7 @@ class Kernel:
                         )
                     input_repairs += 1
                     pending_calls.pop(0)
+                    run.consumed_calls.append(call.id)
                     messages.append(
                         ChatMessage(
                             role="tool",
@@ -1342,8 +1450,9 @@ class Kernel:
 
                 # Counted only once the call ran to a result: a paused call is
                 # replayed on resume and must not be charged to the budget twice.
-                executed_calls += 1
+                run.executed_calls += 1
                 pending_calls.pop(0)
+                run.consumed_calls.append(call.id)
                 recovery_state.pop(call.id, None)
                 if outcome.tool is not None:
                     source = f"tool:{outcome.tool.metadata.identity}"
@@ -1377,9 +1486,194 @@ class Kernel:
                         content=self._tool_message_content(result.output, source=source),
                     )
                 )
-            self.state_store.append(task_id, "frame", {"frame": current_frame()})
+            self.state_store.append(
+                task_id, "frame", {"frame": current_frame(), "closed_calls": list(run.consumed_calls)}
+            )
+            run.consumed_calls.clear()
 
     # -- helpers ---------------------------------------------------------------
+
+    def _transition(self, task_id: str, kind: str, payload: Mapping[str, Any]) -> TaskState | None:
+        """Append a status-changing event unless the task has already ended.
+
+        ``cancel`` can land from another thread or kernel at any moment. The
+        write is guarded by the version it was decided at, so a result that
+        arrives after the cancellation cannot replace the terminal status.
+        """
+
+        while True:
+            current = self.state_store.load(task_id)
+            if current.terminal:
+                return None
+            try:
+                return self.state_store.append(task_id, kind, payload, expected_version=current.version)
+            except StateConflictError:
+                continue
+
+    def _ended(self, run: "_RunState") -> TaskResult | None:
+        """The stored outcome when the task was ended while this run was going."""
+
+        current = self.state_store.load(run.task_id)
+        if not current.terminal:
+            return None
+        return self._stored_outcome(current, run.tool_results, run.agent_results, run.skipped)
+
+    def _stored_outcome(
+        self,
+        state: TaskState,
+        tool_results: Iterable[ToolResult],
+        agent_results: Iterable[AgentResult],
+        skipped: Iterable[Mapping[str, str]],
+    ) -> TaskResult:
+        return TaskResult(
+            task_id=state.task_id,
+            goal=state.goal,
+            status=state.status,
+            output=state.output,
+            detail=state.detail,
+            tool_results=tuple(tool_results),
+            agent_results=tuple(agent_results),
+            skipped_resources=tuple(dict(item) for item in skipped),
+            trace_id=state.trace_id,
+        )
+
+    # -- call journal ----------------------------------------------------------
+    #
+    # A call is journaled under its id: a ``call`` event when it is handed to
+    # the runtime, the ``step`` event with its result, and ``closed_calls`` on
+    # the event that saves the continuation past it. A resume reads the
+    # entries still open to tell "never ran", "ran, result on record" and
+    # "started, outcome unknown" apart.
+
+    def _open_call(self, task_id: str, call_id: str) -> dict[str, Any] | None:
+        """The journal entry for ``call_id`` that no saved continuation has closed."""
+
+        entry: dict[str, Any] | None = None
+        for event in self.state_store.events(task_id):
+            payload = event.payload
+            closed = payload.get("closed_calls")
+            if isinstance(closed, list) and call_id in closed:
+                entry = None
+            elif payload.get("call_id") != call_id:
+                continue
+            elif event.kind == "call":
+                if payload.get("phase") == "started":
+                    entry = {"reservation_id": payload.get("reservation_id"), "result": None}
+                else:
+                    entry = None
+            elif event.kind == "step" and isinstance(payload.get("result"), Mapping):
+                entry = {"reservation_id": (entry or {}).get("reservation_id"), "result": dict(payload["result"])}
+        return entry
+
+    def _journal_start(
+        self, task_id: str, call_id: str, metadata: ResourceMetadata, reservation_id: str | None
+    ) -> None:
+        payload: dict[str, Any] = {"call_id": call_id, "phase": "started", "resource": metadata.identity}
+        if reservation_id is not None:
+            payload["reservation_id"] = reservation_id
+        self.state_store.append(task_id, "call", payload)
+
+    def _journal_release(self, task_id: str, call_id: str) -> None:
+        """Record that a started call was stopped before its handler ran."""
+
+        self.state_store.append(task_id, "call", {"call_id": call_id, "phase": "released"})
+
+    def _settle_recovered(self, task_id: str, entry: Mapping[str, Any], cost: float) -> None:
+        reservation_id = entry.get("reservation_id")
+        if (
+            self.budget_ledger is not None
+            and isinstance(reservation_id, str)
+            and self.budget_ledger.is_open(self._budget_task_id(task_id), reservation_id)
+        ):
+            self._settle_resource(task_id, reservation_id, cost)
+
+    def _recover_tool_call(
+        self,
+        run: "_RunState",
+        tool: BoundTool,
+        arguments: Mapping[str, Any],
+        call_id: str,
+        entry: Mapping[str, Any],
+    ) -> ToolResult:
+        """Turn an open journal entry into the result this call continues from."""
+
+        recorded = entry.get("result")
+        if isinstance(recorded, Mapping):
+            result = ToolResult.from_dict(recorded)
+            run.audit(
+                "recover",
+                {
+                    "action": "reuse_recorded_result",
+                    "call_id": call_id,
+                    "resource": tool.metadata.identity,
+                    "status": result.status,
+                },
+            )
+            self._settle_recovered(
+                run.task_id, entry, 0.0 if result.status == "dry_run" else tool.metadata.cost_estimate
+            )
+            return result
+        # Started, and nothing after it: the handler may or may not have run.
+        result = ToolResult(
+            tool_id=tool.metadata.id,
+            tool_version=tool.metadata.version,
+            status="timeout",
+            arguments=serialize_secret_refs(dict(arguments)),
+            error=INTERRUPTED_CALL_ERROR,
+        )
+        run.audit(
+            "recover",
+            {"action": "interrupted_call", "call_id": call_id, "resource": tool.metadata.identity},
+        )
+        run.audit("execute", result.to_dict())
+        self.state_store.append(run.task_id, "step", {"result": result.to_dict(), "call_id": call_id})
+        run.tool_results.append(result)
+        self._settle_recovered(run.task_id, entry, tool.metadata.cost_estimate)
+        return result
+
+    def _recover_agent_call(
+        self,
+        run: "_RunState",
+        agent: BoundAgent,
+        arguments: Mapping[str, Any],
+        call_id: str,
+        entry: Mapping[str, Any],
+    ) -> AgentResult:
+        recorded = entry.get("result")
+        if isinstance(recorded, Mapping):
+            result = AgentResult.from_dict(recorded)
+            run.audit(
+                "recover",
+                {
+                    "action": "reuse_recorded_result",
+                    "call_id": call_id,
+                    "resource": agent.metadata.identity,
+                    "status": result.status,
+                },
+            )
+            self._settle_recovered(run.task_id, entry, result.cost)
+            return result
+        result = AgentResult(
+            agent_id=agent.metadata.id,
+            agent_version=agent.metadata.version,
+            status="timeout",
+            arguments=serialize_secret_refs(dict(arguments)),
+            error=INTERRUPTED_CALL_ERROR,
+        )
+        run.audit(
+            "recover",
+            {"action": "interrupted_call", "call_id": call_id, "resource": agent.metadata.identity},
+        )
+        run.audit("delegate", result.to_dict())
+        self.state_store.append(run.task_id, "step", {"result": result.to_dict(), "call_id": call_id})
+        run.agent_results.append(result)
+        self._settle_recovered(run.task_id, entry, agent.metadata.cost_estimate)
+        return result
+
+    def _paused_frame(self, run: "_RunState", call_id: str) -> dict[str, Any]:
+        """The frame to save when ``call_id`` pauses, naming the call it stopped on."""
+
+        return {**run.frame(), "paused_call": call_id}
 
     def _effective_context(self, state: TaskState) -> PolicyContext:
         """Fold approvals and grants collected from humans into the context."""
@@ -1464,11 +1758,20 @@ class Kernel:
                         f"paused for human approval: the HITL policy always confirms "
                         f"{tool.metadata.identity} before execution"
                     ),
-                    frame=run.frame(),
+                    frame=self._paused_frame(run, call_id),
+                    closed_calls=(*run.consumed_calls, call_id),
                     tool_results=run.tool_results,
                     skipped=run.skipped,
                 )
             )
+        # What an earlier, interrupted run left on record for this call. A
+        # recorded result is continued from, never produced a second time.
+        journaled = self._open_call(run.task_id, call_id)
+        recovered = (
+            self._recover_tool_call(run, tool, arguments, call_id, journaled)
+            if journaled is not None
+            else None
+        )
         # A rollback target for this step, before it can leave a mark (F-RECOV-04).
         self.state_store.checkpoint(run.task_id, f"before:{call_id}")
         entry = run.recovery_state.setdefault(call_id, {"attempts": 0, "tried": []})
@@ -1477,11 +1780,27 @@ class Kernel:
         # its first result. After that a schema failure is a real failure.
         results_before = len(run.tool_results)
         while True:
+            if recovered is not None:
+                result, recovered = recovered, None
+                tool = run.tools_by_name.get(result.tool_id, tool)
+                if result.succeeded:
+                    return _CallOutcome(result=result, tool=tool)
+                failure = self.recovery.classify_tool_result(result, tool.metadata)
+                outcome = self._after_tool_failure(run, tool, arguments, call_id, entry, failure, abort_on_failure)
+                if isinstance(outcome, _CallOutcome):
+                    return outcome
+                tool = outcome
+                continue
+            ended = self._ended(run)
+            if ended is not None:
+                return _CallOutcome(control=ended)
             reservation_id = self._reserve_resource(run.task_id, tool.metadata)
+            self._journal_start(run.task_id, call_id, tool.metadata, reservation_id)
             try:
                 result = self.tool_runtime.execute(tool, arguments, run.context)
             except PolicyRejectedError as exc:
                 self._settle_resource(run.task_id, reservation_id, 0.0)
+                self._journal_release(run.task_id, call_id)
                 if exc.decision is not None:
                     audit("policy", exc.decision.to_dict())
                 if exc.decision is not None and exc.decision.escalated:
@@ -1500,7 +1819,8 @@ class Kernel:
                                 f"paused for human approval: execute {tool.metadata.identity} "
                                 f"(side_effect={tool.metadata.side_effect})"
                             ),
-                            frame=run.frame(),
+                            frame=self._paused_frame(run, call_id),
+                    closed_calls=(*run.consumed_calls, call_id),
                             tool_results=run.tool_results,
                             skipped=run.skipped,
                         )
@@ -1522,6 +1842,7 @@ class Kernel:
                 )
             except ToolInputError as exc:
                 self._settle_resource(run.task_id, reservation_id, 0.0)
+                self._journal_release(run.task_id, call_id)
                 # A SecretRef that cannot be materialized is not a mistake the
                 # model can correct, and the resolver names the backing
                 # variable -- neither belongs in the conversation.
@@ -1544,7 +1865,7 @@ class Kernel:
                     )
                 )
             audit("execute", result.to_dict())
-            self.state_store.append(run.task_id, "step", {"result": result.to_dict()})
+            self.state_store.append(run.task_id, "step", {"result": result.to_dict(), "call_id": call_id})
             run.tool_results.append(result)
             self._settle_resource(
                 run.task_id,
@@ -1558,61 +1879,79 @@ class Kernel:
 
             failure = self.recovery.classify_tool_result(result, tool.metadata)
             self.recovery.circuit_breaker.record_failure(failure.resource)
-            tried = [str(item) for item in entry.get("tried", ())]
-            alternatives = self._alternative_tool_ids(tool, arguments, run.tools, tried, run.context)
-            decision = self.recovery.decide(
-                failure, attempts=int(entry.get("attempts", 0)), alternatives=alternatives
+            outcome = self._after_tool_failure(run, tool, arguments, call_id, entry, failure, abort_on_failure)
+            if isinstance(outcome, _CallOutcome):
+                return outcome
+            tool = outcome
+
+    def _after_tool_failure(
+        self,
+        run: "_RunState",
+        tool: BoundTool,
+        arguments: Mapping[str, Any],
+        call_id: str,
+        entry: dict[str, Any],
+        failure: Failure,
+        abort_on_failure: bool,
+    ) -> "_CallOutcome | BoundTool":
+        """Carry out the recovery decision; a returned tool is the one to run next."""
+
+        audit = run.audit
+        tried = [str(item) for item in entry.get("tried", ())]
+        alternatives = self._alternative_tool_ids(tool, arguments, run.tools, tried, run.context)
+        decision = self.recovery.decide(
+            failure, attempts=int(entry.get("attempts", 0)), alternatives=alternatives
+        )
+        audit("recover", decision.to_dict())
+        if decision.action == "retry":
+            entry["attempts"] = int(entry.get("attempts", 0)) + 1
+            self.recovery.wait(decision.backoff_seconds)
+            return tool
+        if decision.action == "fallback":
+            replacement, reason = self._resolve_fallback(
+                decision.alternative, run.tools_by_name, run.context
             )
-            audit("recover", decision.to_dict())
-            if decision.action == "retry":
-                entry["attempts"] = int(entry.get("attempts", 0)) + 1
-                self.recovery.wait(decision.backoff_seconds)
-                continue
-            if decision.action == "fallback":
-                replacement, reason = self._resolve_fallback(
-                    decision.alternative, run.tools_by_name, run.context
-                )
-                entry["tried"] = tried + [tool.metadata.id]
-                if replacement is None:
-                    audit(
-                        "recover",
-                        {"action": "fallback_failed", "resource": decision.alternative, "reason": reason},
-                    )
-                    extra = f"fallback to {decision.alternative} was not usable: {reason}"
-                    if not abort_on_failure:
-                        return _CallOutcome(failure=failure)
-                    return _CallOutcome(control=self._abort(run, failure, extra=extra))
+            entry["tried"] = tried + [tool.metadata.id]
+            if replacement is None:
                 audit(
                     "recover",
-                    {
-                        "action": "fallback_selected",
-                        "from": tool.metadata.identity,
-                        "to": replacement.metadata.identity,
-                    },
+                    {"action": "fallback_failed", "resource": decision.alternative, "reason": reason},
                 )
-                tool = replacement
-                run.tools.append(replacement)
-                entry["attempts"] = 0
-                continue
-            if decision.action == "escalate":
-                entry["attempts"] = int(entry.get("attempts", 0)) + 1
-                return _CallOutcome(
-                    control=self._pause(
-                        run.state,
-                        run.trace_id,
-                        self._recovery_confirmation(run.task_id, tool.metadata, arguments, decision),
-                        detail=(
-                            f"paused after a {failure.kind} failure of {tool.metadata.identity}: "
-                            f"{failure.message}"
-                        ),
-                        frame=run.frame(),
-                        tool_results=run.tool_results,
-                        skipped=run.skipped,
-                    )
+                extra = f"fallback to {decision.alternative} was not usable: {reason}"
+                if not abort_on_failure:
+                    return _CallOutcome(failure=failure)
+                return _CallOutcome(control=self._abort(run, failure, extra=extra))
+            audit(
+                "recover",
+                {
+                    "action": "fallback_selected",
+                    "from": tool.metadata.identity,
+                    "to": replacement.metadata.identity,
+                },
+            )
+            run.tools.append(replacement)
+            entry["attempts"] = 0
+            return replacement
+        if decision.action == "escalate":
+            entry["attempts"] = int(entry.get("attempts", 0)) + 1
+            return _CallOutcome(
+                control=self._pause(
+                    run.state,
+                    run.trace_id,
+                    self._recovery_confirmation(run.task_id, tool.metadata, arguments, decision),
+                    detail=(
+                        f"paused after a {failure.kind} failure of {tool.metadata.identity}: "
+                        f"{failure.message}"
+                    ),
+                    frame=self._paused_frame(run, call_id),
+                    closed_calls=(*run.consumed_calls, call_id),
+                    tool_results=run.tool_results,
+                    skipped=run.skipped,
                 )
-            if not abort_on_failure:
-                return _CallOutcome(failure=failure)
-            return _CallOutcome(control=self._abort(run, failure, extra=decision.reason))
+            )
+        if not abort_on_failure:
+            return _CallOutcome(failure=failure)
+        return _CallOutcome(control=self._abort(run, failure, extra=decision.reason))
 
     def _run_agent_call(
         self,
@@ -1673,146 +2012,168 @@ class Kernel:
                         always_confirm=True,
                     ),
                     detail=f"paused for human approval: delegate to {agent.metadata.identity}",
-                    frame=run.frame(),
+                    frame=self._paused_frame(run, call_id),
+                    closed_calls=(*run.consumed_calls, call_id),
                     tool_results=run.tool_results,
                     agent_results=run.agent_results,
                     skipped=run.skipped,
                 )
             )
 
+        journaled = self._open_call(run.task_id, call_id)
+        recovered = (
+            self._recover_agent_call(run, agent, arguments, call_id, journaled)
+            if journaled is not None
+            else None
+        )
         self.state_store.checkpoint(run.task_id, f"before:{call_id}")
         entry = run.recovery_state.setdefault(call_id, {"attempts": 0, "tried": []})
         while True:
-            reservation_id = self._reserve_resource(run.task_id, agent.metadata)
-            try:
-                result = self.agent_runtime.execute(
-                    agent,
-                    arguments,
-                    run.context,
-                    depth=self._agent_depth + 1,
-                    cumulative_cost=(
-                        self._agent_cost_offset + sum(item.cost for item in run.agent_results)
-                    ),
-                    delegated_permissions=agent.metadata.required_permissions,
-                    task_id=run.task_id,
-                    invocation_id=f"{call_id}:attempt:{int(entry.get('attempts', 0))}",
-                )
-            except AgentExecutionPendingError as exc:
-                self._settle_resource(run.task_id, reservation_id, 0.0)
-                self._record_delegated_tool_results(run, exc.child_task_id, exc.tool_results)
-                child_request = exc.request
-                child_decision = dict(child_request.decision or {})
-                request_decision: dict[str, Any] = {
-                    "approval_token": child_decision.get("approval_token", ""),
-                    "delegated_task_id": exc.child_task_id,
-                    "delegated_request_id": child_request.request_id,
-                    "delegated_decision": child_decision,
-                }
-                request = HitlRequest.create(
-                    task_id=run.task_id,
-                    stage=child_request.stage,
-                    operation=f"delegated task requires approval: {child_request.operation}",
-                    impact=child_request.impact,
-                    alternatives=child_request.alternatives,
-                    recommendation=child_request.recommendation,
-                    resource=child_request.resource,
-                    arguments=child_request.arguments,
-                    decision=request_decision,
-                )
-                audit(
-                    "delegate",
-                    {
-                        "agent": label,
-                        "status": "paused",
-                        "child_task_id": exc.child_task_id,
-                        "request": request.to_dict(),
-                    },
-                )
-                return _CallOutcome(
-                    control=self._pause(
-                        run.state,
-                        run.trace_id,
-                        request,
-                        detail=f"delegated task {exc.child_task_id} is waiting for approval",
-                        frame=run.frame(),
-                        tool_results=run.tool_results,
-                        agent_results=run.agent_results,
-                        skipped=run.skipped,
+            if recovered is not None:
+                result, recovered = recovered, None
+                agent = run.agents_by_name.get(result.agent_id, agent)
+            else:
+                ended = self._ended(run)
+                if ended is not None:
+                    return _CallOutcome(control=ended)
+                reservation_id = self._reserve_resource(run.task_id, agent.metadata)
+                self._journal_start(run.task_id, call_id, agent.metadata, reservation_id)
+                try:
+                    result = self.agent_runtime.execute(
+                        agent,
+                        arguments,
+                        run.context,
+                        depth=self._agent_depth + 1,
+                        cumulative_cost=(
+                            self._agent_cost_offset + sum(item.cost for item in run.agent_results)
+                        ),
+                        delegated_permissions=agent.metadata.required_permissions,
+                        task_id=run.task_id,
+                        invocation_id=f"{call_id}:attempt:{int(entry.get('attempts', 0))}",
                     )
-                )
-            except PolicyRejectedError as exc:
-                self._settle_resource(run.task_id, reservation_id, 0.0)
-                if exc.decision is not None:
-                    audit("policy", exc.decision.to_dict())
-                if exc.decision is not None and exc.decision.escalated:
+                except AgentExecutionPendingError as exc:
+                    self._settle_resource(run.task_id, reservation_id, 0.0)
+                    self._journal_release(run.task_id, call_id)
+                    self._record_delegated_tool_results(run, exc.child_task_id, exc.tool_results)
+                    child_request = exc.request
+                    child_decision = dict(child_request.decision or {})
+                    request_decision: dict[str, Any] = {
+                        "approval_token": child_decision.get("approval_token", ""),
+                        "delegated_task_id": exc.child_task_id,
+                        "delegated_request_id": child_request.request_id,
+                        "delegated_decision": child_decision,
+                    }
+                    request = HitlRequest.create(
+                        task_id=run.task_id,
+                        stage=child_request.stage,
+                        operation=f"delegated task requires approval: {child_request.operation}",
+                        impact=child_request.impact,
+                        alternatives=child_request.alternatives,
+                        recommendation=child_request.recommendation,
+                        resource=child_request.resource,
+                        arguments=child_request.arguments,
+                        decision=request_decision,
+                    )
+                    audit(
+                        "delegate",
+                        {
+                            "agent": label,
+                            "status": "paused",
+                            "child_task_id": exc.child_task_id,
+                            "request": request.to_dict(),
+                        },
+                    )
                     return _CallOutcome(
                         control=self._pause(
                             run.state,
                             run.trace_id,
-                            self._confirmation(
-                                run.task_id,
-                                "execution",
-                                agent.metadata,
-                                arguments=arguments,
-                                decision=exc.decision.to_dict(),
-                            ),
-                            detail=f"paused for human approval: delegate to {agent.metadata.identity}",
-                            frame=run.frame(),
+                            request,
+                            detail=f"delegated task {exc.child_task_id} is waiting for approval",
+                            frame=self._paused_frame(run, call_id),
+                        closed_calls=(*run.consumed_calls, call_id),
                             tool_results=run.tool_results,
                             agent_results=run.agent_results,
                             skipped=run.skipped,
                         )
                     )
-                failure = self.recovery.classify_denial(agent.metadata, exc.message)
-                audit("recover", {"failure": failure.to_dict(), "action": "deny"})
-                return _CallOutcome(
-                    control=self._finish(
-                        run.state,
-                        run.trace_id,
-                        "denied",
-                        detail=exc.message,
-                        tool_results=run.tool_results,
-                        agent_results=run.agent_results,
-                        skipped=run.skipped,
+                except PolicyRejectedError as exc:
+                    self._settle_resource(run.task_id, reservation_id, 0.0)
+                    self._journal_release(run.task_id, call_id)
+                    if exc.decision is not None:
+                        audit("policy", exc.decision.to_dict())
+                    if exc.decision is not None and exc.decision.escalated:
+                        return _CallOutcome(
+                            control=self._pause(
+                                run.state,
+                                run.trace_id,
+                                self._confirmation(
+                                    run.task_id,
+                                    "execution",
+                                    agent.metadata,
+                                    arguments=arguments,
+                                    decision=exc.decision.to_dict(),
+                                ),
+                                detail=f"paused for human approval: delegate to {agent.metadata.identity}",
+                                frame=self._paused_frame(run, call_id),
+                        closed_calls=(*run.consumed_calls, call_id),
+                                tool_results=run.tool_results,
+                                agent_results=run.agent_results,
+                                skipped=run.skipped,
+                            )
+                        )
+                    failure = self.recovery.classify_denial(agent.metadata, exc.message)
+                    audit("recover", {"failure": failure.to_dict(), "action": "deny"})
+                    return _CallOutcome(
+                        control=self._finish(
+                            run.state,
+                            run.trace_id,
+                            "denied",
+                            detail=exc.message,
+                            tool_results=run.tool_results,
+                            agent_results=run.agent_results,
+                            skipped=run.skipped,
+                        )
                     )
-                )
-            except ToolInputError as exc:
-                self._settle_resource(run.task_id, reservation_id, 0.0)
-                failure = Failure(
-                    kind="validation",
-                    message=str(exc),
-                    resource=agent.metadata.identity,
-                    stage="delegation",
-                )
-                audit("recover", {"failure": failure.to_dict(), "action": "fail"})
-                audit("delegate", {"agent": label, "status": "invalid_input", "error": str(exc)})
-                if not abort_on_failure:
-                    return _CallOutcome(failure=failure)
-                return _CallOutcome(
-                    control=self._finish(
-                        run.state,
-                        run.trace_id,
-                        "failed",
-                        detail=str(exc),
-                        tool_results=run.tool_results,
-                        agent_results=run.agent_results,
-                        skipped=run.skipped,
+                except ToolInputError as exc:
+                    self._settle_resource(run.task_id, reservation_id, 0.0)
+                    self._journal_release(run.task_id, call_id)
+                    failure = Failure(
+                        kind="validation",
+                        message=str(exc),
+                        resource=agent.metadata.identity,
+                        stage="delegation",
                     )
-                )
+                    audit("recover", {"failure": failure.to_dict(), "action": "fail"})
+                    audit("delegate", {"agent": label, "status": "invalid_input", "error": str(exc)})
+                    if not abort_on_failure:
+                        return _CallOutcome(failure=failure)
+                    return _CallOutcome(
+                        control=self._finish(
+                            run.state,
+                            run.trace_id,
+                            "failed",
+                            detail=str(exc),
+                            tool_results=run.tool_results,
+                            agent_results=run.agent_results,
+                            skipped=run.skipped,
+                        )
+                    )
 
-            audit("delegate", result.to_dict())
-            if result.child_task_id and self.state_store.exists(result.child_task_id):
-                child_state = self.state_store.load(result.child_task_id)
-                child_tools = [
-                    ToolResult.from_dict(item)
-                    for item in child_state.step_results
-                    if "tool_id" in item
-                ]
-                self._record_delegated_tool_results(run, result.child_task_id, child_tools)
-            self.state_store.append(run.task_id, "step", {"result": result.to_dict()})
-            run.agent_results.append(result)
-            self._settle_resource(run.task_id, reservation_id, result.cost)
-            self._check_budget_overrun(run.task_id)
+                audit("delegate", result.to_dict())
+                if result.child_task_id and self.state_store.exists(result.child_task_id):
+                    child_state = self.state_store.load(result.child_task_id)
+                    child_tools = [
+                        ToolResult.from_dict(item)
+                        for item in child_state.step_results
+                        if "tool_id" in item
+                    ]
+                    self._record_delegated_tool_results(run, result.child_task_id, child_tools)
+                self.state_store.append(
+                    run.task_id, "step", {"result": result.to_dict(), "call_id": call_id}
+                )
+                run.agent_results.append(result)
+                self._settle_resource(run.task_id, reservation_id, result.cost)
+                self._check_budget_overrun(run.task_id)
             if result.succeeded:
                 self.recovery.circuit_breaker.record_success(agent.metadata.identity)
                 return _CallOutcome(result=result, agent=agent)
@@ -1882,7 +2243,8 @@ class Kernel:
                             f"paused after a {failure.kind} failure of {agent.metadata.identity}: "
                             f"{failure.message}"
                         ),
-                        frame=run.frame(),
+                        frame=self._paused_frame(run, call_id),
+                    closed_calls=(*run.consumed_calls, call_id),
                         tool_results=run.tool_results,
                         agent_results=run.agent_results,
                         skipped=run.skipped,
@@ -2164,12 +2526,42 @@ class Kernel:
                     tool_results=run.tool_results,
                     skipped=run.skipped,
                 )
-            plan, control, failure = self._run_wave(run, plan, ready)
-            self.state_store.append(run.task_id, "plan", {"plan": plan.to_dict()})
+            # The same contract as the model loop: no call is dispatched past
+            # ``max_tool_calls``, however many steps a wave could run at once.
+            remaining = self.max_tool_calls - run.executed_calls
+            if remaining <= 0:
+                return self._finish(
+                    run.state,
+                    run.trace_id,
+                    "failed",
+                    detail=f"exceeded max_tool_calls={self.max_tool_calls}; raise the limit or simplify the task",
+                    tool_results=run.tool_results,
+                    agent_results=run.agent_results,
+                    skipped=run.skipped,
+                )
+            plan, control, failure, settled = self._run_wave(run, plan, ready[:remaining])
+            # The plan now records these steps, so their journal entries close.
+            self.state_store.append(
+                run.task_id, "plan", {"plan": plan.to_dict(), "closed_calls": settled}
+            )
             if control is not None:
                 return control
+            self.state_store.append(run.task_id, "frame", {"frame": run.frame()})
             if failure is None:
                 continue
+
+            if failure.kind == "timeout":
+                # The step may have reached an external system (ADR 0008).
+                # Planning around it would run further steps on top of an
+                # outcome nobody has looked at.
+                return self._abort(
+                    run,
+                    failure,
+                    extra=(
+                        "the outcome of that step is unknown, so the plan was not revised "
+                        "automatically; inspect it before running the task again"
+                    ),
+                )
 
             # F-PLAN-04: revise the plan around the failure instead of ending.
             if replans >= self.max_replans:
@@ -2208,8 +2600,12 @@ class Kernel:
         run: "_RunState",
         plan: Plan,
         ready: Sequence[PlanStep],
-    ) -> tuple[Plan, TaskResult | None, Failure | None]:
-        """Run one dependency wave; independent steps go in parallel (F-PLAN-05)."""
+    ) -> tuple[Plan, TaskResult | None, Failure | None, list[str]]:
+        """Run one dependency wave; independent steps go in parallel (F-PLAN-05).
+
+        Also returns the ids of the steps that ran to a result or a failure.
+        A paused step is not among them: it runs again on resume.
+        """
 
         workers = min(self.max_parallel_steps, len(ready))
         if workers > 1:
@@ -2218,14 +2614,18 @@ class Kernel:
         else:
             outcomes = [(step, self._run_step(run, step)) for step in ready]
 
-        control: TaskResult | None = None
+        ended: TaskResult | None = None
+        paused: list[tuple[PlanStep, TaskResult]] = []
         failure: Failure | None = None
+        settled: list[str] = []
         for step, outcome in outcomes:
             if outcome.control is not None:
-                # Two parallel steps can both pause; the operator answers the
-                # one left pending and the other re-raises on resume.
-                control = control or outcome.control
+                if outcome.control.paused:
+                    paused.append((step, outcome.control))
+                else:
+                    ended = ended or outcome.control
                 continue
+            settled.append(step.id)
             if outcome.failure is not None:
                 plan = plan.with_status(step.id, "failed", {"error": outcome.failure.message})
                 if failure is None:
@@ -2240,7 +2640,64 @@ class Kernel:
             plan = plan.with_status(
                 step.id, "completed", outcome.result.to_dict() if outcome.result else None
             )
-        return plan, control, failure
+        run.executed_calls += len(settled)
+        control = ended
+        if control is None and paused:
+            control = self._keep_first_pause(run, paused)
+        return plan, control, failure, settled
+
+    def _keep_first_pause(
+        self, run: "_RunState", paused: Sequence[tuple[PlanStep, TaskResult]]
+    ) -> TaskResult:
+        """Make the stored pending request the one the caller is handed.
+
+        Parallel steps can pause in the same wave, each writing its own
+        request. The task waits on one at a time, in plan order: the first
+        paused step's request is the pending one, and every other paused step
+        asks again, with a new request, when the task resumes.
+        """
+
+        step, kept = paused[0]
+        request = kept.hitl_request or {}
+        current = self.state_store.load(run.task_id)
+        stored = current.pending or {}
+        # Restated when a later pause replaced it, or when siblings finished
+        # after it was written and the saved call count is behind.
+        if (
+            stored.get("request_id") != request.get("request_id")
+            or current.frame.get("executed_calls") != run.executed_calls
+        ):
+            restated = self._transition(
+                run.task_id,
+                "paused",
+                {
+                    "request": dict(request),
+                    "detail": kept.detail,
+                    "frame": self._paused_frame(run, step.id),
+                    "closed_calls": [step.id],
+                },
+            )
+            if restated is None:
+                return self._stored_outcome(
+                    self.state_store.load(run.task_id), run.tool_results, run.agent_results, run.skipped
+                )
+        if len(paused) > 1:
+            run.audit(
+                "hitl",
+                {
+                    "event": "deferred",
+                    "pending_request_id": request.get("request_id", ""),
+                    "pending_step": step.id,
+                    "deferred": [
+                        {"step": other.id, "request_id": (result.hitl_request or {}).get("request_id", "")}
+                        for other, result in paused[1:]
+                    ],
+                },
+            )
+        # Siblings may have finished after this step paused.
+        return dataclass_replace(
+            kept, tool_results=tuple(run.tool_results), agent_results=tuple(run.agent_results)
+        )
 
     def _rollback_failed_plan_step(self, run: "_RunState", failure: Failure) -> None:
         """Restore the pre-step state before asking the Planner for a revision.
@@ -2371,10 +2828,23 @@ class Kernel:
                 )
             )
         output = ""
+        truncated = False
+        ended = self._ended(run)
+        if ended is not None:
+            return ended
         try:
             response = self.llm.complete(messages, ())
             output = response.content
-            run.audit("llm", {"round": "plan-summary", "content_chars": len(output), "usage": response.usage})
+            truncated = response.finish_reason == "length"
+            run.audit(
+                "llm",
+                {
+                    "round": "plan-summary",
+                    "content_chars": len(output),
+                    "usage": response.usage,
+                    "finish_reason": response.finish_reason,
+                },
+            )
         except BudgetExceededError:
             raise
         except Exception as exc:  # noqa: BLE001 - the work is done; only the wording is missing
@@ -2383,6 +2853,8 @@ class Kernel:
             done = ", ".join(step.resource_id for step in plan.steps if step.status == "completed")
             output = f"Plan complete over {len(plan.steps)} step(s): {done}"
         detail = f"executed a {len(plan.steps)}-step plan (revision {plan.revision})"
+        if truncated:
+            detail += "; the summary was truncated at the model's output token limit"
         if run.skipped:
             names = ", ".join(item["resource"] for item in run.skipped)
             detail += f"; skipped {len(run.skipped)} resource(s): {names}"
@@ -2533,6 +3005,9 @@ class Kernel:
     def _abort(self, run: "_RunState", failure: Failure, *, extra: str = "") -> TaskResult:
         """End a task that recovery could not save, undoing what it can (F-RECOV-05)."""
 
+        ended = self._ended(run)
+        if ended is not None:
+            return ended
         detail = f"{failure.kind} failure of {failure.resource}: {failure.message}"
         if extra:
             detail += f"; {extra}"
@@ -2726,6 +3201,7 @@ class Kernel:
         detail: str,
         remedy: str | None = None,
         frame: Mapping[str, Any] | None = None,
+        closed_calls: Sequence[str] = (),
         tool_results: Iterable[ToolResult] = (),
         agent_results: Iterable[AgentResult] | None = None,
         skipped: Iterable[Mapping[str, str]] = (),
@@ -2742,7 +3218,14 @@ class Kernel:
         payload: dict[str, Any] = {"request": request.to_dict(), "detail": detail}
         if frame is not None:
             payload["frame"] = dict(frame)
-        state = self.state_store.append(state.task_id, "paused", payload)
+        if closed_calls:
+            # The pause is the saved decision for these calls, so a resume
+            # runs the paused one afresh instead of reading its journal.
+            payload["closed_calls"] = list(closed_calls)
+        paused = self._transition(state.task_id, "paused", payload)
+        if paused is None:
+            return self._stored_outcome(self.state_store.load(state.task_id), results, agents, skipped)
+        state = paused
         self.audit_log.append("hitl", {"event": "requested", "request": request.to_dict()}, trace_id=trace_id)
         self.audit_log.append(
             "task",
@@ -2803,11 +3286,15 @@ class Kernel:
             if agent_results is not None
             else _stored_agent_results(self.state_store.load(state.task_id))
         )
-        self.state_store.append(
+        recorded = self._transition(
             state.task_id,
             "status",
             {"status": status, "detail": detail, "output": output, "trace_id": trace_id},
         )
+        if recorded is None:
+            # Ended elsewhere (cancelled) while this run was still working:
+            # the stored outcome stands and this one is not recorded over it.
+            return self._stored_outcome(self.state_store.load(state.task_id), results, agents, skipped)
         self.audit_log.append(
             "task",
             {

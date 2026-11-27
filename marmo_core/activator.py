@@ -162,7 +162,9 @@ class ResourceActivator:
 
     def _bind_tool(self, definition: ResourceDefinition) -> BoundTool:
         metadata = definition.metadata
-        handler = self.tool_implementations.get(metadata.id)
+        # A handler registered for id@version belongs to that version only;
+        # one registered under the bare id serves whichever version is bound.
+        handler = self.tool_implementations.get(definition.identity) or self.tool_implementations.get(metadata.id)
         if handler is None:
             handler = _resolve_python_ref(definition)
         if handler is None:
@@ -190,7 +192,9 @@ class ResourceActivator:
             )
         handler: Callable[..., Any] | None = None
         if interface == "tool_wrap":
-            handler = self.agent_implementations.get(metadata.id)
+            handler = self.agent_implementations.get(definition.identity) or self.agent_implementations.get(
+                metadata.id
+            )
             if handler is None:
                 handler = _resolve_python_ref(definition)
             if handler is None:

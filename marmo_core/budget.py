@@ -12,7 +12,7 @@ import json
 
 from .errors import MarmoError, ProviderError
 from .llm import ChatMessage, LLMProvider, LLMResponse, LLMToolSpec, estimate_tokens
-from .state import StateStore
+from .state import StateConflictError, StateEvent, StateStore
 
 
 class BudgetExceededError(MarmoError):
@@ -150,19 +150,29 @@ class BudgetLedger:
         charge = _money(amount, "reservation")
         with self.store._mutation_lock:
             self.verify(task_id)
-            spent, pending = self._totals(task_id)
-            if spent + pending + charge > self.policy.amount:
-                raise BudgetExceededError(
-                    f"task budget {self.policy.amount} {self.policy.currency} cannot reserve "
-                    f"{charge} for {operation}; {max(Decimal(0), self.policy.amount - spent - pending)} remains"
-                )
-            reservation_id = uuid.uuid4().hex
-            self.store.append(
-                task_id,
-                "budget",
-                {"action": "reserve", "id": reservation_id, "operation": operation, "amount": str(charge)},
-            )
-            return reservation_id
+            while True:
+                # Another ledger on the same store (a second connection or
+                # process) can append between the balance check and the
+                # write. Guarding the write with the version the balance was
+                # read at makes the pair one atomic step on the store.
+                events = self.store.events(task_id)
+                spent, pending = _totals(events)
+                if spent + pending + charge > self.policy.amount:
+                    raise BudgetExceededError(
+                        f"task budget {self.policy.amount} {self.policy.currency} cannot reserve "
+                        f"{charge} for {operation}; {max(Decimal(0), self.policy.amount - spent - pending)} remains"
+                    )
+                reservation_id = uuid.uuid4().hex
+                try:
+                    self.store.append(
+                        task_id,
+                        "budget",
+                        {"action": "reserve", "id": reservation_id, "operation": operation, "amount": str(charge)},
+                        expected_version=events[-1].seq,
+                    )
+                except StateConflictError:
+                    continue
+                return reservation_id
 
     def settle(
         self,
@@ -175,37 +185,55 @@ class BudgetLedger:
         charge = _money(amount, "settlement")
         with self.store._mutation_lock:
             self.verify(task_id)
-            reservations = self._reservations(task_id)
-            if reservation_id not in reservations or reservations[reservation_id][1]:
-                raise ValueError(f"unknown or settled budget reservation: {reservation_id}")
-            self.store.append(
-                task_id,
-                "budget",
-                {
-                    "action": "settle",
-                    "id": reservation_id,
-                    "amount": str(charge),
-                    "usage": dict(usage or {}),
-                },
-            )
+            while True:
+                events = self.store.events(task_id)
+                reservations = _reservations(events)
+                if reservation_id not in reservations or reservations[reservation_id][1]:
+                    raise ValueError(f"unknown or settled budget reservation: {reservation_id}")
+                try:
+                    self.store.append(
+                        task_id,
+                        "budget",
+                        {
+                            "action": "settle",
+                            "id": reservation_id,
+                            "amount": str(charge),
+                            "usage": dict(usage or {}),
+                        },
+                        expected_version=events[-1].seq,
+                    )
+                except StateConflictError:
+                    continue
+                return
 
-    def _reservations(self, task_id: str) -> dict[str, tuple[Decimal, bool]]:
-        reservations: dict[str, tuple[Decimal, bool]] = {}
-        for event in self.store.events(task_id):
-            if event.kind != "budget":
-                continue
-            reservation_id = str(event.payload.get("id", ""))
-            if event.payload.get("action") == "reserve":
-                reservations[reservation_id] = (Decimal(str(event.payload["amount"])), False)
-            elif event.payload.get("action") == "settle" and reservation_id in reservations:
-                reservations[reservation_id] = (Decimal(str(event.payload["amount"])), True)
-        return reservations
+    def is_open(self, task_id: str, reservation_id: str) -> bool:
+        """True while ``reservation_id`` is reserved and not yet settled."""
+
+        reservation = _reservations(self.store.events(task_id)).get(reservation_id)
+        return reservation is not None and not reservation[1]
 
     def _totals(self, task_id: str) -> tuple[Decimal, Decimal]:
-        reservations = self._reservations(task_id)
-        spent = sum((amount for amount, settled in reservations.values() if settled), Decimal(0))
-        pending = sum((amount for amount, settled in reservations.values() if not settled), Decimal(0))
-        return spent, pending
+        return _totals(self.store.events(task_id))
+
+
+def _reservations(events: Sequence[StateEvent]) -> dict[str, tuple[Decimal, bool]]:
+    reservations: dict[str, tuple[Decimal, bool]] = {}
+    for event in events:
+        if event.kind != "budget":
+            continue
+        reservation_id = str(event.payload.get("id", ""))
+        if event.payload.get("action") == "reserve":
+            reservations[reservation_id] = (Decimal(str(event.payload["amount"])), False)
+        elif event.payload.get("action") == "settle" and reservation_id in reservations:
+            reservations[reservation_id] = (Decimal(str(event.payload["amount"])), True)
+    return reservations
+
+
+def _totals(events: Sequence[StateEvent]) -> tuple[Decimal, Decimal]:
+    reservations = _reservations(events)
+    spent = sum((amount for amount, settled in reservations.values() if settled), Decimal(0))
+    pending = sum((amount for amount, settled in reservations.values() if not settled), Decimal(0))
+    return spent, pending
 
 
 class BudgetedLLMProvider(LLMProvider):
