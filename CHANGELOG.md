@@ -18,6 +18,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `benchmarks/run_toolret_sae.py` adds ToolRet-SAE, which scores select,
+  escalate, and abstain decisions on ToolRet: each query gets a variant with
+  the gold tools permitted, one with only their scopes withheld, and one with
+  them removed, and an annotator model labels which candidates could stand in
+  for each gold tool. It ships a frozen held-out split (852 query ids outside
+  the dev / test sample), the labels for 2,089 queries (ToolRet ids and
+  judgments only, CC0 1.0), agreement with a second annotator (kappa 0.79 to
+  0.88, both Claude models; no human validation), and a measurement showing
+  that counting a labelled substitute as its gold tool raises nDCG@10 from
+  0.266 to 0.437. See the ToolRet-SAE section of `benchmarks/README.md`.
+  - ToolRet 上で選択・エスカレート・棄権の判断を採点する ToolRet-SAE
+    （`benchmarks/run_toolret_sae.py`）を追加しました。各クエリから、正解ツールに権限がある
+    変種、スコープだけ未付与の変種、正解を削除した変種を作り、アノテータのモデルが正解ツールの
+    代わりになる候補を判定します。固定した held-out 分割（標本に含まれない 852 件の ID）、
+    2,089 クエリのラベル（ToolRet の ID と判定のみ、CC0 1.0）、第 2 アノテータとの一致度
+    （κ 0.79〜0.88。どちらも Claude 系で、人による検証はなし）、代替を正解に含めると nDCG@10 が
+    0.266 から 0.437 に上がるという測定を含みます。`benchmarks/README.md` の「ToolRet-SAE」節を
+    参照してください。
+
 - `Kernel(gate_aware_selection=True)` and `SelectionContext.policy` hand the
   activation gate's policy to the selector. The rule-based, greedy, beam,
   branch-and-bound, and coverage selectors then leave out every candidate the

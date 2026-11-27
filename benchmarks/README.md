@@ -593,6 +593,58 @@ ToolRet のツール記述は英語です。test 分割から各サブセット 
 - **既知語率による割引**（ゴールの語のうちカタログの索引にある割合でゴール側を重み付けする）で、重みを手で 1 にしたのと同じ 0.134 に自動で達します（hybrid 比 +0.106、95% CI [0.076, 0.136]）。分解された 108 件の既知語率は、英語が平均 0.93、日本語が 0.31 で（各 JSON の `goal_weight_mean`）、英語では結果が変わりません（0.268 → 0.268）。
 - 英語のまま検索した場合（0.268）との差はまだ大きく、英語のゴール自体が持つ文脈（固有名詞と説明語の組み合わせ）は下位タスクだけでは補えません。多言語の埋め込みモデルを使う構成は未測定です。
 
+## ToolRet-SAE: 選択・エスカレート・棄権
+
+ToolRet はどのクエリにも答えがあり、どのツールも使えるので、Selector が出すべき残り 2 つの結果（abstain と escalate）を測れません。`run_toolret_sae.py` は ToolRet の各クエリから 3 つの変種を作ります。
+
+- **S（選択）**: カタログ全体。正解ツールの権限は付与済み。
+- **E（エスカレート）**: カタログ全体。正解ツールのスコープだけ未付与。
+- **A（棄権）**: 正解ツールをカタログから削除。
+
+権限は不透明なスコープ（ツール ID のハッシュで 40 個に割り当て）で、検索のあとに付けます。E と A が本当に escalate / abstain のケースかどうかは、アノテータのモデル（Claude Sonnet）が決めます。正解ツールごとに「依頼に必要か」と「上位 40 候補のどれが代わりになるか」を判定し、必要な正解に（E では許可された）代替が 1 つも無い変種だけを有効とします。**ラベルは LLM によるもので、人による検証は行っていません。**
+
+```bash
+python3 benchmarks/run_toolret_llm_stages.py --stage decompose --model haiku --split heldout --sample 400
+python3 benchmarks/run_toolret_sae.py --stage pools --stage label --split heldout --sample 400
+python3 benchmarks/run_toolret_sae.py --stage agree --agree-queries 100
+python3 benchmarks/run_toolret_sae.py --stage methods --split heldout --sample 400
+python3 benchmarks/run_toolret_sae.py --stage score --stage export-labels --stage substitutes --method llm-set
+```
+
+- **分割**: dev / test は `run_toolret_benchmark.py` の標本（1,689 件）を半分に分けたもの。held-out は標本に含まれないクエリ 852 件（18 サブセット）で、ID を [`toolret_sae_heldout_ids.json`](toolret_sae_heldout_ids.json) に固定しています。下の評価は、そのうち ID の SHA-1 順の先頭 400 件です（有効な変種は S 400、E 205、A 167）。
+- **モデル**: ラベルは Sonnet、`LLMSetSelector` と第 2 アノテータは Haiku。検索は `llm:hybrid-0.5`、各手法は上位 20 候補から選びます。
+- **主指標**: S / E / A の正答率のマクロ平均。S は必要な正解（または代替）を全部含む集合を選んだときだけ正答です。
+
+結果は [`results/toolret-sae-heldout.json`](results/toolret-sae-heldout.json) です。規則の関連度の下限は dev（833 件）で選んでいます。
+
+| held-out（400 クエリ） | 関連度の下限 | マクロ正答率 | S 正答 | E 正答 | A 正答 | S Set F1 | S 不要 escalate | E 誤選択 | A 誤選択 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 首位（阻まれていれば escalate） | 0.65（dev） | 0.367 | 0.065 | 0.156 | 0.880 | 0.067 | 0.033 | 0.059 | 0.066 |
+| `GreedyConstrainedSetSelector` | 0.55（dev） | 0.386 | 0.160 | 0.268 | 0.731 | 0.108 | 0.068 | 0.161 | 0.174 |
+| `CoverageSetSelector` | 0.55（dev） | 0.379 | 0.138 | 0.268 | 0.731 | 0.122 | 0.070 | 0.161 | 0.174 |
+| `LLMSetSelector`（Haiku、1 回） | — | 0.376 | 0.600 | 0.283 | 0.246 | 0.300 | 0.020 | 0.576 | 0.683 |
+
+- **関連度の下限では状態を決められません**。dev に合わせた下限は S をほとんど選べなくなり（greedy の S 正答 0.160）、棄権に寄ります。
+- **LLM に集合と状態をまとめて決めさせると、選んでしまいます**。`LLMSetSelector` は S では最良ですが、A の 68%、E の 58% で何かを選びました。主指標は greedy と差がありません（−0.010 [−0.053, 0.033]）。
+- 要求ごとの能力判定と宣言制約から状態を決める研究用の Selector は、同じ held-out で主指標 0.552 でしたが（`research/requirement-coverage` ブランチのコミット f4ef28e7 にある `benchmarks/results/toolret-sae-heldout.json`。このブランチの結果ファイルには含まれません）、事前登録した採用基準の 1 つ（S での不要な escalate）を満たさなかったので、`main` には入れていません（#45、`research/requirement-coverage` ブランチ）。
+
+**ラベルの検証と公開**（#48）:
+
+- 第 2 アノテータ（Haiku、held-out の 100 クエリ）との一致度は、代替判定（7,520 組）が κ=0.80、必要性が κ=0.79、変種の有効性が κ=0.88 でした。どちらも Claude 系のモデルなので、同系統どうしの相関は排除できません。別系統のモデルや人との一致度は未測定です。
+- ラベルは [`results/toolret-sae-heldout-labels.json`](results/toolret-sae-heldout-labels.json) にあります（dev 833、test 856、held-out 400 件）。中身は ToolRet のクエリ ID とツール ID、必要性と代替の判定だけです。ラベルと held-out の ID 一覧は CC0 1.0 で公開します。ToolRet のクエリやツールの本文は含まず、再配布しません（ToolRet 側のライセンスに従ってください）。
+
+**代替ツールが ToolRet の標準指標に与える影響**（[`results/toolret-substitutes.json`](results/toolret-substitutes.json)、ラベルのある 2,089 クエリ、macro）:
+
+| 採点 | nDCG@10 | Recall@10 | Completeness@10 |
+|---|---:|---:|---:|
+| 正解ツールだけ（ToolRet の標準） | 0.266 | 0.348 | 0.262 |
+| 正解または代替 | 0.437 | 0.526 | 0.397 |
+| 必要な正解または代替 | 0.452 | 0.554 | 0.446 |
+
+- 正解ツール 3,817 件のうち 51.9% に上位 40 候補内の代替があり、「必要」と判定されたのは 88.0% でした。
+- 代替を認めると nDCG@10 は 0.266 から 0.437 に上がります。重複の多いカタログでは、正解だけで採点する標準指標が検索の正しさを過小評価します。複数ツールのクエリ（911 件）の Completeness@10 は 0.108 から、必要な正解または代替で 0.300 になります。
+- 代替の判定は LLM によるもので、上位 40 候補の中だけです。値は目安として読んでください。
+
 ## 注意
 
 `resources/skills` は出典を `resources/skills/SOURCES.md` に記録した外部リポジトリのコピーで、ベンチマーク・検証専用です。再配布ライセンスの整理が完了するまで、このコーパスを成果物として再配布しないでください。この方針のため、`.gitignore` で git 管理から外し、`MANIFEST.in` でも sdist から除外しています。
