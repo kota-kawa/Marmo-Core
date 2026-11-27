@@ -420,6 +420,58 @@ Honest Skills and Agents never pass activation in any configuration, and Skills 
 
 **Procedure for PRs that change retrieval, selection, or routing**: run `python3 benchmarks/run_forgery_benchmark.py --output /tmp/forgery-before.json` on the base branch and the same with `-after.json` on the changed branch, and list `selection_rate`, `activation_reach_rate`, `execution_reach_rate`, `gold_tool_loss_rate`, and `abstain_escalate_hijack_rate` of `tracked.<configuration>.tracked.<kind>.{honest,full_forgery,partial_forgery,any_forgery}` in the PR description. Add a new Retriever / Selector to `CONFIGS` before measuring it. When the results JSON is updated, update this table too.
 
+## ToolRet-SAE: select, escalate, or abstain
+
+Every ToolRet query is answerable and every tool is usable, so ToolRet cannot score the other two outcomes a selector must produce: abstain and escalate. `run_toolret_sae.py` derives three variants from each ToolRet query.
+
+- **S (select)**: the full catalog; the gold tools' permissions are granted.
+- **E (escalate)**: the full catalog; only the gold tools' scopes are not granted.
+- **A (abstain)**: the gold tools are removed from the catalog.
+
+Permissions are opaque scopes (40, assigned by a hash of the tool id) attached after retrieval. Whether E and A really are escalate and abstain cases is decided by an annotator model (Claude Sonnet): for each gold tool it judges whether the request needs it and which of the top 40 candidates could stand in for it, and a variant is valid only when some needed gold tool has no (for E, no permitted) substitute. **The labels are by an LLM; no human validation was done.**
+
+```bash
+python3 benchmarks/run_toolret_llm_stages.py --stage decompose --model haiku --split heldout --sample 400
+python3 benchmarks/run_toolret_sae.py --stage pools --stage label --split heldout --sample 400
+python3 benchmarks/run_toolret_sae.py --stage agree --agree-queries 100
+python3 benchmarks/run_toolret_sae.py --stage methods --split heldout --sample 400
+python3 benchmarks/run_toolret_sae.py --stage score --stage export-labels --stage substitutes --method llm-set
+```
+
+- **Splits**: dev / test halve the sample of `run_toolret_benchmark.py` (1,689 queries). The held-out split is 852 queries outside that sample (18 subsets), frozen in [`toolret_sae_heldout_ids.json`](toolret_sae_heldout_ids.json). The evaluation below uses the first 400 of them in SHA-1 order of the id (valid variants: S 400, E 205, A 167).
+- **Models**: labels by Sonnet; `LLMSetSelector` and the second annotator are Haiku. Retrieval is `llm:hybrid-0.5`, and every method chooses among the top 20 candidates.
+- **Primary metric**: the macro average of accuracy on S, E, and A. S counts as correct only when the selected set contains every needed gold tool or a substitute.
+
+Results are in [`results/toolret-sae-heldout.json`](results/toolret-sae-heldout.json). The rules' relevance floors are chosen on dev (833 queries).
+
+| Held-out (400 queries) | Relevance floor | Macro accuracy | S | E | A | S Set F1 | Unneeded escalation (S) | Wrong selection (E) | Wrong selection (A) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Top-ranked (escalate if blocked) | 0.65 (dev) | 0.367 | 0.065 | 0.156 | 0.880 | 0.067 | 0.033 | 0.059 | 0.066 |
+| `GreedyConstrainedSetSelector` | 0.55 (dev) | 0.386 | 0.160 | 0.268 | 0.731 | 0.108 | 0.068 | 0.161 | 0.174 |
+| `CoverageSetSelector` | 0.55 (dev) | 0.379 | 0.138 | 0.268 | 0.731 | 0.122 | 0.070 | 0.161 | 0.174 |
+| `LLMSetSelector` (Haiku, 1 call) | — | 0.376 | 0.600 | 0.283 | 0.246 | 0.300 | 0.020 | 0.576 | 0.683 |
+
+- **A relevance floor cannot decide the status.** The floor fitted on dev leaves the rules selecting almost nothing on S (greedy 0.160) and leaning on abstention.
+- **An LLM asked for the set and the status together selects anyway.** `LLMSetSelector` is best on S but selects something in 68% of A and 58% of E. Its macro accuracy does not differ from greedy's (−0.010 [−0.053, 0.033]).
+- A research selector that decides the status from per-requirement capability judgments and the declared constraints reached 0.552 on the same held-out queries, but missed one pre-registered adoption criterion (unneeded escalation on S), so it is not in `main` (#45, branch `research/requirement-coverage`).
+
+**Label checks and release** (#48):
+
+- Agreement with a second annotator (Haiku, 100 held-out queries): kappa 0.80 on substitute judgments (7,520 pairs), 0.79 on necessity, and 0.88 on variant validity. Both are Claude models, so correlated errors cannot be ruled out; agreement with another model family or with people has not been measured.
+- The labels are in [`results/toolret-sae-heldout-labels.json`](results/toolret-sae-heldout-labels.json) (dev 833, test 856, held-out 400 queries): ToolRet query and tool ids with the necessity and substitute judgments. The labels and the held-out id list are released under CC0 1.0. They contain no ToolRet query or tool text, which is not redistributed (ToolRet's own terms apply to it).
+
+**Effect of substitutes on ToolRet's standard metrics** ([`results/toolret-substitutes.json`](results/toolret-substitutes.json); 2,089 labelled queries, macro):
+
+| Scoring | nDCG@10 | Recall@10 | Completeness@10 |
+|---|---:|---:|---:|
+| Gold tools only (ToolRet's own) | 0.266 | 0.348 | 0.262 |
+| Gold or a labelled substitute | 0.437 | 0.526 | 0.397 |
+| Necessary gold or a labelled substitute | 0.452 | 0.554 | 0.446 |
+
+- Of 3,817 gold tools, 51.9% have a substitute among the top 40 candidates and 88.0% were judged necessary.
+- Accepting substitutes raises nDCG@10 from 0.266 to 0.437: on a catalog with many near-duplicates, scoring against the gold tools alone understates retrieval. Completeness@10 on multi-tool queries (911) goes from 0.108 to 0.300 with necessary gold or a substitute.
+- The substitute judgments are by an LLM and cover the top 40 candidates only; read the values as indicative.
+
 ## Flat ANN comparison at 100k
 
 `run_ann_scale_benchmark.py` compares flat ANN (USearch, cosine/HNSW) with namespace hierarchy using the same 100,063 resources, 34 scenarios, embeddings, BM25 candidates, mixing weight 0.9, pool size 50, and greedy Selector. ANN is in the benchmark-only `benchmark-ann` extra and is not a runtime dependency.
