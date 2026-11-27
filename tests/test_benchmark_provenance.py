@@ -12,6 +12,9 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
+if not (ROOT / "benchmarks" / "run_ann_scale_benchmark.py").exists():
+    # The Docker image carries only the benchmark modules its own tests import.
+    raise unittest.SkipTest("the benchmark runners are not part of this distribution")
 sys.path.insert(0, str(ROOT / "benchmarks"))
 
 import _provenance  # noqa: E402
@@ -98,12 +101,22 @@ class StampTests(unittest.TestCase):
 
 
 class ToolRetProvenanceTests(unittest.TestCase):
-    def test_dataset_provenance_comes_from_the_pinned_revisions_of_toolret(self) -> None:
-        revisions = {"ToolRet-Tools": REVISION, "ToolRet-Queries": REVISION[::-1]}
-        with mock.patch.object(run_toolret_benchmark.toolret, "DATASET_REVISIONS", revisions, create=True):
+    def _snapshot(self, revisions: dict) -> mock._patch:
+        snapshot = mock.Mock(revisions=revisions)
+        return mock.patch.object(run_toolret_benchmark.toolret, "snapshot", return_value=snapshot)
+
+    def test_dataset_provenance_is_the_commit_the_downloaded_files_came_from(self) -> None:
+        fetched = {"ToolRet-Tools": REVISION, "ToolRet-Queries": REVISION[::-1]}
+        with self._snapshot(fetched):
             recorded = run_toolret_benchmark.dataset_provenance()
         self.assertEqual(recorded["mangopy/ToolRet-Queries"], {"repo": "mangopy/ToolRet-Queries", "revision": REVISION[::-1]})
         stamp({}, dataset=recorded)
+
+    def test_data_without_a_recorded_commit_is_refused(self) -> None:
+        with self._snapshot({"ToolRet-Tools": REVISION, "ToolRet-Queries": None}):
+            with self.assertRaises(SystemExit) as raised:
+                run_toolret_benchmark.dataset_provenance()
+        self.assertIn("ToolRet-Queries", str(raised.exception))
 
     def test_cache_inputs_lists_only_the_caches_the_run_replays(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -11,6 +11,9 @@ from types import SimpleNamespace
 from unittest import mock
 
 BENCHMARKS = Path(__file__).resolve().parents[1] / "benchmarks"
+if not (BENCHMARKS / "run_toolret_sae.py").exists():
+    # The Docker image carries only the benchmark modules its own tests import.
+    raise unittest.SkipTest("the benchmark runners are not part of this distribution")
 sys.path.insert(0, str(BENCHMARKS))
 
 import run_toolret_sae as sae  # noqa: E402

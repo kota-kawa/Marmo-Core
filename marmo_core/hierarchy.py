@@ -33,6 +33,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from itertools import islice
 from typing import Sequence
 from weakref import WeakKeyDictionary
 import math
@@ -266,10 +267,14 @@ class HierarchicalRetriever(Retriever):
         # group when only Tools are wanted) must not use up the route budget;
         # when none of the scoring groups can serve the query, the routing
         # signal says nothing about where the answer is, so search flat.
-        eligible = [decision for decision in routed if state.can_serve(decision.group, query)]
-        if not eligible:
+        selected = tuple(
+            islice(
+                (decision.group for decision in routed if state.can_serve(decision.group, query)),
+                self.route_k,
+            )
+        )
+        if not selected:
             return self.base.search(registry, query)
-        selected = tuple(decision.group for decision in eligible[: self.route_k])
         return self.base.search(state.union_registry(selected), query)
 
     # -- cached per-registry state ---------------------------------------------

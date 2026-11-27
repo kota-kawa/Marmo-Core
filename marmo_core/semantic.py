@@ -271,10 +271,15 @@ class HybridRetriever(Retriever):
                 for identity, cosine in index.similarity(query_vector, pooled).items()
             }
             skipped = set(pooled)
-            while len(extra) < self.candidate_pool:
-                found = index.nearest(query_vector, self.candidate_pool, exclude=skipped)
-                if not found:
-                    break
+            # Each pass looks twice as deep, so a filter that few documents
+            # satisfy costs a logarithmic number of index queries; a short
+            # reply means the index has nothing further to offer.
+            width = self.candidate_pool
+            exhausted = False
+            while len(extra) < self.candidate_pool and not exhausted:
+                found = index.nearest(query_vector, width, exclude=skipped)
+                exhausted = len(found) < width
+                width *= 2
                 semantic_scores.update((identity, _cosine_to_01(cosine)) for identity, cosine in found)
                 skipped.update(identity for identity, _ in found)
                 eligible = self.lexical.score_semantic_candidates(
@@ -406,7 +411,9 @@ def _post_json(url: str, payload: dict, headers: dict, timeout: float) -> dict:
     except ValueError:
         parsed = None
     if not isinstance(parsed, dict):
-        snippet = redact_credentials(raw.decode("utf-8", errors="replace").strip()[:200])
+        # Redacted before it is cut, so a credential that straddles the cut
+        # cannot leave a fragment the patterns no longer recognise.
+        snippet = redact_credentials(raw.decode("utf-8", errors="replace").strip())[:200]
         raise ProviderError(
             message=f"{redact_credentials(url)} returned a response that is not a JSON object: {snippet or '(empty)'}"
         )

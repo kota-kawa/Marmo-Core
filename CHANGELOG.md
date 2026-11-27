@@ -63,12 +63,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     埋め込み・チャットのプロバイダーは、期待した JSON でない 200 応答に `ProviderError` を
     送出します（以前は `JSONDecodeError`、`KeyError`、`ValueError`）。
 - `ExecutionOutcome.resource_ids` read from an audit log carry `id@version`, and
-  `ExecutionEvaluator` credits outcomes to the selected version only.
+  `ExecutionEvaluator` credits outcomes to the selected version only; the keys
+  of `ExecutionEvaluator.snapshot()` and `report()` follow (`stats_for` and
+  `attempts` still accept a bare id).
   The sdist no longer ships `tools/`. Releases to PyPI happen only on a pushed
   `v*` tag after the full CI passes on that commit; manual runs publish to
   TestPyPI only.
   - 監査ログから読んだ `ExecutionOutcome.resource_ids` は `id@version` になり、
-    `ExecutionEvaluator` は実績を選ばれた版にだけ帰属させます。sdist は `tools/` を
+    `ExecutionEvaluator` は実績を選ばれた版にだけ帰属させます。`snapshot()` と `report()` の
+    キーも同じ形になります（`stats_for` と `attempts` は裸 ID でも引けます）。sdist は `tools/` を
     含みません。PyPI への公開は `v*` タグの push で、そのコミットの CI 全体が成功した
     場合に限ります。手動実行は TestPyPI のみです。
 

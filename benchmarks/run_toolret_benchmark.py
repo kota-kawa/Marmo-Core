@@ -339,11 +339,23 @@ def comparisons(records_by_retriever: dict[str, list[dict]], baseline: str, pair
 
 
 def dataset_provenance() -> dict:
-    """The dataset commits ``toolret.download`` fetches, one entry per Hugging Face repository."""
+    """The commits the files in the data directory came from, one entry per Hugging Face repository.
 
+    Read from the download manifest, not from the pinned constants: data
+    fetched before the manifest existed, or from mixed commits, has no single
+    revision to record and is refused.
+    """
+
+    revisions = toolret.snapshot().revisions
+    unknown = sorted(name for name in toolret.DATASET_REVISIONS if not revisions.get(name))
+    if unknown:
+        raise SystemExit(
+            f"the ToolRet data has no single recorded commit for {', '.join(unknown)}; "
+            "fetch it again with toolret.download(force=True) so the result can name its data"
+        )
     return {
-        f"mangopy/{name}": {"repo": f"mangopy/{name}", "revision": revision}
-        for name, revision in toolret.DATASET_REVISIONS.items()
+        f"mangopy/{name}": {"repo": f"mangopy/{name}", "revision": str(revisions[name])}
+        for name in toolret.DATASET_REVISIONS
     }
 
 
@@ -388,6 +400,7 @@ def main() -> None:
         toolret.download()
     if not (toolret.DATA_DIR / "tools" / "web.parquet").exists():
         raise SystemExit("ToolRet is not downloaded: run with --download (needs network access to huggingface.co)")
+    dataset = dataset_provenance()  # before the run, so untraceable data stops here
 
     tools = toolret.load_tools()
     queries = toolret.sample_queries(toolret.load_queries(), args.per_subset or None, seed=args.seed)
@@ -447,7 +460,7 @@ def main() -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     stamp(
         report,
-        dataset=dataset_provenance(),
+        dataset=dataset,
         inputs={f"data/{path}": digest for path, digest in sha256_tree(toolret.DATA_DIR).items()}
         | {name: sha256_file(path) for name, path in cache_inputs(names, args.language).items()},
         model={"embedding": args.embed_model, "query_prefix": args.query_prefix} if provider else {},

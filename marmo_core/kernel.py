@@ -896,6 +896,7 @@ class Kernel:
                 min_score=float(getattr(self.selector, "min_score", 0.0) or 0.0),
                 is_denied=lambda result: self._selection_candidate_denied(result, context),
                 keep_best_denied_of_kind=not getattr(self.selector, "requires_contract_verification", False),
+                min_relevance=self.min_relevance,
             )
         )
 

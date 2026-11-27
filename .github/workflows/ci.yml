@@ -85,6 +85,8 @@ jobs:
       - run: python -c "import numpy, usearch"
       - name: Run the vector index tests and refuse skips
         run: |
+          # Without pipefail the step would report tee's status, not the tests'.
+          set -o pipefail
           python -W error::ResourceWarning -m unittest -v tests.test_vector_index 2>&1 | tee "$RUNNER_TEMP/vector-index.log"
           if grep -q "skipped" "$RUNNER_TEMP/vector-index.log"; then
             echo "vector index tests were skipped although numpy and usearch are installed" >&2

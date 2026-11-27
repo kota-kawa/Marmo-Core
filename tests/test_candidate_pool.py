@@ -141,6 +141,37 @@ class WeakCandidatesDoNotFillTheSlotsTests(unittest.TestCase):
         self.assertIn("tool.test.strong", _ids(pool))
         self.assertEqual([query.kinds for query in retriever.queries], [(), ("tool",)])
 
+    def test_the_pool_tops_up_a_kind_whose_only_match_is_under_the_relevance_floor(self) -> None:
+        retriever = _FixedRanking(self.registry)
+        request = _request(
+            self.registry,
+            denied=set(),
+            retriever=retriever,
+            per_kind_limits={"tool": 1, "skill": 1},
+            min_relevance=0.5,
+        )
+        pool = KindBalancedCandidatePool().build(request)
+
+        self.assertIn("tool.test.strong", _ids(pool))
+        self.assertEqual([query.kinds for query in retriever.queries], [(), ("tool",)])
+
+    def test_the_kernel_passes_its_relevance_floor_to_the_pool(self) -> None:
+        retriever = _FixedRanking(self.registry)
+        kernel = Kernel(
+            self.registry,
+            MockLLMProvider(),
+            retriever=retriever,
+            min_relevance=0.5,
+            set_limits={"tool": 1},
+            tool_implementations={"tool.test.strong": lambda: {}, "tool.test.weak": lambda: {}},
+            policy_context=PolicyContext(),
+            gateway=PolicyGateway(),
+        )
+        kernel.run_goal(GOAL)
+
+        retrieve = next(record.payload for record in kernel.audit_log.records if record.kind == "retrieve")
+        self.assertIn("tool.test.strong@1.0.0", retrieve["selected"])
+
     def test_a_match_over_the_floor_still_fills_its_kind_without_a_top_up(self) -> None:
         retriever = _FixedRanking(self.registry)
         request = _request(

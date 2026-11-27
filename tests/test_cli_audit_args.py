@@ -8,6 +8,7 @@ from pathlib import Path
 import json
 import os
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -117,6 +118,42 @@ class AuditLogContinuityTests(_Workspace):
 
         self.assertIn("another writer", str(caught.exception))
         self.assertEqual(self.audit.read_text(encoding="utf-8"), before)
+
+    def test_two_writers_at_once_cannot_fork_the_chain(self) -> None:
+        mine, theirs = AuditLog(), AuditLog()
+        mine.append("run", {"who": "first"})
+        theirs.append("run", {"who": "second"})
+        outcome: list[object] = []
+
+        def other_writer() -> None:
+            try:
+                outcome.append(theirs.extend_jsonl(self.audit))
+            except ValueError as exc:
+                outcome.append(exc)
+
+        writer = threading.Thread(target=other_writer)
+        read_stored_chain = AuditLog.from_jsonl
+        started = False
+
+        def read_while_the_other_writer_arrives(path):
+            # The other writer shows up after this one read the stored chain
+            # and before it appends; it has to wait for the append.
+            nonlocal started
+            stored = read_stored_chain(path)
+            if not started:
+                started = True
+                writer.start()
+                writer.join(0.3)
+                self.assertTrue(writer.is_alive(), "the second writer must wait for the first")
+            return stored
+
+        with patch.object(AuditLog, "from_jsonl", staticmethod(read_while_the_other_writer_arrives)):
+            self.assertEqual(mine.extend_jsonl(self.audit), 1)
+            writer.join(30)
+
+        self.assertIsInstance(outcome[0], ValueError)
+        self.assertEqual(AuditLog.from_jsonl(self.audit).verify(), [])
+        self.assertEqual(len(AuditLog.from_jsonl(self.audit).records), 1)
 
     def test_writing_twice_adds_nothing_the_second_time(self) -> None:
         log = AuditLog()

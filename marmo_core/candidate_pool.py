@@ -35,7 +35,8 @@ class CandidatePoolRequest:
 
     ``per_kind_limits`` is the selector's effective per-kind limits (its
     defaults with the Kernel's ``set_limits`` on top) and ``min_score`` its
-    composite floor. ``is_denied`` is the activation-gate verdict the Kernel
+    composite floor; ``min_relevance`` is the floor the selection applies to the
+    text-relevance component. ``is_denied`` is the activation-gate verdict the Kernel
     uses for selection. ``keep_best_denied_of_kind`` asks the pool to keep
     the best match of each kind even when it is denied, so the run can
     report which permission is missing.
@@ -50,6 +51,7 @@ class CandidatePoolRequest:
     min_score: float
     is_denied: Callable[[SearchResult], bool]
     keep_best_denied_of_kind: bool = True
+    min_relevance: float = 0.0
 
 
 class CandidatePool(ABC):
@@ -182,10 +184,15 @@ class KindBalancedCandidatePool(CandidatePool):
         query = _query(request)
         results = self._feasible(request.retriever.search(request.registry, query), request)
         limits = request.per_kind_limits
-        # A candidate under the selector's score floor is dropped right after
-        # this pool, so it must not fill the slot a top-up would fill.
+        # A candidate under the selection's score or relevance floor is
+        # dropped right after this pool, so it must not fill the slot a top-up
+        # would fill. A missing relevance component counts as 1.0, as it does
+        # in the selectors.
         counts = Counter(
-            result.resource.metadata.kind for result in results if result.score >= request.min_score
+            result.resource.metadata.kind
+            for result in results
+            if result.score >= request.min_score
+            and float(result.components.get("relevance", 1.0)) >= request.min_relevance
         )
         seen = {result.resource.identity for result in results}
         shortfalls = {

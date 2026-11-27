@@ -1126,7 +1126,8 @@ def _parse_implementations(
             raise CLIInputError("{resource_kind} impl must be ID=MODULE:FUNC: {value}", resource_kind=resource_kind, value=value)
         try:
             module = importlib.import_module(module_name)
-        except (ImportError, SyntaxError) as exc:
+        # Whatever the module raises while it is imported, it cannot be loaded.
+        except Exception as exc:
             raise CLIInputError(
                 "cannot load {target}: {detail}", target=target, detail=f"{type(exc).__name__}: {exc}"
             ) from exc

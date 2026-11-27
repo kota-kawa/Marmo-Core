@@ -13,6 +13,7 @@ import uuid
 
 
 from .secrets import redact_credentials
+from .state import _exclusive_file
 
 REDACTED = "[REDACTED]"
 
@@ -165,6 +166,13 @@ class AuditLog:
         """
 
         destination = Path(path)
+        # Reading the stored chain and appending to it are one step for every
+        # process writing this file; otherwise two writers that both verified
+        # the same prefix would each append and fork the chain.
+        with _exclusive_file(destination.with_name(destination.name + ".lock"), blocking=True):
+            return self._extend(destination)
+
+    def _extend(self, destination: Path) -> int:
         stored = AuditLog.from_jsonl(destination).records
         if [record.hash for record in stored] != [record.hash for record in self.records[: len(stored)]]:
             raise ValueError(

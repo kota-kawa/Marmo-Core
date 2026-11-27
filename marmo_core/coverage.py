@@ -56,6 +56,7 @@ from .selector import (
     _gate_admissible,
     _no_candidates,
     _permission_escalation,
+    _score_order,
     _total_cost,
     _Unit,
 )
@@ -198,7 +199,7 @@ class CoverageSetSelector(SetSelector):
         if escalation is not None:
             return escalation
         if picked:
-            ordered = tuple(sorted(picked.values(), key=lambda r: (-r.score, r.resource.metadata.id)))
+            ordered = tuple(sorted(picked.values(), key=_score_order))
             reason = (
                 f"coverage selected {len(ordered)} resource(s) over {len(facets)} facet(s) "
                 f"(coverage={objective:.3f}, cost={total_cost:g}) with dependency closure, conflict and budget constraints"
