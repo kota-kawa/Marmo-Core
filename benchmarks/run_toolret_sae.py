@@ -897,6 +897,8 @@ def main() -> None:
     parser.add_argument("--eval-split", choices=["test", "heldout"], default="heldout",
                         help="the split the score and agree stages report on")
     parser.add_argument("--limit", type=int, default=0, help="first N queries of the split (0 = all)")
+    parser.add_argument("--sample", type=int, default=0,
+                        help="N queries of the split in SHA-1 order of the id, across subsets (0 = all)")
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--label-model", default="sonnet")
     parser.add_argument("--agree-model", default="haiku")
@@ -918,6 +920,8 @@ def main() -> None:
         stage_heldout(data, args.heldout_target)
         data = Data(args.per_subset, args.seed, args.retriever)
     queries = [query for query in data.queries if args.split == "all" or data.split(query) == args.split]
+    if args.sample:
+        queries = sorted(queries, key=lambda q: hashlib.sha1(q.id.encode("utf-8")).hexdigest())[: args.sample]
     if args.limit:
         queries = queries[: args.limit]
     if "pools" in args.stage:
