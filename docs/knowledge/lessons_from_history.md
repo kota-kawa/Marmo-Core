@@ -45,7 +45,7 @@ git 履歴（52 コミット、PR #1〜#14、CHANGELOG 0.4.0〜0.6.0）から抽
   落ちたのは 3.11 のジョブだけだった。原因は新しいテストが
   `marmo inspect <id> --no-default-resources <path> --format json` のように位置引数の間へオプションを
   挟んでいたことで、3.11 の argparse は後ろの位置引数を `unrecognized arguments` にする
-  （3.12 以降は `inspect` / `policy-check` では通る）。PR 前に、`pyproject.toml` の `requires-python`
+  （3.11.18 と 3.12.3 で拒否、3.13.18 では `inspect` / `policy-check` に限り通ることを確認）。PR 前に、`pyproject.toml` の `requires-python`
   の下限でも全テストを回す（手順は `development_conventions.md` の「コマンド」）。
 - `marmo` の位置引数（`paths`、`inspect` / `policy-check` / `search` の先頭引数）は、ひとまとまりに
   書く。オプションはその前か後ろにまとめる。`list PATH --kind tool PATH2` のように位置引数を
