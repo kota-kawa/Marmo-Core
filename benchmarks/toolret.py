@@ -270,7 +270,8 @@ def group_metrics(ranked: Sequence[str], groups: Sequence[set[str]], k: int) -> 
     A group is a gold tool with the tools accepted in its place. Each ranked
     tool is credited to at most one group still unmet (the first in
     ``groups`` order), so a tool that could stand in for two gold tools counts
-    once, and the scores stay within [0, 1]. With one-member groups this is
+    once, and the scores stay within [0, 1]. The crediting is greedy, not a
+    maximum matching, so recall can be slightly low. With one-member groups this is
     ``ndcg_at_k`` / ``recall_at_k`` / ``completeness_at_k``.
     """
 

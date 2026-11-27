@@ -34,6 +34,8 @@ models, not people; use a method model other than the annotator's.
 S is scored end to end (a retrieval miss is a failure), and also on the
 queries whose top ``POOL`` candidates contain every gold tool or a labelled
 substitute ("reachable"), which separates selection from retrieval.
+``--oracle`` runs the methods on S+ / E+ instead: S and E with every gold tool
+placed among the candidates, reported as ``oracle_candidates``.
 
 Splits: ``dev`` and ``test`` halve the per-subset sample of
 ``run_toolret_benchmark.py``; ``heldout`` is a frozen list of queries outside
@@ -95,7 +97,7 @@ RETRIEVE_DEPTH = 100
 POOL = 20
 # The widest candidate list any method sees: the annotator labels substitutes
 # among these, and a variant is a valid abstain / escalate case only when the
-# answer is missing from all of them. ``*-x`` and ``*-wide`` methods read past
+# answer is missing from all of them. ``llm-set-wide`` reads past
 # ``POOL`` up to here.
 WIDE = 40
 SCOPES = 40
@@ -471,7 +473,7 @@ def ground_truth(data: Data, query: toolret.ToolRetQuery, labels: dict[str, dict
         for gold in needed)
     return {"S": True, "E": e_valid, "A": a_valid, "S+": True, "E+": oracle_e_valid,
             "reachable": reachable, "permitted_reachable": permitted_reachable,
-            "gold_in_pool": set(query.labels) <= s_pool, "necessary": len(needed)}
+            "gold_in_pool": set(query.labels) <= s_pool}
 
 
 def outcome(query: toolret.ToolRetQuery, variant: str, selection: SelectionResult,
@@ -778,31 +780,25 @@ def stage_score(data: Data, args) -> dict:
             return LLMSetSelector(replay, cache=cache)
 
         for name, width in METHODS.items():
-            for split, group in groups.items():
-                # A method that was not run on the evaluation split still has
-                # replies for the selections it shares with one that was; that
-                # partial coverage is not a result.
-                if split == evaluation and args.method and name not in args.method:
-                    continue
-                covered = [query for query in group if all(
-                    _cached(make("S"), data, query, variant, width)
-                    for variant in VARIANTS if gts[query.id][variant])]
-                if not covered:
-                    continue
-                rows = evaluate(data, covered, substitutes_by_query, make, 0.0, gts, VARIANTS,
-                                width=width, llm_calls=1)
-                entry = report["methods"].setdefault(name, {})
-                entry[split] = summarize(rows)
-                entry[f"{split}_queries"] = len(covered)
-                oracle_covered = [query for query in covered if all(
-                    _cached(make("S"), data, query, variant, width)
-                    for variant in ORACLE_VARIANTS if gts[query.id][variant])]
-                if oracle_covered:
-                    oracle_rows = evaluate(data, oracle_covered, substitutes_by_query, make, 0.0, gts,
-                                           ORACLE_VARIANTS, width=width, llm_calls=1)
-                    entry[split]["oracle_candidates"] = summarize_oracle(oracle_rows) | {"queries": len(oracle_covered)}
-                if split == evaluation:
-                    per_query[name] = per_query_correct(rows)
+            # A method that was not run still has replies for the selections it
+            # shares with one that was; that partial coverage is not a result.
+            if args.method and name not in args.method:
+                continue
+            covered = [query for query in held if all(
+                _cached(make("S"), data, query, variant, width)
+                for variant in VARIANTS if gts[query.id][variant])]
+            if not covered:
+                continue
+            rows = evaluate(data, covered, substitutes_by_query, make, 0.0, gts, VARIANTS, width=width, llm_calls=1)
+            entry = report["methods"][name] = {evaluation: summarize(rows), f"{evaluation}_queries": len(covered)}
+            oracle_covered = [query for query in covered if all(
+                _cached(make("S"), data, query, variant, width)
+                for variant in ORACLE_VARIANTS if gts[query.id][variant])]
+            if oracle_covered:
+                oracle_rows = evaluate(data, oracle_covered, substitutes_by_query, make, 0.0, gts,
+                                       ORACLE_VARIANTS, width=width, llm_calls=1)
+                entry[evaluation]["oracle_candidates"] = summarize_oracle(oracle_rows) | {"queries": len(oracle_covered)}
+            per_query[name] = per_query_correct(rows)
 
     for reference in args.reference or ["greedy", "llm-set"]:
         if reference in per_query:
@@ -868,6 +864,7 @@ def stage_substitutes(data: Data, model: str, output: Path) -> None:
         "by_split": {split: averages([row for row in rows if row["split"] == split])
                      for split in SPLITS if any(row["split"] == split for row in rows)},
     }
+    output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(stamp(report), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     overall = report["all"]
     print(f"{len(rows)} queries; substitutes for {report['gold_tools_with_substitute']} of gold tools")
@@ -905,6 +902,7 @@ def stage_export_labels(data: Data, model: str, output: Path) -> None:
                "queries": {query_id: {"split": split, "labels": labels[query_id]}
                            for query_id, split in sorted((q.id, data.split(q)) for q in data.queries)
                            if query_id in labels}}
+    output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(stamp(payload), indent=1, sort_keys=True) + "\n", encoding="utf-8")
     print(f"wrote {output}: {len(payload['queries'])} queries")
 
@@ -913,7 +911,7 @@ class ReplayCache(dict):
     """A reply cache that counts lookups of missing keys and never stores.
 
     A replayed selector records a failure both for a missing reply and for a
-    cached reply it cannot use (no requirements listed); only the first is a
+    cached reply it cannot use (unparseable); only the first is a
     gap in the stage, the second is the method's own output and is scored.
     """
 
@@ -947,7 +945,9 @@ def main() -> None:
     parser.add_argument("--heldout-target", type=int, default=850, help="size of the held-out split to freeze")
     parser.add_argument("--retriever", default="llm:hybrid-0.5")
     parser.add_argument("--embed-model", default="sentence-transformers/all-MiniLM-L6-v2")
-    parser.add_argument("--split", choices=["all", *SPLITS], default="all")
+    parser.add_argument("--split", choices=["all", *SPLITS],
+                        help="queries the pools, label and methods stages work on; required for them, so "
+                             "the held-out split is never processed by default")
     parser.add_argument("--eval-split", choices=["test", "heldout"], default="heldout",
                         help="the split the score and agree stages report on")
     parser.add_argument("--limit", type=int, default=0, help="first N queries of the split (0 = all)")
@@ -978,6 +978,8 @@ def main() -> None:
         stage_heldout(data, args.heldout_target)
         data = Data(args.per_subset, args.seed, args.retriever)
     queries = [query for query in data.queries if args.split == "all" or data.split(query) == args.split]
+    if args.split is None and {"pools", "label", "methods"} & set(args.stage):
+        parser.error("--split is required for the pools, label and methods stages")
     if args.sample:
         queries = sorted(queries, key=lambda q: hashlib.sha1(q.id.encode("utf-8")).hexdigest())[: args.sample]
     if args.limit:
@@ -1001,11 +1003,9 @@ def main() -> None:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         for name, entry in report["methods"].items():
-            for split in ("dev", args.eval_split):
-                summary = entry.get(split)
-                if summary:
-                    print(f"{name} [{split}]: macro {summary.get('macro_correct')} correct {summary.get('correct')} "
-                          f"S unneeded esc {summary.get('S_unneeded_escalation')} calls {summary.get('llm_calls_mean')}")
+            summary = entry[args.eval_split]
+            print(f"{name}: macro {summary.get('macro_correct')} correct {summary.get('correct')} "
+                  f"S unneeded esc {summary.get('S_unneeded_escalation')} calls {summary.get('llm_calls_mean')}")
         print(f"wrote {output}")
     if "substitutes" in args.stage:
         stage_substitutes(data, args.label_model, Path(args.substitutes_output))

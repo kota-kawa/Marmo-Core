@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import sys
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "benchmarks"))
+BENCHMARKS = Path(__file__).resolve().parents[1] / "benchmarks"
+sys.path.insert(0, str(BENCHMARKS))
 
 from toolret import ToolRetQuery, completeness_at_k, group_metrics, ndcg_at_k, recall_at_k, select_heldout  # noqa: E402
 
@@ -38,6 +41,15 @@ class SelectHeldoutTests(unittest.TestCase):
         forward = select_heldout(self.queries, self.used, target=5)
         backward = select_heldout(list(reversed(self.queries)), self.used, target=5)
         self.assertEqual([query.id for query in forward], [query.id for query in backward])
+
+
+class FrozenHeldoutTests(unittest.TestCase):
+    def test_the_committed_id_list_matches_its_count_and_digest(self) -> None:
+        frozen = json.loads((BENCHMARKS / "toolret_sae_heldout_ids.json").read_text(encoding="utf-8"))
+        ids = frozen["ids"]
+        self.assertEqual((len(ids), len(set(ids))), (frozen["count"], frozen["count"]))
+        self.assertEqual(sum(frozen["per_subset"].values()), frozen["count"])
+        self.assertEqual(hashlib.sha256("\n".join(ids).encode("utf-8")).hexdigest(), frozen["sha256"])
 
 
 class GroupMetricsTests(unittest.TestCase):
