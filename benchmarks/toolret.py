@@ -143,6 +143,40 @@ def sample_queries(queries: Sequence[ToolRetQuery], per_subset: int | None, seed
     return sampled
 
 
+SAE_HELDOUT_IDS = Path(__file__).parent / "toolret_sae_heldout_ids.json"
+
+
+def select_heldout(queries: Sequence[ToolRetQuery], used: Sequence[ToolRetQuery], target: int) -> list[ToolRetQuery]:
+    """About ``target`` queries that are not in ``used``, spread over the subsets.
+
+    A query whose text also appears in ``used`` is left out, as is a repeat of
+    a text already taken. Every subset contributes its first queries in SHA-1
+    order of the id, up to one cap chosen so the total is closest to
+    ``target``; no random state is involved.
+    """
+
+    seen = {query.query for query in used}
+    used_ids = {query.id for query in used}
+    by_subset: dict[str, list[ToolRetQuery]] = {}
+    for query in sorted(queries, key=lambda q: hashlib.sha1(q.id.encode("utf-8")).hexdigest()):
+        if query.id in used_ids or query.query in seen:
+            continue
+        seen.add(query.query)
+        by_subset.setdefault(query.subset, []).append(query)
+    largest = max((len(rows) for rows in by_subset.values()), default=0)
+    cap = min(range(largest + 1), key=lambda c: abs(sum(min(len(rows), c) for rows in by_subset.values()) - target))
+    return sorted((query for rows in by_subset.values() for query in rows[:cap]), key=lambda q: q.id)
+
+
+def load_heldout(queries: Sequence[ToolRetQuery], path: Path = SAE_HELDOUT_IDS) -> list[ToolRetQuery]:
+    """The held-out queries frozen in ``path`` (empty when it does not exist)."""
+
+    if not path.exists():
+        return []
+    ids = set(json.loads(path.read_text(encoding="utf-8"))["ids"])
+    return sorted((query for query in queries if query.id in ids), key=lambda q: q.id)
+
+
 # -- conversion ----------------------------------------------------------------
 
 
@@ -228,6 +262,32 @@ def completeness_at_k(ranked: Sequence[str], gold: set[str], k: int) -> float:
     """1.0 when every gold tool is in the top k (ToolRet's C@k, COLT's COMP@k)."""
 
     return 1.0 if gold and gold <= set(ranked[:k]) else 0.0
+
+
+def group_metrics(ranked: Sequence[str], groups: Sequence[set[str]], k: int) -> dict[str, float]:
+    """nDCG, recall and completeness at ``k`` when any member of a group satisfies it.
+
+    A group is a gold tool with the tools accepted in its place. Each ranked
+    tool is credited to at most one group still unmet (the first in
+    ``groups`` order), so a tool that could stand in for two gold tools counts
+    once, and the scores stay within [0, 1]. With one-member groups this is
+    ``ndcg_at_k`` / ``recall_at_k`` / ``completeness_at_k``.
+    """
+
+    unmet = list(range(len(groups)))
+    dcg = 0.0
+    for position, tool in enumerate(ranked[:k]):
+        hit = next((index for index in unmet if tool in groups[index]), None)
+        if hit is not None:
+            unmet.remove(hit)
+            dcg += 1.0 / math.log2(position + 2)
+    ideal = sum(1.0 / math.log2(position + 2) for position in range(min(len(groups), k)))
+    met = len(groups) - len(unmet)
+    return {
+        "ndcg": dcg / ideal if ideal else 0.0,
+        "recall": met / len(groups) if groups else 0.0,
+        "complete": float(bool(groups) and not unmet),
+    }
 
 
 def set_scores(selected: set[str], gold: set[str]) -> dict[str, float]:
