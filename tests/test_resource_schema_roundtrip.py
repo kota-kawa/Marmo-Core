@@ -91,8 +91,8 @@ class ResourceJsonRoundTripTests(unittest.TestCase):
             source.write_text(json.dumps(_tool(NULLABLE_SCHEMA)), encoding="utf-8")
             inspected = subprocess.run(
                 [
-                    sys.executable, "-m", "marmo_core.cli", "inspect", "tool.example.lookup",
-                    "--no-default-resources", str(source), "--format", "json",
+                    sys.executable, "-m", "marmo_core.cli", "inspect",
+                    "--no-default-resources", "--format", "json", "tool.example.lookup", str(source),
                 ],
                 cwd=ROOT,
                 text=True,
