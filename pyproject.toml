@@ -56,9 +56,10 @@ include = ["marmo_core*"]
 marmo_core = ["py.typed"]
 
 [tool.check-manifest]
-# Contributor-only guidance and planning notes: tracked in the repository,
-# excluded from the sdist.
-ignore = ["AGENTS.md", "ARCHITECTURE.md", "ARCHITECTURE.en.md", "要件定義書１.md"]
+# Contributor-only guidance, planning notes, and developer utilities (tools/
+# collects the skill corpus; no test or script imports it): tracked in the
+# repository, excluded from the sdist.
+ignore = ["AGENTS.md", "ARCHITECTURE.md", "ARCHITECTURE.en.md", "要件定義書１.md", "tools/**"]
 
 [tool.ruff]
 target-version = "py311"

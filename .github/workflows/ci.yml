@@ -3,10 +3,16 @@ name: CI
 on:
   push:
   pull_request:
+  # release.yml reuses these jobs so that a version tag is only published after
+  # the same checks pass on the tagged commit.
+  workflow_call:
 
 permissions:
   contents: read
 
+# When release.yml calls this workflow, github.workflow is "Release", so the
+# called run gets its own group and neither cancels nor is cancelled by the
+# CI run that the same tag push starts directly.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -47,6 +53,43 @@ jobs:
       - run: python -m build
       - run: python -m twine check dist/*
       - run: check-wheel-contents dist/*.whl
+      - name: Smoke-test the built wheel in a clean environment
+        run: |
+          python -m venv "$RUNNER_TEMP/wheel-smoke"
+          "$RUNNER_TEMP/wheel-smoke/bin/python" -m pip install --no-cache-dir dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/wheel-smoke/bin/python" - <<'PY'
+          import sys
+          from pathlib import Path
+
+          import marmo_core
+
+          installed = Path(marmo_core.__file__).resolve()
+          assert installed.is_relative_to(Path(sys.prefix).resolve()), f"imported from outside the venv: {installed}"
+          print(marmo_core.__version__)
+          PY
+          "$RUNNER_TEMP/wheel-smoke/bin/marmo" --version
+          "$RUNNER_TEMP/wheel-smoke/bin/marmo-core" --help
+
+  vector-indexes:
+    name: Exact and HNSW vector indexes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+      # usearch depends on numpy, so this extra provides both optional packages.
+      - run: python -m pip install '.[benchmark-ann]'
+      - run: python -c "import numpy, usearch"
+      - name: Run the vector index tests and refuse skips
+        run: |
+          python -W error::ResourceWarning -m unittest -v tests.test_vector_index 2>&1 | tee "$RUNNER_TEMP/vector-index.log"
+          if grep -q "skipped" "$RUNNER_TEMP/vector-index.log"; then
+            echo "vector index tests were skipped although numpy and usearch are installed" >&2
+            exit 1
+          fi
 
   docker:
     name: Docker

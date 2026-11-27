@@ -77,6 +77,39 @@ class DocPathCheckTests(unittest.TestCase):
 
         self.assertEqual(stale, [(document, "docs/missing.md"), (document, "docs/nested/gone.py")])
 
+    def test_links_to_missing_root_level_files_and_extensionless_names_are_stale(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "docs").mkdir()
+            document = root / "docs" / "guide.md"
+            document.write_text(
+                "[a](../README.md) [b](../CHANGELOG.md) [c](../LICENSE) [d](../LICENSE.txt#top) "
+                "[f](missing.md) [g](https://example.com/x.md) [h](mailto:a@example.com)\n",
+                encoding="utf-8",
+            )
+            tracked = {"README.md", "LICENSE", "docs/guide.md"}
+
+            stale = check_doc_paths.find_stale_references(root, [document], tracked)
+
+        self.assertEqual(
+            stale,
+            [
+                (document, "CHANGELOG.md"),
+                (document, "LICENSE.txt"),
+                (document, "docs/missing.md"),
+            ],
+        )
+
+    def test_root_document_links_are_checked_even_when_the_first_segment_is_not_a_known_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            document = root / "README.md"
+            document.write_text("[a](CHANGELOG.md) [b](LICENSE) `CHANGELOG.md`\n", encoding="utf-8")
+
+            stale = check_doc_paths.find_stale_references(root, [document], {"README.md"})
+
+        self.assertEqual(stale, [(document, "CHANGELOG.md"), (document, "LICENSE")])
+
     def test_bare_module_names_must_match_a_tracked_python_file(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -142,7 +175,7 @@ class EnvDocumentationCheckTests(unittest.TestCase):
             'd = os.environ.get("OPENAI_API_KEY", "")\n'
             'e = os.environ["ANTHROPIC_API_KEY"]\n'
             'f = os.getenv("OPENAI_EMBEDDING_MODEL")\n'
-            'g = f"MARMO_NOTIFICATION_{destination.upper()}_URL"\n'
+            'g = os.environ.get(f"MARMO_NOTIFICATION_{destination.upper()}_URL", "")\n'
             'ignored = os.environ.items()\n'
             'not_a_variable = f"HTTP_{status}: {detail}"\n'
         )
@@ -159,6 +192,34 @@ class EnvDocumentationCheckTests(unittest.TestCase):
                 "MARMO_NOTIFICATION_<...>_URL",
             },
         )
+
+    def test_ignores_lookups_in_comments_docstrings_and_strings(self) -> None:
+        source = (
+            '"""Set os.getenv("DOC_ONLY") to configure."""\n'
+            '# os.environ.get("COMMENT_ONLY")\n'
+            'text = \'os.getenv("STRING_ONLY")\'\n'
+            'message = f"OPENAI_{reason} failed"\n'
+            'other = f"MARMO_{name}_URL"\n'
+            'real = os.getenv("REAL_VARIABLE")\n'
+        )
+
+        self.assertEqual(check_env_documentation.variables_read(source), {"REAL_VARIABLE"})
+
+    def test_resolves_a_dynamic_name_through_a_local_variable_only_when_it_is_looked_up(self) -> None:
+        source = (
+            "def webhook(destination):\n"
+            '    env_key = f"MARMO_NOTIFICATION_{destination.upper()}_URL"\n'
+            '    return os.environ.get(env_key, "")\n'
+            "\n"
+            "def unused(destination):\n"
+            '    env_key = f"MARMO_UNUSED_{destination}_URL"\n'
+            "    return env_key\n"
+            "\n"
+            "def other_scope(env_key):\n"
+            "    return os.getenv(env_key)\n"
+        )
+
+        self.assertEqual(check_env_documentation.variables_read(source), {"MARMO_NOTIFICATION_<...>_URL"})
 
     def test_reads_documented_keys_including_commented_placeholders(self) -> None:
         env_example = (

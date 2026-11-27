@@ -64,6 +64,22 @@ python -m twine check dist/*
 check-wheel-contents dist/*.whl
 ```
 
+CI also installs the built wheel into a fresh virtual environment and, from a
+directory outside the checkout, imports `marmo_core` and runs `marmo --version`
+and `marmo-core --help`. To repeat it locally:
+
+```bash
+python -m venv /tmp/wheel-smoke
+/tmp/wheel-smoke/bin/python -m pip install dist/*.whl
+(cd /tmp && /tmp/wheel-smoke/bin/python -c "import marmo_core; print(marmo_core.__file__)" \
+  && /tmp/wheel-smoke/bin/marmo --version && /tmp/wheel-smoke/bin/marmo-core --help)
+```
+
+A separate CI job installs `'.[benchmark-ann]'` (usearch, which brings NumPy)
+and runs `tests/test_vector_index.py`; it fails if any test is skipped, so the
+`ExactVectorIndex` and `HNSWVectorIndex` tests cannot silently stop running.
+The default test job installs neither package and skips them.
+
 If `check-manifest` reports a mismatch after you add a file, either add the
 matching rule to `MANIFEST.in` (to ship it in the sdist) or list the file under
 `[tool.check-manifest] ignore` in `pyproject.toml` (to keep it repository-only).
@@ -75,7 +91,10 @@ the reason. `check_env_documentation.py` fails when `.env.example` and the
 environment variables read by `marmo_core/` or `benchmarks/` disagree, so a new
 variable and its `.env.example` line land in the same change.
 
-A Docker job also builds the image and runs the suite inside it:
+A Docker job also builds the image and runs the suite inside it. `.dockerignore`
+keeps local environment files (`.env` and `.env.*`, including `.env.example`)
+out of the build context; the image does not need them, because the checks that
+read `.env.example` run only from a full checkout:
 
 ```bash
 docker build --tag marmo-core:ci .
@@ -121,7 +140,11 @@ vulnerability rather than opening a pull request for it.
 
 Releases are published to PyPI by `.github/workflows/release.yml` through
 Trusted Publishing. The workflow refuses to publish when the tag and the
-packaged version disagree.
+packaged version disagree. Only a push of a `v*` tag publishes to PyPI, and
+only after the whole CI workflow (every job in
+[.github/BRANCH_PROTECTION.md](.github/BRANCH_PROTECTION.md)) has passed on the
+tagged commit. A manual run never publishes to PyPI, even when started from a
+tag.
 
 1. Update the version in **both** `marmo_core/_version.py` and
    `pyproject.toml` — `scripts/release_check.py` fails if they diverge.
@@ -130,7 +153,7 @@ packaged version disagree.
    new version has no dated section.
 3. Run the checks above, then commit and merge to `main`.
 4. Optionally run the `Release` workflow manually (`workflow_dispatch`) to
-   publish to TestPyPI first and verify the rendered project page.
+   publish to TestPyPI only and verify the rendered project page.
 5. From an up-to-date `main` checkout, tag and push the release commit.
 
    ```bash

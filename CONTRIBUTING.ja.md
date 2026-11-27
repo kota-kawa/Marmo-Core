@@ -45,11 +45,22 @@ python -m twine check dist/*
 check-wheel-contents dist/*.whl
 ```
 
+CI は、ビルドした wheel を新しい仮想環境に導入し、チェックアウトの外のディレクトリから `marmo_core` の import、`marmo --version`、`marmo-core --help` を実行します。ローカルで再現するには次のようにします。
+
+```bash
+python -m venv /tmp/wheel-smoke
+/tmp/wheel-smoke/bin/python -m pip install dist/*.whl
+(cd /tmp && /tmp/wheel-smoke/bin/python -c "import marmo_core; print(marmo_core.__file__)" \
+  && /tmp/wheel-smoke/bin/marmo --version && /tmp/wheel-smoke/bin/marmo-core --help)
+```
+
+別の CI ジョブは `'.[benchmark-ann]'`（usearch。NumPy も入ります）を導入して `tests/test_vector_index.py` を実行し、1 件でもスキップされると失敗します。これにより、`ExactVectorIndex` と `HNSWVectorIndex` のテストが気づかれないまま実行されなくなることを防ぎます。通常のテストジョブはどちらも導入せず、これらのテストをスキップします。
+
 ファイルを追加した後に `check-manifest` が不一致を報告した場合、そのファイルを sdist に含めるには `MANIFEST.in` に対応する規則を追加してください。リポジトリ内だけで使う場合は、`pyproject.toml` の `[tool.check-manifest] ignore` に列挙してください。
 
 `check_doc_paths.py` は、Markdown 文書に記載されたリポジトリ内のパスが存在しない場合に失敗します。参照を修正するか、意図的に追跡対象外としているパスを記載する場合は、その理由とともにスクリプトの許可リストへ追加してください。`check_env_documentation.py` は `.env.example` と `marmo_core/` または `benchmarks/` が読み取る環境変数の不一致を検出します。新しい環境変数と `.env.example` の行は、同じ変更で追加してください。
 
-Docker ジョブもイメージをビルドし、コンテナ内でテストスイートを実行します。
+Docker ジョブもイメージをビルドし、コンテナ内でテストスイートを実行します。`.dockerignore` は、ローカルの環境設定ファイル（`.env` と、`.env.example` を含む `.env.*`）をビルドコンテキストから除外します。`.env.example` を読む検査は完全なチェックアウトでのみ実行されるため、イメージには不要です。
 
 ```bash
 docker build --tag marmo-core:ci .
@@ -77,12 +88,12 @@ marmo validate resources/memory resources/tools resources/agents
 
 ## リリース
 
-リリースは `.github/workflows/release.yml` が Trusted Publishing を通じて PyPI に公開します。このワークフローは、タグとパッケージのバージョンが一致しない場合、公開を拒否します。
+リリースは `.github/workflows/release.yml` が Trusted Publishing を通じて PyPI に公開します。このワークフローは、タグとパッケージのバージョンが一致しない場合、公開を拒否します。PyPI へ公開されるのは `v*` タグの push だけで、しかもタグ付けされたコミットで CI ワークフロー全体（[.github/BRANCH_PROTECTION.md](.github/BRANCH_PROTECTION.md) に挙げた全ジョブ）が成功した後に限ります。手動実行は、タグから起動した場合でも PyPI へは公開しません。
 
 1. `marmo_core/_version.py` と `pyproject.toml` の**両方**のバージョンを更新します。値が異なると `scripts/release_check.py` が失敗します。
 2. `CHANGELOG.md` に `## [x.y.z] - YYYY-MM-DD` の節を追加し、ファイル末尾の比較リンクも更新します。日付付きの節がない新バージョンは `release_check.py` が失敗します。
 3. 上記の検査を実行してから、コミットし `main` にマージします。
-4. 必要に応じて `Release` ワークフローを手動で実行（`workflow_dispatch`）し、先に TestPyPI へ公開して、プロジェクトページの表示を確認します。
+4. 必要に応じて `Release` ワークフローを手動で実行（`workflow_dispatch`）し、TestPyPI のみへ公開して、プロジェクトページの表示を確認します。
 5. 最新の `main` をチェックアウトし、リリースするコミットにタグを付けて push します。
 
    ```bash
