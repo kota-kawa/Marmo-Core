@@ -111,6 +111,8 @@ class Config:
     name: str
     retriever: Callable[[], Any]
     selector: Callable[[], Any]
+    # Hand the selector the activation gate's policy (``Kernel(gate_aware_selection=True)``).
+    gate_aware: bool = False
 
 
 CONFIGS = {
@@ -118,6 +120,12 @@ CONFIGS = {
     "lexical-coverage": Config("lexical-coverage", LexicalRetriever, CoverageSetSelector),
     # The Kernel's default selector: never abstains or escalates by itself.
     "lexical-rulebased": Config("lexical-rulebased", LexicalRetriever, RuleBasedSetSelector),
+    "lexical-greedy-gate-aware": Config(
+        "lexical-greedy-gate-aware", LexicalRetriever, GreedyConstrainedSetSelector, gate_aware=True),
+    "lexical-coverage-gate-aware": Config(
+        "lexical-coverage-gate-aware", LexicalRetriever, CoverageSetSelector, gate_aware=True),
+    "lexical-rulebased-gate-aware": Config(
+        "lexical-rulebased-gate-aware", LexicalRetriever, RuleBasedSetSelector, gate_aware=True),
 }
 
 
@@ -199,7 +207,10 @@ def route(registry, case, config: Config):
         registry, SearchQuery(task=case["task"], granted_permissions=tuple(case["granted_permissions"]),
                               top_k=TOP_K),
     )
-    selection = config.selector().select(candidates, context=selection_context(case, min_relevance=0.35))
+    context = selection_context(case, min_relevance=0.35)
+    if config.gate_aware:
+        context = replace(context, policy=policy_context(case, registry))
+    selection = config.selector().select(candidates, context=context)
     return [item.resource.metadata.id for item in candidates], selection
 
 
@@ -236,7 +247,8 @@ def kernel_reach(registry: ResourceRegistry, case: dict, decoy: ResourceDefiniti
     with workspace(case.get("seed_files", {})):
         kernel = Kernel(registry, llm, retriever=config.retriever(), selector=config.selector(),
                         activator=activator, policy_context=policy_context(case, registry),
-                        top_k=TOP_K, set_limits=PER_KIND_LIMITS, min_relevance=0.35, max_tool_calls=1)
+                        top_k=TOP_K, set_limits=PER_KIND_LIMITS, min_relevance=0.35, max_tool_calls=1,
+                        gate_aware_selection=config.gate_aware)
         result = kernel.run_goal(case["task"])
     first = llm.requests[0] if llm.requests else {"tools": [], "messages": []}
     tools = [json.dumps(tool) for tool in first["tools"]]

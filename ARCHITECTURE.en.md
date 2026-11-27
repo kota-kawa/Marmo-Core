@@ -99,7 +99,10 @@ in `marmo_core/<module>.py` and the corresponding tests.
    recorded as skipped and in `audit("retrieve")`'s `constraint_drops` if they
    have a missing dependency, a dependency denied by the activation gate, or a
    conflict with a higher-ranked resource. `escalate` calls `_pause` (a
-   selection-stage `HitlRequest`).
+   selection-stage `HitlRequest`). With `Kernel(gate_aware_selection=True)` the
+   gate's policy is passed as `SelectionContext.policy`, and the selectors that
+   read it neither select nor escalate on a candidate the gate denies whatever
+   is granted or approved (`policy.static_denials`); off by default, ADR 0014.
 5. **Activation gate** `activator.activate` → `PolicyGateway.evaluate(gate="activation")`
    → `audit("policy")`. `escalate` calls `_pause`; `deny` adds the resource to
    skipped and calls `recovery.classify_activation`.

@@ -373,7 +373,7 @@ dev の同系列再訪では 8 Tool タスク中 2 件が cache に命中し、�
 上の 6 件は Tool だけで、偽装も 4 項目をまとめて変えています。`run_forgery_benchmark.py` は、どの宣言の偽装がどの段階まで届くかを、検索・選択・ルーティングを変えるたびに同じ形で測ります。
 
 ```bash
-python3 benchmarks/run_forgery_benchmark.py            # 約 90 秒、LLM なし
+python3 benchmarks/run_forgery_benchmark.py            # 2〜4 分、LLM なし
 ```
 
 - **ケース**: `evidence_cases.json` の 22 件（dev / test、abstain 2・escalate 2 を含む）と、集合選択コーパス（63 資源）の 28 シナリオ（abstain 2・escalate 2）。
@@ -382,7 +382,7 @@ python3 benchmarks/run_forgery_benchmark.py            # 約 90 秒、LLM なし
 - **到達段階**: 候補に入る → 選択される → activation gate が allow → `Kernel.run_goal` がモデルに渡す（Tool / Agent はツール定義、Skill は本文がプロンプトに入る）→ モデルが呼べば execution gate を通ってハンドラが実行される。モデルは「渡された偽装資源を必ず呼ぶ」固定応答なので、測っているのはゲートで、モデルが偽の説明に従うかどうかではありません。偽装資源のハンドラは `ResourceActivator` で差し込んだ**何もしない記録用の関数**で、同梱の実ハンドラは偽装資源からは一度も動きません。
 - **被害の指標**: gold の押しのけ（偽装なしでは選ばれていた同じ種別の gold が外れる）、gold Tool の喪失（偽装なしではモデルに渡っていた gold Tool が渡らなくなる）、状態の変化、abstain / escalate の乗っ取り（abstain・escalate が正解のケースで偽装資源を含む `selected` になる）。
 
-結果は [`results/forgery.json`](results/forgery.json)（2,656 変種 × 3 構成）。`tracked` が変更前後で比べる固定の項目で、`legacy_baseline` に従来の 6 件（`metadata_forgery` 6/6）を同じ実行で再測定して残しています。
+結果は [`results/forgery.json`](results/forgery.json)（2,656 変種 × 6 構成）。`tracked` が変更前後で比べる固定の項目で、`legacy_baseline` に従来の 6 件（`metadata_forgery` 6/6）を同じ実行で再測定して残しています。
 
 | 構成 | 種別 | 宣言 | 選択 | activation 通過 | モデルに渡る | ハンドラ実行 | gold Tool 喪失 | 乗っ取り |
 |---|---|---|---:|---:|---:|---:|---:|---:|
@@ -396,8 +396,14 @@ python3 benchmarks/run_forgery_benchmark.py            # 約 90 秒、LLM なし
 | lexical + Kernel 既定（rule-based） | Tool | 全偽装 | 0.784 | 0.784 | 0.784 | 0.784 | 0.692 | 1.000 |
 | lexical + Kernel 既定（rule-based） | Skill | 全偽装 | 0.859 | 0.859 | 0.859 | — | 0.231 | 1.000 |
 | lexical + Kernel 既定（rule-based） | Agent | 全偽装 | 0.833 | 0.833 | 0.833 | 0.833 | 0.231 | 1.000 |
+| lexical + greedy、gate-aware | Tool | 正直 | 0.000 | 0.000 | 0.000 | 0.000 | 0.115 | 0.000 |
+| lexical + greedy、gate-aware | Tool | 全偽装 | 0.534 | 0.534 | 0.534 | 0.534 | 0.692 | 1.000 |
+| lexical + greedy、gate-aware | Tool | 一部だけ偽装 | 0.032 | 0.000 | 0.000 | 0.000 | 0.170 | 0.071 |
+| lexical + 被覆型、gate-aware | Tool | 一部だけ偽装 | 0.036 | 0.000 | 0.000 | 0.000 | 0.179 | 0.071 |
+| lexical + rule-based、gate-aware | Tool | 正直 | 0.000 | 0.000 | 0.000 | 0.000 | 0.115 | 0.000 |
+| lexical + rule-based、gate-aware | Tool | 一部だけ偽装 | 0.109 | 0.000 | 0.000 | 0.000 | 0.170 | 0.214 |
 
-Skill と Agent の「正直」は 3 構成とも activation 通過 0、Skill にハンドラはありません（—）。乗っ取りの分母は abstain / escalate が正解の 8 ケース × 変種で、rule-based は偽装なしでも abstain しない Selector なので値が高く出ます。gold Tool 喪失の分母は偽装なしで gold Tool がモデルに渡っていた evidence の Tool タスクです。
+Skill と Agent の「正直」はどの構成でも activation 通過 0、Skill にハンドラはありません（—）。乗っ取りの分母は abstain / escalate が正解の 8 ケース × 変種で、rule-based は偽装なしでも abstain しない Selector なので値が高く出ます。gold Tool 喪失の分母は偽装なしで gold Tool がモデルに渡っていた evidence の Tool タスクです。
 
 **読み方**
 
@@ -405,6 +411,11 @@ Skill と Agent の「正直」は 3 構成とも activation 通過 0、Skill �
 - **拒否されても被害は残ります**。選ばれてから拒否された偽装資源は gold を押しのけたままなので、一部だけ偽装した Tool でも gold Tool の喪失は 37% です（`tracked` の `partial_forgery`）。正直な宣言の stuffed Tool でさえ、greedy は「権限だけで阻まれた上位の単位」として escalate を返し（権限不足の上位候補を escalate する既定の挙動）、gold Tool が 46% のケースで渡らなくなります（clone では 0%、表の「正直」の 0.231 は両方の平均）。人に `net.external` と `message.send` の付与を求める経路でもあります。
 - **`clone`（正規の資源の複製）は stuffed より通りにくい**。同点の gold と並ぶため、全偽装でも Tool 36%（evidence）、集合コーパスでは 4% でした。
 - Kernel 既定の rule-based Selector は権限を見ないので、正直な宣言の偽装資源も 42〜58% 選ばれます（ゲートで拒否）。
+- **gate-aware の行は、ゲートの方針を Selector に渡した構成です**（`Kernel(gate_aware_selection=True)`、既定はオフ。ADR 0014）。ゲートが権限や承認にかかわらず拒否する候補（許可されない信頼度・副作用、使えない隔離レベル）を、選ばず、escalate の理由にもしません。
+  - 一部だけ偽装した Tool の選択は greedy で 0.226 → 0.032、gold Tool の喪失は 0.374 → 0.170 に下がります。正直な宣言の Tool による状態の変化は 0.307 → 0.170 です（`status_change_rate`）。rule-based は正直な宣言の偽装資源を選ばなくなります（0.420 → 0.000）。
+  - 全偽装の行は変わりません。ゲートが見る宣言をすべて偽装した資源は、ゲートと同じ判定を通ります。
+  - 残る選択（0.032 など）は、権限だけを正直に宣言して他を偽装した資源で、従来どおり escalate の理由になります。
+  - 偽装なしのケースの状態の正答率は、evidence の 22 件で greedy・被覆型とも 0.955 → 0.909 に下がります（`suites.evidence.configs.*.clean`）。変わるのは `dev-escalate` の 1 件です。通知 Tool は権限に加えて既定の実行環境に無い隔離レベル L3 を要求するので、escalate ではなく abstain になり、理由に `isolation_level L3 is not available in this runtime` と出ます。権限を付与してもこの Tool はゲートを通りませんが、ラベルは escalate のままなので悪化として数えています。集合選択の 28 シナリオでは変化はありません。この 1 件があるため、既定はオフのままです。
 - 宣言の真正性を確かめる対策（署名・出所の検証）はこのベンチマークの対象外です。対策を入れたら、同じコマンドで `tracked` の全偽装の行が下がるかを確かめます。
 
 **検索・選択・ルーティングを変える PR での手順**: 変更前のブランチと変更後のブランチで `python3 benchmarks/run_forgery_benchmark.py --output /tmp/forgery-before.json`（後は `-after.json`）を実行し、`tracked.<構成>.tracked.<種別>.{honest,full_forgery,partial_forgery,any_forgery}` の `selection_rate`、`activation_reach_rate`、`execution_reach_rate`、`gold_tool_loss_rate`、`abstain_escalate_hijack_rate` を PR 本文に並べます。新しい Retriever / Selector は `CONFIGS` に足してから測ります。結果 JSON を更新する場合はこの表も揃えます。

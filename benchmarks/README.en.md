@@ -373,7 +373,7 @@ We also add adversarial metadata to the same six fixed-test Tool tasks by fillin
 The six cases above cover Tools only and forge four declarations at once. `run_forgery_benchmark.py` measures, in the same form for every change to retrieval, selection, or routing, which forged declaration gets a decoy how far.
 
 ```bash
-python3 benchmarks/run_forgery_benchmark.py            # about 90 s, no LLM
+python3 benchmarks/run_forgery_benchmark.py            # 2 to 4 min, no LLM
 ```
 
 - **Cases**: the 22 cases of `evidence_cases.json` (dev / test, including two abstain and two escalate cases) and the 28 scenarios of the set-selection corpus (63 resources; two abstain, two escalate).
@@ -382,7 +382,7 @@ python3 benchmarks/run_forgery_benchmark.py            # about 90 s, no LLM
 - **Stages**: retrieved → selected → allowed by the activation gate → handed to the model by `Kernel.run_goal` (a tool definition for Tools and Agents, the body in the prompt for Skills) → executed through the execution gate when the model calls it. The model is a scripted response that always calls the decoy it is offered, so the numbers measure the gates, not whether a model follows a forged description. The decoy's handler is an **inert recorder** bound through `ResourceActivator`; no shipped handler ever runs for a decoy.
 - **Harm**: gold displacement (a gold resource of the same kind that was selected without the decoy is dropped), gold Tool loss (a gold Tool that reached the model without the decoy no longer does), status changes, and abstain / escalate hijacks (a case whose answer is abstain or escalate becomes `selected` with the decoy).
 
-Results are in [`results/forgery.json`](results/forgery.json) (2,656 variants × 3 configurations). `tracked` holds the fixed fields to compare before and after a change, and `legacy_baseline` re-measures the six legacy cases (`metadata_forgery` 6/6) in the same run.
+Results are in [`results/forgery.json`](results/forgery.json) (2,656 variants × 6 configurations). `tracked` holds the fixed fields to compare before and after a change, and `legacy_baseline` re-measures the six legacy cases (`metadata_forgery` 6/6) in the same run.
 
 | Configuration | Kind | Declarations | Selected | Activation allowed | Reaches the model | Handler runs | Gold Tool loss | Hijack |
 |---|---|---|---:|---:|---:|---:|---:|---:|
@@ -396,6 +396,12 @@ Results are in [`results/forgery.json`](results/forgery.json) (2,656 variants ×
 | lexical + Kernel default (rule-based) | Tool | fully forged | 0.784 | 0.784 | 0.784 | 0.784 | 0.692 | 1.000 |
 | lexical + Kernel default (rule-based) | Skill | fully forged | 0.859 | 0.859 | 0.859 | — | 0.231 | 1.000 |
 | lexical + Kernel default (rule-based) | Agent | fully forged | 0.833 | 0.833 | 0.833 | 0.833 | 0.231 | 1.000 |
+| lexical + greedy, gate-aware | Tool | honest | 0.000 | 0.000 | 0.000 | 0.000 | 0.115 | 0.000 |
+| lexical + greedy, gate-aware | Tool | fully forged | 0.534 | 0.534 | 0.534 | 0.534 | 0.692 | 1.000 |
+| lexical + greedy, gate-aware | Tool | partly forged | 0.032 | 0.000 | 0.000 | 0.000 | 0.170 | 0.071 |
+| lexical + coverage, gate-aware | Tool | partly forged | 0.036 | 0.000 | 0.000 | 0.000 | 0.179 | 0.071 |
+| lexical + rule-based, gate-aware | Tool | honest | 0.000 | 0.000 | 0.000 | 0.000 | 0.115 | 0.000 |
+| lexical + rule-based, gate-aware | Tool | partly forged | 0.109 | 0.000 | 0.000 | 0.000 | 0.170 | 0.214 |
 
 Honest Skills and Agents never pass activation in any configuration, and Skills have no handler (—). The hijack denominator is the eight abstain / escalate cases times their variants; the rule-based selector never abstains even without a decoy, which inflates its value. The gold Tool loss denominator is the evidence Tool tasks whose gold Tool reached the model without the decoy.
 
@@ -405,6 +411,11 @@ Honest Skills and Agents never pass activation in any configuration, and Skills 
 - **Denial does not undo the harm.** A decoy that is selected and then denied still displaces the gold resource, so partly forged Tools lose the gold Tool in 37% of cases (`partial_forgery` in `tracked`). Even an honestly declared stuffed Tool makes greedy escalate as "the top unit blocked only by permissions" (the default rule that escalates a permission-blocked top candidate), and the gold Tool no longer reaches the model in 46% of cases (0% for clones; the 0.231 in the honest row is the average of both). That path also asks a person to grant `net.external` and `message.send`.
 - **Clones of legitimate resources get through less often than stuffing.** They tie with the gold resource, so even fully forged clones are selected in 36% of Tool cases (evidence) and 4% on the set corpus.
 - The Kernel's default rule-based selector does not check permissions, so it selects even honestly declared decoys in 42–58% of variants (the gate then denies them).
+- **The gate-aware rows hand the gate's policy to the selector** (`Kernel(gate_aware_selection=True)`, off by default; ADR 0014). A candidate the gate denies whatever is granted or approved (a trust level or side effect outside the policy, an unavailable isolation level) is neither selected nor a reason to escalate.
+  - Selection of a partly forged Tool falls from 0.226 to 0.032 with greedy, and gold Tool loss from 0.374 to 0.170. Status changes caused by an honestly declared Tool fall from 0.307 to 0.170 (`status_change_rate`). The rule-based selector stops selecting honestly declared decoys (0.420 to 0.000).
+  - The fully forged rows do not change: a decoy that forges every declaration the gate reads passes the same check.
+  - What is still selected (0.032 and the like) declares its permissions honestly and forges the rest, and remains a reason to escalate as before.
+  - Status accuracy on the cases without a decoy falls from 0.955 to 0.909 on the 22 evidence cases for greedy and coverage (`suites.evidence.configs.*.clean`). One case changes, `dev-escalate`: its notification Tool needs isolation level L3, which the default runtime does not have, as well as permissions, so the outcome is abstain with the reason `isolation_level L3 is not available in this runtime` instead of escalate. Granting the permissions would not get that Tool past the gate, but the label says escalate, so it is counted as a regression. Nothing changes on the 28 set-selection scenarios. Because of this one case the option is off by default.
 - Countermeasures that verify declarations (signatures, provenance) are out of scope for this benchmark. When one is added, check with the same command that the fully forged rows of `tracked` go down.
 
 **Procedure for PRs that change retrieval, selection, or routing**: run `python3 benchmarks/run_forgery_benchmark.py --output /tmp/forgery-before.json` on the base branch and the same with `-after.json` on the changed branch, and list `selection_rate`, `activation_reach_rate`, `execution_reach_rate`, `gold_tool_loss_rate`, and `abstain_escalate_hijack_rate` of `tracked.<configuration>.tracked.<kind>.{honest,full_forgery,partial_forgery,any_forgery}` in the PR description. Add a new Retriever / Selector to `CONFIGS` before measuring it. When the results JSON is updated, update this table too.

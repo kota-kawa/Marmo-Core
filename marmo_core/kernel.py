@@ -298,6 +298,7 @@ class Kernel:
         top_k: int = 8,
         set_limits: Mapping[str, int] | None = None,
         min_relevance: float = 0.0,
+        gate_aware_selection: bool = False,
         max_tool_calls: int = 5,
         max_input_repairs: int = 2,
         max_tool_output_tokens: int | None = 8000,
@@ -413,6 +414,10 @@ class Kernel:
         # naming every term of the goal), so measure it against your own
         # resources before setting one.
         self.min_relevance = min_relevance
+        # Hand the selector the policy the activation gate applies, so a
+        # candidate the gate denies whatever is granted or approved is not
+        # selected in place of a usable one and is not a reason to escalate.
+        self.gate_aware_selection = gate_aware_selection
         self.max_tool_calls = max_tool_calls
         if _agent_depth < 0 or _agent_cost_offset < 0:
             raise ValueError("internal Agent depth and cost offsets must be non-negative")
@@ -870,6 +875,7 @@ class Kernel:
                 if self.budget_ledger is not None
                 else None
             ),
+            policy=context if self.gate_aware_selection else None,
         )
         results: list[SearchResult] = []
         constraint_drops: tuple[dict[str, str], ...] = ()
@@ -2006,6 +2012,7 @@ class Kernel:
             top_k=self.top_k,
             set_limits=self.set_limits,
             min_relevance=self.min_relevance,
+            gate_aware_selection=self.gate_aware_selection,
             max_tool_calls=self.max_tool_calls,
             max_input_repairs=self.max_input_repairs,
             max_tool_output_tokens=self.max_tool_output_tokens,

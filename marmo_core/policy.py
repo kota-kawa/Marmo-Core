@@ -165,29 +165,25 @@ class PolicyGateway:
         else:
             allow_reasons.append("no cost ceiling was configured")
 
-        if metadata.trust_level not in context.allowed_trust_levels:
-            deny_reasons.append(f"trust_level {metadata.trust_level} is not allowed")
+        trust_denial = _trust_denial(resource, context)
+        if trust_denial:
+            deny_reasons.append(trust_denial)
         else:
             allow_reasons.append(f"trust_level {metadata.trust_level} is allowed")
 
         if metadata.kind == "tool":
-            required_isolation = context.minimum_isolation_level
-            if declared_isolation not in context.available_isolation_levels:
-                deny_reasons.append(
-                    f"isolation_level {declared_isolation} is not available in this runtime"
-                )
-            elif not isolation_satisfies(declared_isolation, required_isolation):
-                deny_reasons.append(
-                    f"isolation_level {declared_isolation} does not satisfy required {required_isolation}"
-                )
+            isolation_denial = _isolation_denial(resource, context)
+            if isolation_denial:
+                deny_reasons.append(isolation_denial)
             else:
                 allow_reasons.append(
-                    f"isolation_level {declared_isolation} satisfies required {required_isolation}"
+                    f"isolation_level {declared_isolation} satisfies required {context.minimum_isolation_level}"
                 )
 
         approved = context.approves(metadata.id, metadata.identity)
-        if metadata.side_effect not in context.allowed_side_effects:
-            deny_reasons.append(f"side_effect {metadata.side_effect} is not allowed")
+        side_effect_denial = _side_effect_denial(resource, context)
+        if side_effect_denial:
+            deny_reasons.append(side_effect_denial)
         elif metadata.side_effect in context.escalate_side_effects and context.dry_run:
             allow_reasons.append(
                 f"side_effect {metadata.side_effect} would require human approval outside dry_run"
@@ -278,6 +274,46 @@ class PolicyGateway:
                 context.minimum_isolation_level if metadata.kind == "tool" else ""
             ),
         )
+
+
+def static_denials(resource: ResourceDefinition, context: PolicyContext) -> tuple[str, ...]:
+    """The activation gate's deny reasons that no grant or approval lifts.
+
+    A trust level or side effect outside the policy, and for a Tool an
+    isolation level the runtime lacks or that is below the required minimum.
+    Missing permissions and side effects that wait for human approval are
+    not here: a person can grant or approve those. ``PolicyGateway.evaluate``
+    applies the same checks, so a set selector that asks this agrees with
+    the gate.
+    """
+
+    denials = (
+        _trust_denial(resource, context),
+        _isolation_denial(resource, context),
+        _side_effect_denial(resource, context),
+    )
+    return tuple(denial for denial in denials if denial)
+
+
+def _trust_denial(resource: ResourceDefinition, context: PolicyContext) -> str:
+    trust_level = resource.metadata.trust_level
+    return "" if trust_level in context.allowed_trust_levels else f"trust_level {trust_level} is not allowed"
+
+
+def _isolation_denial(resource: ResourceDefinition, context: PolicyContext) -> str:
+    if resource.metadata.kind != "tool":
+        return ""
+    declared = isolation_level(resource.extras)
+    if declared not in context.available_isolation_levels:
+        return f"isolation_level {declared} is not available in this runtime"
+    if not isolation_satisfies(declared, context.minimum_isolation_level):
+        return f"isolation_level {declared} does not satisfy required {context.minimum_isolation_level}"
+    return ""
+
+
+def _side_effect_denial(resource: ResourceDefinition, context: PolicyContext) -> str:
+    side_effect = resource.metadata.side_effect
+    return "" if side_effect in context.allowed_side_effects else f"side_effect {side_effect} is not allowed"
 
 
 def _validate_context(context: PolicyContext) -> None:
