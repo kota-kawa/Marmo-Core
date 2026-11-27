@@ -23,6 +23,8 @@
 python -m pip install -e '.[dev]'                 # 開発環境
 python -W error::ResourceWarning -m unittest discover -s tests   # 全テスト（約 10 秒）
 python -W error::ResourceWarning -m unittest tests.test_kernel   # モジュール単位
+python3.11 -m venv /tmp/marmo-py311 && /tmp/marmo-py311/bin/pip install -e . \
+  && /tmp/marmo-py311/bin/python -W error::ResourceWarning -m unittest discover -s tests   # 最低対応バージョン
 ruff check marmo_core tests scripts tools
 mypy marmo_core
 python scripts/release_check.py                   # バージョン整合と CHANGELOG
@@ -33,6 +35,11 @@ python -m build && python -m twine check dist/* && check-wheel-contents dist/*.w
 docker build --tag marmo-core:ci . && docker run --rm marmo-core:ci python -m unittest discover -s tests
 marmo validate resources/memory resources/tools resources/agents   # サンプルリソース
 ```
+
+手元の既定の Python が `requires-python` の下限（現在 3.11）より新しい場合は、PR 前に下限の
+インタープリタでも全テストを回す。標準ライブラリの挙動（argparse の引数の解釈など）は版で変わり、
+新しい版でだけ通るテストは CI の下限のジョブで初めて落ちる。下限のインタープリタが無い環境では、
+その旨を PR 本文に書き、CI の該当ジョブの結果を確認してからレビューを依頼する。
 
 CI（`.github/workflows/ci.yml`）は Python 3.11〜3.14 でテストを回し、3.14 で静的検査と
 リリース検査、Docker ジョブを実行する。PR を作る前にこれらを全部ローカルで通す。
@@ -75,6 +82,8 @@ CI（`.github/workflows/ci.yml`）は Python 3.11〜3.14 でテストを回し�
 - CLI フラグは `--kebab-case`、繰り返し指定する許可リストは単数形（`--allow-side-effect none
   --allow-side-effect read`）。
 - テストメソッド名は挙動を文で書く（`test_strict_fails_when_no_callable_reached_the_model`）。
+- 文書に書く `marmo` コマンドは、オプションを先、位置引数を最後にまとめる
+  （`marmo inspect --format json <id> <path>`）。CLI はどの順序でも受け付けるが、書き方を揃える。
 
 ## 責務分割
 

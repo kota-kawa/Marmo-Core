@@ -69,6 +69,26 @@ class _ArgumentParser(argparse.ArgumentParser):
     def translate(self, message: str) -> str:
         return translate(self.language, message)
 
+    def parse_args(self, args: Any = None, namespace: Any = None) -> Any:
+        """Parse ``args``, accepting resource paths written after an option.
+
+        argparse matches a subcommand's positionals in one run, so in
+        ``marmo inspect ID --format json PATH`` (and, before Python 3.12, in
+        any command where an option splits the positionals) the trailing path
+        is left over as "unrecognized". Left-over words that are not options
+        can only be such paths, so they join ``paths`` in the order written.
+        """
+
+        parsed, extras = self.parse_known_args(args, namespace)
+        if extras:
+            # Everything after a ``--`` is a path, even one that starts with "-".
+            marker = extras.index("--") if "--" in extras else len(extras)
+            before, after = extras[:marker], extras[marker + 1 :]
+            if not hasattr(parsed, "paths") or any(extra.startswith("-") for extra in before):
+                self.error(f"unrecognized arguments: {' '.join(extras)}")
+            parsed.paths = [*parsed.paths, *before, *after]
+        return parsed
+
     def error(self, message: str) -> NoReturn:
         if self.language == "ja":
             self.print_usage(sys.stderr)

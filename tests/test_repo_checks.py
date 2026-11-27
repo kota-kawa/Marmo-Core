@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+import contextlib
 import importlib.util
+import io
+import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -253,6 +257,63 @@ class EnvDocumentationCheckTests(unittest.TestCase):
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertIn("env documentation check passed", completed.stdout)
+
+
+
+def _documented_commands(text: str) -> list[list[str]]:
+    """Every ``marmo ...`` command line in a document, split into arguments."""
+
+    commands: list[list[str]] = []
+    for line in text.replace("\\\n", " ").splitlines():
+        line = line.strip().removeprefix("$ ")
+        match = re.match(r"(?:.*answer with: )?(?:python3? -m marmo_core\.cli|marmo(?:-core)?) (.+)", line)
+        if match is None or "`" in line:
+            continue
+        try:
+            commands.append(shlex.split(match.group(1), comments=True))
+        except ValueError:
+            continue
+    return commands
+
+
+class DocumentedCommandTests(unittest.TestCase):
+    """Commands shown to readers must parse on every supported Python.
+
+    How argparse reads a command line has changed between Python versions,
+    so a command written on a newer one can be one the oldest supported
+    version refuses.
+    """
+
+    def _rejected(self, argv: list[str]) -> str:
+        from marmo_core.cli import build_parser
+
+        errors = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(errors), contextlib.redirect_stdout(io.StringIO()):
+                build_parser().parse_args(argv)
+        except SystemExit as exc:
+            if exc.code not in (0, None):
+                return errors.getvalue().strip().splitlines()[-1]
+        return ""
+
+    def test_finds_commands_including_continued_lines(self) -> None:
+        text = "```bash\nmarmo run --task t \\\n    resources/tools\n```\nUse `marmo list` to browse.\n"
+
+        self.assertEqual(_documented_commands(text), [["run", "--task", "t", "resources/tools"]])
+
+    def test_a_command_the_parser_refuses_is_reported(self) -> None:
+        self.assertIn("unrecognized arguments", self._rejected(["list", "a", "--no-such-option"]))
+        self.assertEqual(self._rejected(["list", "--kind", "tool", "a", "b"]), "")
+
+    @unittest.skipUnless(FULL_CHECKOUT, "requires the full repository checkout")
+    def test_every_documented_command_parses(self) -> None:
+        documents = [path for path in ROOT.rglob("*.md") if ".git" not in path.parts]
+        checked = 0
+        for document in documents:
+            for argv in _documented_commands(document.read_text(encoding="utf-8")):
+                checked += 1
+                self.assertEqual(self._rejected(argv), "", f"{document.relative_to(ROOT)}: marmo {' '.join(argv)}")
+        self.assertGreater(checked, 10, "the documents should show marmo commands")
 
 
 if __name__ == "__main__":
