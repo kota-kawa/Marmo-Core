@@ -4,7 +4,7 @@ English version: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## セットアップ
 
-Marmo-Core は Python 3.10〜3.14 に対応し、実行時の依存関係を最小限に保っています。必須の依存パッケージは `python-dotenv` のみです。実行時依存を追加する前に、まず issue で相談してください。実行時に必要でないものは `dev` または `benchmark` extra に追加します。
+Marmo-Core は Python 3.11〜3.14 に対応し、実行時の依存関係を最小限に保っています。必須の依存パッケージは `python-dotenv` のみです。実行時依存を追加する前に、まず issue で相談してください。実行時に必要でないものは `dev` または `benchmark` extra に追加します。
 
 ```bash
 python -m pip install -e '.[dev]'

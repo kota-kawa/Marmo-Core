@@ -34,7 +34,7 @@ docker build --tag marmo-core:ci . && docker run --rm marmo-core:ci python -m un
 marmo validate resources/memory resources/tools resources/agents   # サンプルリソース
 ```
 
-CI（`.github/workflows/ci.yml`）は Python 3.10〜3.14 でテストを回し、3.14 で静的検査と
+CI（`.github/workflows/ci.yml`）は Python 3.11〜3.14 でテストを回し、3.14 で静的検査と
 リリース検査、Docker ジョブを実行する。PR を作る前にこれらを全部ローカルで通す。
 
 ## 実装規約

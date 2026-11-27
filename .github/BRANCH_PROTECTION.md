@@ -16,14 +16,14 @@ PR が `main` に入る前に、次のジョブが緑であること。
 
 | ジョブ名 | 内容 |
 |---|---|
-| `Python 3.10` 〜 `Python 3.14` | `python -W error::ResourceWarning -m unittest discover -s tests` |
+| `Python 3.11` 〜 `Python 3.14` | `python -W error::ResourceWarning -m unittest discover -s tests` |
 | `Static and release checks` | `ruff check`、`mypy marmo_core`、`release_check.py`、`check_doc_paths.py`、`check_env_documentation.py`、`check-manifest`、`build`、`twine check`、`check-wheel-contents` |
 | `Docker` | イメージをビルドし、コンテナ内でテストを実行 |
 
 ## 推奨設定
 
 - Require a pull request before merging（レビュー数はメンテナの判断。現状は単独メンテナ）。
-- Require status checks to pass before merging: 上表の 7 ジョブ。Require branches to be up to date は任意。
+- Require status checks to pass before merging: 上表の 6 ジョブ。Require branches to be up to date は任意。
 - Do not allow bypassing the above settings（管理者にも適用）。
 - Restrict force pushes / deletions。
 

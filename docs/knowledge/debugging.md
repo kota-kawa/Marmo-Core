@@ -54,7 +54,7 @@
 | `release_check.py` | `_version.py` と `pyproject.toml` の不一致、または CHANGELOG に現行版の節が無い |
 | `check_doc_paths.py` | 文書が存在しないパスを指している。参照を直すか、意図的に未追跡なら allowlist に理由付きで追加 |
 | `check_env_documentation.py` | 環境変数の読み取りと `.env.example` の不一致。同じ変更で両方を揃える |
-| `mypy` | ローカルで numpy などが入っていると、その `.pyi` が `python_version = "3.10"` 設定で構文エラーになり `errors prevented further checking` で止まる（CI 環境には入っていないので通る）。`marmo_core` 以外のエラーなら、依存を外した環境か `python -m venv` で再実行して判断する |
+| `mypy` | ローカルで numpy などが入っていると、その `.pyi` が mypy の対象 Python バージョンで構文エラーになり `errors prevented further checking` で止まる（CI 環境には入っていないので通る）。`marmo_core` 以外のエラーなら、依存を外した環境か `python -m venv` で再実行して判断する |
 | Docker | イメージに必要なファイルが無い。`.dockerignore` は `*.md` を除外し `CHANGELOG.md` だけ残す |
 
 ## ベンチマークが再現しない
