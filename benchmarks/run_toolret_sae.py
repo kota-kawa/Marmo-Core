@@ -806,6 +806,11 @@ def stage_score(data: Data, args) -> dict:
                 return method_selector(method, cache, replay, mode)
 
             for split, group in groups.items():
+                # A method that was not run on the evaluation split still has
+                # replies for the selections it shares with one that was; that
+                # partial coverage is not a result.
+                if split == evaluation and args.method and method not in args.method:
+                    continue
                 covered = [query for query in group if all(
                     _cached(make("S"), data, query, variant, options["width"])
                     for variant in VARIANTS if gts[query.id][variant])]
@@ -978,7 +983,9 @@ def main() -> None:
     parser.add_argument("--agree-model", default="haiku")
     parser.add_argument("--agree-queries", type=int, default=200)
     parser.add_argument("--method-model", default="haiku")
-    parser.add_argument("--method", action="append", choices=sorted(METHODS))
+    parser.add_argument("--method", action="append", choices=sorted(METHODS),
+                        help="methods stage: the methods to run; score stage: the LLM methods reported on "
+                             "the evaluation split (default: every method with cached replies)")
     parser.add_argument("--oracle", action="store_true", help="run the oracle-candidate S+ / E+ selections instead")
     parser.add_argument("--reference", action="append",
                         help="method the paired differences are taken against (repeatable; default: greedy, llm-set)")
