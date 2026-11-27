@@ -409,6 +409,41 @@ Honest Skills and Agents never pass activation in any configuration, and Skills 
 
 **Procedure for PRs that change retrieval, selection, or routing**: run `python3 benchmarks/run_forgery_benchmark.py --output /tmp/forgery-before.json` on the base branch and the same with `-after.json` on the changed branch, and list `selection_rate`, `activation_reach_rate`, `execution_reach_rate`, `gold_tool_loss_rate`, and `abstain_escalate_hijack_rate` of `tracked.<configuration>.tracked.<kind>.{honest,full_forgery,partial_forgery,any_forgery}` in the PR description. Add a new Retriever / Selector to `CONFIGS` before measuring it. When the results JSON is updated, update this table too.
 
+## ToolRet-SAE: select, escalate, or abstain (held-out re-evaluation)
+
+ToolRet-SAE derives three variants from each ToolRet query: S (the gold tools are permitted), E (only the gold tools' scopes are not granted), and A (the gold tools are removed). An annotator model decides which candidates could stand in for each gold tool, which fixes whether a variant is an escalate or abstain case. The Japanese README has the full description and the first evaluation; this section covers the held-out re-evaluation of 2026-11-27 (#45) and the label checks (#48). Numbers are from [`results/toolret-sae-heldout.json`](results/toolret-sae-heldout.json).
+
+- Labels are by Claude Sonnet; the methods and the second annotator are Claude Haiku. Labels and variant validity use the top 40 candidates; methods see the top 20.
+- The held-out split is the first 400 queries, in SHA-1 order of the id, of the 852 frozen in [`toolret_sae_heldout_ids.json`](toolret_sae_heldout_ids.json) (queries outside the dev / test sample, 18 subsets). Valid variants: S 400, E 205, A 167.
+- The method is `RequirementCoverageSelector(judge="strict")`, chosen on dev by a rule fixed in advance. The configuration, the adoption criteria, and the held-out split were recorded in ADR 0013 before any held-out label existed.
+
+| Held-out (400 queries) | Relevance floor | Macro accuracy | S | E | A | S Set F1 | Unneeded escalation (S) | Wrong selection (E) | Wrong selection (A) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `GreedyConstrainedSetSelector` | 0.55 (dev) | 0.386 | 0.160 | 0.268 | 0.731 | 0.108 | 0.068 | 0.161 | 0.174 |
+| `LLMSetSelector` (Haiku, 1 call) | — | 0.376 | **0.600** | 0.283 | 0.246 | **0.300** | **0.020** | 0.576 | 0.683 |
+| **`RequirementCoverageSelector` (strict, Haiku, 1 call)** | — | **0.552** | 0.468 | **0.439** | **0.749** | 0.269 | 0.070 | **0.112** | **0.174** |
+
+Pre-registered adoption criteria:
+
+1. Beats the best dev-tuned rule with a CI excluding 0: **met** (+0.165 [0.123, 0.211]).
+2. Not worse than `LLMSetSelector`: **met** (+0.176 [0.143, 0.211]).
+3. Unneeded escalation on S at most `LLMSetSelector` + 0.02: **not met** (0.070 against a bound of 0.040).
+4. At most two LLM calls per selection: **met** (one).
+
+Criterion 3 fails, as it did in the first evaluation, so the selector is not recommended and ADR 0013 stays Proposed. Of the 28 unneeded escalations, 18 had no permitted gold tool or substitute among the 20 candidates.
+
+**Label checks (#48; no human validation was done).** Agreement with a second annotator (Haiku, 100 held-out queries): kappa 0.80 on substitute judgments (7,520 pairs), 0.79 on necessity, 0.88 on variant validity. Both annotators and the method are Claude models, so correlated errors may favour the result; agreement with a model from another family has not been measured. The labels are in [`results/toolret-sae-heldout-labels.json`](results/toolret-sae-heldout-labels.json): ToolRet query and tool ids with the necessity and substitute judgments, and no query or tool text.
+
+**Effect of substitutes on ToolRet's standard metrics** ([`results/toolret-substitutes.json`](results/toolret-substitutes.json); 2,089 labelled queries, retriever `llm:hybrid-0.5`, macro):
+
+| Scoring | nDCG@10 | Recall@10 | Completeness@10 |
+|---|---:|---:|---:|
+| Gold tools only (ToolRet's own) | 0.266 | 0.348 | 0.262 |
+| Gold or a labelled substitute | 0.437 | 0.526 | 0.397 |
+| Necessary gold or a labelled substitute | 0.452 | 0.554 | 0.446 |
+
+Of 3,817 gold tools, 51.9% have a substitute among the top 40 candidates and 88.0% were judged necessary. Scoring against the gold tools alone understates retrieval on a catalog with many near-duplicates. The substitute judgments are by an LLM and cover the top 40 candidates only.
+
 ## Flat ANN comparison at 100k
 
 `run_ann_scale_benchmark.py` compares flat ANN (USearch, cosine/HNSW) with namespace hierarchy using the same 100,063 resources, 34 scenarios, embeddings, BM25 candidates, mixing weight 0.9, pool size 50, and greedy Selector. ANN is in the benchmark-only `benchmark-ann` extra and is not a runtime dependency.

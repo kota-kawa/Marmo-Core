@@ -653,6 +653,64 @@ python3 benchmarks/run_toolret_sae.py --stage score
 - **残る本質的な誤りは能力判定の甘さです**。A で何かを選んだ 194 件のうち、ラベル上の代替を含むのは 40 件でした（`LLMSetSelector` は 361 件中 118 件）。
 - **限界**: 正解の状態は LLM アノテータの判定で、人のラベルではありません。手法も同系統の Sonnet なので、モデル間の相関が提案手法を有利にしている可能性は残ります。権限は意味を持たないハッシュのスコープです。LLM の応答はキャッシュに依存し、再実行で変わります。
 
+### held-out での再評価（2026-11-27、#45）と、ラベルの検証（#48）
+
+前回の test 分割は一度評価に使ったので、ToolRet の未使用クエリから held-out を作り、手法を直してから一度だけ評価しました。数値は [`results/toolret-sae-heldout.json`](results/toolret-sae-heldout.json) によります。
+
+```bash
+python3 benchmarks/run_toolret_sae.py --stage heldout                     # held-out の ID を固定（済み）
+python3 benchmarks/run_toolret_llm_stages.py --stage decompose --model haiku --split heldout --sample 400
+python3 benchmarks/run_toolret_sae.py --stage pools --stage label --split heldout --sample 400
+python3 benchmarks/run_toolret_sae.py --stage agree --agree-queries 100
+python3 benchmarks/run_toolret_sae.py --stage methods --split heldout --sample 400 --method llm-set --method req-cover-strict
+python3 benchmarks/run_toolret_sae.py --stage score --stage export-labels --stage substitutes --method llm-set --method req-cover-strict
+```
+
+**前回との違い**（このため、上の test の表とは直接比べられません）:
+
+- ラベルは Claude Sonnet、手法と第 2 アノテータは Claude Haiku です（CLI 呼び出しが Sonnet と Haiku に限定されたため。前回は Opus / Sonnet / Sonnet）。
+- ラベルと変種の有効性は上位 40 候補で判定します（前回は 20）。手法が見る候補は 20 のままです。
+- held-out は [`toolret_sae_heldout_ids.json`](toolret_sae_heldout_ids.json) の 852 件（標本に含まれないクエリ、18 サブセット）のうち、ID の SHA-1 順の先頭 400 件です。有効な変種は S 400、E 205、A 167 件でした。
+- 手法は、判定プロンプトを厳しくした `RequirementCoverageSelector(judge="strict")` です。dev で 4 つの設定から事前の規則で選び、設定・採用基準・held-out を、held-out のラベルを付ける前に ADR 0013 に記録しました。escalate の前に次点の許可候補を判定する経路（`extra_candidates`）は、dev で主指標を下げたので採りませんでした。
+
+| held-out（400 クエリ） | 関連度の下限 | マクロ正答率 | S 正答 | E 正答 | A 正答 | S Set F1 | S 不要 escalate | E 誤選択 | A 誤選択 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `GreedyConstrainedSetSelector` | 0.55（dev） | 0.386 | 0.160 | 0.268 | 0.731 | 0.108 | 0.068 | 0.161 | 0.174 |
+| `CoverageSetSelector` | 0.55（dev） | 0.379 | 0.138 | 0.268 | 0.731 | 0.122 | 0.070 | 0.161 | 0.174 |
+| `LLMSetSelector`（Haiku、1 回） | — | 0.376 | **0.600** | 0.283 | 0.246 | **0.300** | **0.020** | 0.576 | 0.683 |
+| **`RequirementCoverageSelector`（strict、Haiku、1 回）** | — | **0.552** | 0.468 | **0.439** | **0.749** | 0.269 | 0.070 | **0.112** | **0.174** |
+
+事前登録した採用基準の結果:
+
+1. dev で最良の規則（greedy、下限 0.55）を上回り、CI が 0 を含まない: **満たす**（+0.165 [0.123, 0.211]）。
+2. `LLMSetSelector` に劣らない: **満たす**（+0.176 [0.143, 0.211]）。
+3. S での不要な escalate が `LLMSetSelector` + 0.02 以下: **満たさない**（0.070、上限は 0.020 + 0.02 = 0.040）。
+4. 1 回の選択あたりの LLM 呼び出しが最大 2 回: **満たす**（1 回）。
+
+基準 3 は前回と同じく未達なので、推奨・既定化はしません（ADR 0013 は Proposed のまま）。
+
+- 主指標の差は前回（+0.149）と同程度で、モデルと分割を替えても再現しました。E と A で選んでしまう誤りが `LLMSetSelector` より大幅に少ないことが効いています。
+- S の不要な escalate 28 件のうち 18 件は、候補 20 件に許可された正解・代替が無い状況でした（`diagnostics`）。同じ下限の greedy も 0.068 で、`LLMSetSelector` だけが 0.020 と低い値です。`LLMSetSelector` は E の 58% で権限の無い正解の代わりに別の候補を選ぶので、S で escalate が少ないことと E で escalate できないことは同じ性質の表と裏です。
+- S の正答は `LLMSetSelector` より 0.133 低く、誤った棄権が多い（0.308）ことが原因です。123 件中 90 件は候補に必要なツールが無い状況でした。
+- `per_requirement="all"` は 0.561 でしたが、dev の規則で選んだのは best なので、判定には best を使いました。
+
+**ラベルの検証**（#48。人による検証は行っていません）:
+
+- 第 2 アノテータ（Haiku、held-out の 100 クエリ）との一致度は、代替判定（7,520 組）が κ=0.80、必要性が κ=0.79、変種の有効性が κ=0.88 でした。どちらも Claude 系のモデルで、手法も Haiku なので、同系統どうしの相関が結果を有利にしている可能性は排除できません。別系統のモデルとの一致度は未測定です。
+- ラベルは [`results/toolret-sae-heldout-labels.json`](results/toolret-sae-heldout-labels.json) に置きました（dev 833、test 856、held-out 400 件）。中身は ToolRet のクエリ ID とツール ID、必要性と代替の判定だけで、クエリやツールの本文は含みません。
+
+**代替ツールが ToolRet の標準指標に与える影響**（[`results/toolret-substitutes.json`](results/toolret-substitutes.json)、ラベルのある 2,089 クエリ、検索は `llm:hybrid-0.5`、macro）:
+
+| 採点 | nDCG@10 | Recall@10 | Completeness@10 |
+|---|---:|---:|---:|
+| 正解ツールだけ（ToolRet の標準） | 0.266 | 0.348 | 0.262 |
+| 正解または代替 | 0.437 | 0.526 | 0.397 |
+| 必要な正解または代替 | 0.452 | 0.554 | 0.446 |
+
+- 正解ツール 3,817 件のうち 51.9% に上位 40 候補内の代替があり、「必要」と判定されたのは 88.0% でした。
+- 代替を認めると nDCG@10 は 0.266 から 0.437 に上がります。重複の多いカタログでは、正解だけで採点する標準指標が検索の正しさを大きく過小評価していることになります。複数ツールのクエリ（911 件）の Completeness@10 は 0.108 から、必要な正解または代替で 0.300 になります。
+- 代替の判定は LLM によるもので、上位 40 候補の中だけです。値は上限の目安として読んでください。
+
 ## 注意
 
 `resources/skills` は出典を `resources/skills/SOURCES.md` に記録した外部リポジトリのコピーで、ベンチマーク・検証専用です。再配布ライセンスの整理が完了するまで、このコーパスを成果物として再配布しないでください。この方針のため、`.gitignore` で git 管理から外し、`MANIFEST.in` でも sdist から除外しています。
