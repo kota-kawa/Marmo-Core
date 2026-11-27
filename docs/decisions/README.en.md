@@ -20,6 +20,7 @@ Records of important technical decisions. When changing or adding a decision, re
 | [0012](0012-multi-intent-retrieval-and-coverage-selection.en.md) | Decompose multi-intent goals for retrieval and select sets by marginal facet coverage (opt-in; defaults unchanged) | Accepted |
 | [0014](0014-gate-aware-selection.en.md) | Selectors neither select nor escalate on a candidate the gate always denies (opt-in; defaults unchanged; 0013 is used on a research branch) | Accepted |
 | [0015](0015-execution-right-and-call-journal.en.md) | Take the right to execute a task before any side effect, and journal calls by id so a recorded result is never produced twice | Accepted |
+| [0016](0016-mcp-gateway-outside-the-kernel.en.md) | The MCP gateway applies the same gates outside the Kernel and refuses what needs a human | Accepted |
 
 ## Format
 

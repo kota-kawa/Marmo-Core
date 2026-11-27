@@ -77,6 +77,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `MCPGatewayServer` and `marmo mcp-serve` serve the Tool resources to an MCP
+  client over stdio. The client sees two tools: `search_tools` routes a goal
+  through the candidate pool, set selection, and the activation gate and
+  returns the usable tools with their input schemas; `call_tool` runs one of
+  them through the execution gate. The policy context is fixed at start-up, a
+  tool the session was not shown cannot be called, and whatever a gate would
+  escalate is refused, because the channel has no approver
+  (`--approve-resource` approves a side effect in advance). After a tool
+  result has been returned, side-effecting calls are refused. See ADR 0016.
+  - `MCPGatewayServer` と `marmo mcp-serve` で、Tool リソースを stdio の MCP クライアントに
+    公開できるようにしました。クライアントに見えるツールは 2 つです。`search_tools` は目標を
+    候補プール・集合選択・activation gate に通し、使えるツールを入力スキーマ付きで返します。
+    `call_tool` はそのうちの 1 つを execution gate を通して実行します。ポリシーコンテキストは
+    起動時に固定され、セッションに提示していないツールは呼べません。この経路には承認者が
+    いないため、ゲートが escalate とする操作は拒否します（`--approve-resource` で副作用を事前に
+    承認できます）。ツールの結果を返した後は、副作用のある呼び出しを拒否します。ADR 0016 を
+    参照してください。
+- `FunctionToolkit` registers Python functions as Tool resources with a
+  decorator. The input schema comes from the signature (including `Optional`,
+  `Literal`, and `Annotated[T, "description"]`), the description from the
+  docstring, and the function stays the handler; `resources` and
+  `implementations` go to a registry and `tool_implementations=`. Defaults
+  match `function_tool_resources` (`community`, `external`,
+  `tools.<namespace>`).
+  - `FunctionToolkit` で、デコレータを付けた Python 関数を Tool リソースとして登録できるように
+    しました。入力スキーマはシグネチャ（`Optional`、`Literal`、`Annotated[T, "説明"]` を含む）
+    から、説明は docstring から作り、関数がそのままハンドラーになります。`resources` と
+    `implementations` を registry と `tool_implementations=` に渡します。既定値は
+    `function_tool_resources` と同じです（`community`、`external`、`tools.<namespace>`）。
+
 - `benchmarks/run_toolret_sae.py` adds ToolRet-SAE, which scores select,
   escalate, and abstain decisions on ToolRet: each query gets a variant with
   the gold tools permitted, one with only their scopes withheld, and one with
