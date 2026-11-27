@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Raise the minimum supported Python version to 3.11 following the end of
+  upstream support for Python 3.10.
+  - Python 3.10 の upstream サポート終了に伴い、最低対応バージョンを 3.11 に引き上げました。
+
 ### Added
 
 - `Kernel(gate_aware_selection=True)` and `SelectionContext.policy` hand the

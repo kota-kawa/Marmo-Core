@@ -40,7 +40,7 @@ For each goal, the kernel searches a registry, selects resources, checks policy 
 | | |
 | --- | --- |
 | **1 runtime dependency** | `python-dotenv`. HTTP uses `urllib`, and persistence uses JSONL files and `sqlite3` from the standard library. |
-| **600+ unit tests** | Run in CI on Python 3.10 to 3.14 with `ResourceWarning` treated as an error. Provider responses are replayed through an injectable transport, so the suite needs no API key. |
+| **600+ unit tests** | Run in CI on Python 3.11 to 3.14 with `ResourceWarning` treated as an error. Provider responses are replayed through an injectable transport, so the suite needs no API key. |
 | **99.3% less context** | 223,775 tokens of whole-catalog metadata against 1,472 tokens for the routed top 5, measured on 1,000 resources. |
 | **7 ms search** | Mean warm latency of the pure-Python BM25F retriever over 1,000 resources (p95 15 ms). |
 | **15 extension points** | Retriever, candidate pool, set selector, LLM, embeddings, policy, human approval, planner, state store, and others can be replaced without changing the kernel. |
@@ -281,7 +281,7 @@ Fixes ship with a regression test that fails when the fix is reverted. The longe
 
 Every pull request runs these checks in CI:
 
-- The test suite on Python 3.10, 3.11, 3.12, 3.13, and 3.14, with `ResourceWarning` as an error
+- The test suite on Python 3.11, 3.12, 3.13, and 3.14, with `ResourceWarning` as an error
 - `ruff` and `mypy`
 - `scripts/release_check.py`: the version files and the changelog agree
 - `scripts/check_doc_paths.py`: every path named in the documentation exists
@@ -293,7 +293,7 @@ Frozen fixtures in `tests/fixtures/compat/v0.3.0/` fail the suite if a public na
 
 ## Install
 
-Requires **Python 3.10 or newer**.
+Requires **Python 3.11 or newer**.
 
 ```bash
 python -m pip install marmo-core
@@ -542,7 +542,7 @@ Tool や Skill が千件あるエージェントは、その全部をプロン�
 | | |
 | --- | --- |
 | **実行時依存 1 つ** | `python-dotenv` のみ。HTTP は `urllib`、永続化は JSONL ファイルと標準ライブラリの `sqlite3` を使います。 |
-| **600 件以上の単体テスト** | CI が Python 3.10〜3.14 で実行し、`ResourceWarning` もエラーとして扱います。プロバイダの応答は差し替え可能な transport で再生するため、API キーなしで通ります。 |
+| **600 件以上の単体テスト** | CI が Python 3.11〜3.14 で実行し、`ResourceWarning` もエラーとして扱います。プロバイダの応答は差し替え可能な transport で再生するため、API キーなしで通ります。 |
 | **文脈を 99.3% 削減** | カタログ全体のメタデータ 223,775 トークンに対し、ルーティング後の上位 5 件は 1,472 トークン（1,000 件で測定）。 |
 | **検索 7 ms** | 純 Python の BM25F 検索を 1,000 件に対して実行したときのウォーム時平均（p95 は 15 ms）。 |
 | **拡張点 15 か所** | Retriever、候補プール、Set Selector、LLM、埋め込み、ポリシー、人の承認、Planner、状態ストアなどを、カーネルを変えずに差し替えられます。 |
@@ -783,7 +783,7 @@ LLM の各段は Claude Sonnet で、ゴールごとに 1 回ずつ呼び出し�
 
 すべての PR で、CI が次の検査を実行します。
 
-- Python 3.10、3.11、3.12、3.13、3.14 でのテスト（`ResourceWarning` はエラー）
+- Python 3.11、3.12、3.13、3.14 でのテスト（`ResourceWarning` はエラー）
 - `ruff` と `mypy`
 - `scripts/release_check.py`: バージョンを書いたファイルと変更履歴の整合
 - `scripts/check_doc_paths.py`: 文書に書かれたパスが実在すること
@@ -795,7 +795,7 @@ LLM の各段は Claude Sonnet で、ゴールごとに 1 回ずつ呼び出し�
 
 ### インストール
 
-**Python 3.10 以降**が必要です。
+**Python 3.11 以降**が必要です。
 
 ```bash
 python -m pip install marmo-core

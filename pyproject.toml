@@ -7,7 +7,7 @@ name = "marmo-core"
 version = "0.7.0"
 description = "Lightweight AI Agent Kernel primitives: resource registry, search CLI, and guarded execution."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 authors = [
@@ -18,7 +18,6 @@ classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
@@ -62,13 +61,13 @@ marmo_core = ["py.typed"]
 ignore = ["AGENTS.md", "ARCHITECTURE.md", "ARCHITECTURE.en.md", "要件定義書１.md"]
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 120
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 files = ["marmo_core"]
 pretty = true

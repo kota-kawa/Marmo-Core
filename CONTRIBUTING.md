@@ -4,7 +4,7 @@
 
 ## Setup
 
-Marmo-Core supports Python 3.10 through 3.14 and keeps its runtime dependency
+Marmo-Core supports Python 3.11 through 3.14 and keeps its runtime dependency
 surface minimal — `python-dotenv` is the only required dependency. Please do
 not add a runtime dependency without discussing it in an issue first; the dev
 and benchmark extras are the place for anything that is not needed at runtime.
