@@ -1,6 +1,6 @@
-skills_collect.log
-skills/.state.json
-skills/.repos.json
+# Output of tools/collect_skills.py (spelled out although /resources/* below already covers it)
+tools/skills_collect.log
+/resources/skills/
 
 # Downloaded resources (the bundled samples remain tracked)
 /resources/*

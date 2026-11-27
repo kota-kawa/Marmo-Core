@@ -204,6 +204,64 @@ class RuleBasedPlannerTests(unittest.TestCase):
 
         self.assertEqual([step.resource_id for step in plan.steps], ["tool.a"])
 
+    def test_a_versioned_dependency_becomes_an_edge_to_that_version(self) -> None:
+        definitions = _definitions(
+            _tool("tool.a", "Fetch.", version="1.0.0"),
+            _tool("tool.a", "Fetch again.", version="2.0.0"),
+            _tool("tool.b", "Publish.", dependencies=["tool.a@2.0.0"]),
+        )
+
+        plan = RuleBasedPlanner().plan("do the thing", definitions)
+
+        self.assertEqual(len({step.id for step in plan.steps}), 3)
+        self.assertEqual(plan.step("s3").depends_on, ("s2",))
+        self.assertEqual(plan.order()[-1][0].id, "s3")
+        self.assertEqual(validate_plan(plan, resources_by_id(definitions), PolicyContext()), [])
+
+    def test_a_versioned_dependency_orders_the_dependent_after_a_single_version(self) -> None:
+        definitions = _definitions(
+            _tool("tool.b", "Publish.", dependencies=["tool.a@1.0.0"]),
+            _tool("tool.a", "Fetch.", version="1.0.0"),
+        )
+
+        plan = RuleBasedPlanner().plan("do the thing", definitions)
+
+        self.assertEqual(plan.step("s1").depends_on, ("s2",))
+        self.assertEqual([{s.id for s in wave} for wave in plan.order()], [{"s2"}, {"s1"}])
+
+    def test_a_dependency_on_a_version_that_is_not_offered_is_dropped(self) -> None:
+        definitions = _definitions(
+            _tool("tool.a", "Fetch.", version="1.0.0"),
+            _tool("tool.b", "Publish.", dependencies=["tool.a@2.0.0"]),
+        )
+
+        plan = RuleBasedPlanner().plan("do the thing", definitions)
+
+        self.assertEqual(plan.step("s2").depends_on, ())
+
+    def test_a_bare_id_shared_by_several_offered_versions_is_ambiguous(self) -> None:
+        # ResourceRegistry.get refuses a bare id that several versions carry;
+        # the planner adds no edge for it either.
+        definitions = _definitions(
+            _tool("tool.a", "Fetch.", version="1.0.0"),
+            _tool("tool.a", "Fetch again.", version="2.0.0"),
+            _tool("tool.b", "Publish.", dependencies=["tool.a"]),
+        )
+
+        plan = RuleBasedPlanner().plan("do the thing", definitions)
+
+        self.assertEqual(plan.step("s3").depends_on, ())
+
+    def test_a_bare_id_names_its_only_offered_version(self) -> None:
+        definitions = _definitions(
+            _tool("tool.a", "Fetch.", version="2.0.0"),
+            _tool("tool.b", "Publish.", dependencies=["tool.a"]),
+        )
+
+        plan = RuleBasedPlanner().plan("do the thing", definitions)
+
+        self.assertEqual(plan.step("s2").depends_on, ("s1",))
+
     def test_default_replan_drops_the_failure_and_its_dependents(self) -> None:
         plan = Plan(
             goal="g",
@@ -266,6 +324,75 @@ class LLMPlannerTests(unittest.TestCase):
 
         self.assertEqual(first, second)
         self.assertEqual(len(llm.requests), 1)
+
+    def _replan(self, reply: str, plan: Plan, *entries: dict) -> Plan:
+        planner = self._planner(reply)
+        return planner.replan(plan, _definitions(*entries))
+
+    def test_replan_renames_a_colliding_step_and_the_references_to_it(self) -> None:
+        # The new "s1" collides with the finished s1 and is renamed; the new
+        # "s2" must wait for the renamed step, not for the finished s1.
+        plan = Plan(
+            goal="g",
+            steps=(_step("s1", status="completed"), _step("s2", "tool.b", status="failed")),
+        )
+        reply = (
+            '{"steps": [{"id": "s1", "resource_id": "tool.a"}, '
+            '{"id": "s2", "resource_id": "tool.c", "depends_on": ["s1"]}]}'
+        )
+
+        revised = self._replan(
+            reply, plan, _tool("tool.a", "A."), _tool("tool.b", "B."), _tool("tool.c", "C.")
+        )
+
+        self.assertEqual([step.id for step in revised.steps], ["s1", "s1r1", "s2"])
+        self.assertEqual(revised.step("s2").depends_on, ("s1r1",))
+        offered = resources_by_id(_definitions(_tool("tool.a", "A."), _tool("tool.c", "C.")))
+        self.assertEqual(validate_plan(revised, offered), [])
+        self.assertEqual([step.id for step in revised.ready()], ["s1r1"])
+        self.assertEqual([{s.id for s in wave} for wave in revised.order()], [{"s1", "s1r1"}, {"s2"}])
+
+    def test_replan_keeps_references_to_finished_steps_that_were_not_renamed(self) -> None:
+        plan = Plan(
+            goal="g",
+            steps=(
+                _step("s1", status="completed"),
+                _step("s2", "tool.a", status="completed"),
+                _step("s3", "tool.b", status="failed"),
+            ),
+        )
+        reply = (
+            '{"steps": [{"id": "n1", "resource_id": "tool.a", "depends_on": ["s1"]}, '
+            '{"id": "s2", "resource_id": "tool.c", "depends_on": ["n1", "s1"]}]}'
+        )
+
+        revised = self._replan(
+            reply, plan, _tool("tool.a", "A."), _tool("tool.b", "B."), _tool("tool.c", "C.")
+        )
+
+        self.assertEqual([step.id for step in revised.steps], ["s1", "s2", "n1", "s2r1"])
+        self.assertEqual(revised.step("n1").depends_on, ("s1",))
+        self.assertEqual(revised.step("s2r1").depends_on, ("n1", "s1"))
+        self.assertEqual([step.id for step in revised.ready()], ["n1"])
+
+    def test_replan_rename_does_not_collide_with_another_new_step(self) -> None:
+        plan = Plan(
+            goal="g",
+            steps=(_step("s1", status="completed"), _step("s2", "tool.b", status="failed")),
+        )
+        reply = (
+            '{"steps": [{"id": "s1", "resource_id": "tool.a"}, '
+            '{"id": "s1r1", "resource_id": "tool.c", "depends_on": ["s1"]}]}'
+        )
+
+        revised = self._replan(
+            reply, plan, _tool("tool.a", "A."), _tool("tool.b", "B."), _tool("tool.c", "C.")
+        )
+
+        ids = [step.id for step in revised.steps]
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertEqual(revised.step("s1r1").depends_on, (revised.steps[1].id,))
+        self.assertNotEqual(revised.steps[1].id, "s1r1")
 
     def test_llm_failure_falls_back_to_dropping_the_failed_branch(self) -> None:
         class _Broken(MockLLMProvider):

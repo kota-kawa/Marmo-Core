@@ -59,13 +59,22 @@ _JAPANESE = {
     ),
     "permission granted to the task context; repeatable": "タスクのコンテキストに付与する権限。複数回指定可",
     "validate and record tool calls without invoking any tool handler": "ツールの処理本体を呼び出さずに、ツール呼び出しを検証して記録する",
-    "return non-zero when a resource is skipped or a tool named in --tool-args is not evaluated": "リソースがスキップされた場合や、--tool-args のツールが評価されなかった場合は非ゼロで終了する",
+    (
+        "return non-zero when a resource is skipped or a tool named in --tool-args is not evaluated "
+        "(--tool-args counts only where it is used, see its help)"
+    ): (
+        "リソースがスキップされた場合や、--tool-args のツールが評価されなかった場合は非ゼロで終了する"
+        "（--tool-args は使われる場合にだけ数える。--tool-args のヘルプを参照）"
+    ),
     "bind a tool resource id to an importable callable; repeatable": "ツールのリソース ID を import 可能な呼び出し先に結び付ける。複数回指定可",
     "bind an agent resource id to a synchronous callable; repeatable": "エージェントのリソース ID を同期の呼び出し先に結び付ける。複数回指定可",
     (
-        'arguments the mock LLM passes per tool id, e.g. \'{"tool.files.read-text": {"path": '
-        '"README.md"}}\'; ignored when --llm is a real provider'
-    ): 'モック LLM がツール ID ごとに渡す引数。例 \'{"tool.files.read-text": {"path": "README.md"}}\'。--llm で実モデルを指定すると無視される',
+        'arguments per tool id, e.g. \'{"tool.files.read-text": {"path": "README.md"}}\'; used by '
+        "--llm mock and by --planner rule, ignored otherwise (a real provider chooses its own arguments)"
+    ): (
+        'ツール ID ごとの引数。例 \'{"tool.files.read-text": {"path": "README.md"}}\'。'
+        "--llm mock と --planner rule で使われ、それ以外では無視される（実モデルは引数を自分で決める）"
+    ),
     "search candidates considered before set selection": "集合選択の前に考慮する検索候補の件数",
     "tool call budget before the task fails": "タスクを失敗とするまでに許可するツール呼び出しの上限",
     "times the model may be handed a tool-argument error and asked to call again": "ツール引数が不正なとき、モデルに再試行を求める回数",
@@ -75,7 +84,13 @@ _JAPANESE = {
     "maximum estimated tokens for the compiled execution context": "組み立て後の実行コンテキストに許可する推定トークン数の上限",
     "per-tool execution timeout in seconds": "ツール 1 回あたりの実行タイムアウト（秒）",
     "process mode stops importable handlers at the deadline": "process モードでは期限に達すると import 可能な処理を停止する",
-    "write this run's hash-chained audit records to a JSONL file (overwrites)": "実行のハッシュチェーン付き監査レコードを JSONL に書き出す（上書き）",
+    (
+        "append this run's hash-chained audit records to a JSONL file; an existing file's chain "
+        "is verified and continued, and a broken chain is refused"
+    ): (
+        "実行のハッシュチェーン付き監査レコードを JSONL に追記する。既存ファイルのチェーンは検証して"
+        "続きに追記し、壊れていれば拒否する"
+    ),
     "ask for confirmations on this terminal instead of pausing the task": "タスクを一時停止せず、この端末で承認を求める",
     "answer a paused task's confirmation and continue it": "一時停止したタスクの確認に回答して再開する",
     "model that continues the task; use the same choice as the original run": "タスクを続行するモデル。最初の実行と同じ値を選ぶ",
@@ -85,9 +100,13 @@ _JAPANESE = {
     "reject it and end the task": "確認待ちの操作を拒否し、タスクを終了する",
     "leave the task paused for later": "タスクを一時停止のままにする",
     'approve with replacement tool arguments, e.g. \'{"path": "safe.txt"}\'': 'ツール引数を差し替えて承認する。例 \'{"path": "safe.txt"}\'',
-    "who is answering (checked against --approver)": "回答者（--approver と照合する）",
+    (
+        "who is answering; required to approve or modify when --approver is set (checked against --approver)"
+    ): "回答者。--approver を指定した場合、承認と修正承認には必須（--approver と照合する）",
     "free-text reason recorded in the audit log": "監査ログに残す自由記述の理由",
-    "mock-LLM arguments per tool id": "モック LLM がツール ID ごとに渡す引数",
+    "arguments per tool id for --llm mock or --planner rule; ignored otherwise": (
+        "--llm mock または --planner rule で使うツール ID ごとの引数。それ以外では無視される"
+    ),
     "match the run's timeout mode": "最初の実行と同じタイムアウトモードを使う",
     "JSONL audit file to continue the hash chain in": "ハッシュチェーンの続きを追記する監査用 JSONL ファイル",
     "list tasks held in a state store": "状態ストアに保存されているタスクを一覧表示する",
@@ -137,6 +156,16 @@ _JAPANESE = {
     "--tool-args must be a JSON object mapping tool ids to argument objects": (
         "--tool-args にはツール ID と引数オブジェクトの対応を JSON オブジェクトとして指定してください"
     ),
+    "--modify must not be empty; pass replacement tool arguments as a JSON object": (
+        "--modify には差し替えるツール引数を JSON オブジェクトとして指定してください（空は指定できません）"
+    ),
+    "cannot load {target}: {detail}": "{target} を読み込めません（{detail}）",
+    (
+        "cannot continue the audit log {path}: {detail}; fix or move the file, or choose another --audit-log"
+    ): (
+        "監査ログ {path} の続きを書けません（{detail}）。ファイルを修正または退避するか、別の --audit-log を指定してください"
+    ),
+    "cannot write the audit log {path}: {detail}": "監査ログ {path} に書き込めません（{detail}）",
     "{resource_kind} impl must be ID=MODULE:FUNC: {value}": (
         "{resource_kind} の実装は ID=MODULE:FUNC の形式で指定してください（{value}）"
     ),

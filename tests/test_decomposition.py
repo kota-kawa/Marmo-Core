@@ -190,6 +190,32 @@ class DecomposedRetrieverTests(unittest.TestCase):
             "reserve a hotel": {"tool.hotel": 1.0},
         }
 
+    def test_results_of_a_failed_and_a_successful_decomposition_stay_comparable_for_coverage(self) -> None:
+        """The first search gets no sub-tasks (the decomposer failed), a later top-up search does."""
+
+        class FailsOnce(QueryDecomposer):
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def decompose(self, task: str) -> list[str]:
+                self.calls += 1
+                return [] if self.calls == 1 else ["book a flight", "reserve a hotel"]
+
+        registry = self._registry()
+        retriever = DecomposedRetriever(_Table(self._table()), FailsOnce())
+        primary = retriever.search(registry, SearchQuery(task=self.GOAL, top_k=5))
+        top_up = retriever.search(registry, SearchQuery(task=self.GOAL, top_k=5, kinds=("tool",)))
+        self.assertFalse(any(key.startswith("facet.") for result in primary for key in result.components))
+        self.assertTrue(all("facet.0" in result.components for result in top_up))
+
+        flights = next(result for result in primary if result.resource.metadata.id == "tool.flights")
+        hotel = next(result for result in top_up if result.resource.metadata.id == "tool.hotel")
+        selection = CoverageSetSelector().select([flights, hotel], context=SelectionContext())
+
+        self.assertEqual(
+            sorted(result.resource.metadata.id for result in selection.results), ["tool.flights", "tool.hotel"]
+        )
+
     def test_without_sub_tasks_it_is_the_inner_search(self) -> None:
         registry = self._registry()
         inner = _Table(self._table())
@@ -287,6 +313,14 @@ class CoverageSetSelectorTests(unittest.TestCase):
         selection = CoverageSetSelector(min_gain=0.1).select(results, context=SelectionContext())
         self.assertEqual(selection.status, "selected")
         self.assertEqual([r.resource.metadata.id for r in selection.results], ["tool.flights", "tool.hotel"])
+
+    def test_a_result_ranked_without_decomposition_counts_as_the_goal_facet(self) -> None:
+        results = [
+            _result("tool.flights", 0.9),
+            _result("tool.flights-2", 0.5, (0.5, 0.0)),
+        ]
+        selection = CoverageSetSelector().select(results, context=SelectionContext())
+        self.assertEqual([r.resource.metadata.id for r in selection.results], ["tool.flights"])
 
     def test_coverage_is_counted_per_kind(self) -> None:
         results = [

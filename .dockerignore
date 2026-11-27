@@ -1,4 +1,9 @@
 .git
+# Local environment files hold API keys and must never enter the build context.
+# .env.example is not needed in the image: the Dockerfile never copies it, and
+# the repository checks that read it only run from a full checkout.
+**/.env
+**/.env.*
 .agents
 .codex
 /resources/*

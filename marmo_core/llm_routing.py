@@ -191,7 +191,8 @@ class LLMRerankRetriever(_LLMFailureTracker, Retriever):
         pool = candidates[: self.rerank_pool]
         ranked_ids = self._ranked_ids(task, pool)
         by_id = {result.resource.metadata.id: result for result in pool}
-        reordered = [by_id[rid] for rid in ranked_ids if rid in by_id]
+        # A reply naming one id twice must not take two slots of the final top_k.
+        reordered = [by_id[rid] for rid in dict.fromkeys(ranked_ids) if rid in by_id]
         chosen = {result.resource.metadata.id for result in reordered}
         reordered += [r for r in candidates if r.resource.metadata.id not in chosen]
         return reordered[: query.top_k]

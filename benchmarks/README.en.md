@@ -92,6 +92,7 @@ We measured two ways to add a small LLM call to Layer 1 (derived from proposal A
 
 ## Interpreting the results
 
+- **Result JSON files have two provenance formats.** Files with a `provenance` key (schema 2) record the 40-hex `marmo_core_commit`, whether the checkout was dirty, dataset revisions, input SHA-256 hashes, models, and arguments. Legacy files lack it: their `marmo_core_commit` is an 8-character short SHA or missing (the 15 `adaptive-*`, `scale-routing-*`, and `set-selection-*` files). Re-measure at the recorded commit before comparing a legacy number with a new run. Legacy ToolRet results fetched the dataset from the moving `main` branch, so the data version cannot be identified (both repositories were last updated in 2025-03, and downloads are now pinned to those commits).
 - **The style breakdown accurately shows the strength of proposal A (the rule-based approach)**: hit@1 is a practical 90% for direct cases with overlapping vocabulary, but drops sharply for paraphrases (29%) and abstractions (48%). This quantitatively supports the weakness of proposal A in Section 15 of the requirements document (“depends on lexical matching”).
 - **hybrid-hash is a zero-dependency offline alternative, not true semantic search.** It slightly improves paraphrase (+5 points), worsens abstract, and is on par with BM25 overall. The main proposal B configuration is model-based embeddings (hybrid-model).
 - **Real embeddings (hybrid-model) demonstrate proposal B’s claim**: hit@1 61% → 77%, paraphrase 29% → 57%, abstract 48% → 70%, recall@50 90% → 99% (paraphrase 83% → 97%). This assumes candidate generation is expanded from “BM25 top results only” to the **union of BM25 results and embedding neighbors**. Reranking only BM25 candidates would omit paraphrases with no lexical overlap from the pool, capping recall at the BM25 ceiling.
@@ -430,6 +431,8 @@ Every ToolRet query is answerable and every tool is usable, so ToolRet cannot sc
 
 Permissions are opaque scopes (40, assigned by a hash of the tool id) attached after retrieval. Whether E and A really are escalate and abstain cases is decided by an annotator model (Claude Sonnet): for each gold tool it judges whether the request needs it and which of the top 40 candidates could stand in for it, and a variant is valid only when some needed gold tool has no (for E, no permitted) substitute. **The labels are by an LLM; no human validation was done.**
 
+To create labels from scratch (this calls the annotator, Sonnet), run the commands below. They label the held-out split only, not the 833 dev queries the rules' relevance floors are tuned on. **To score from the published labels you do not need the annotator**; see "Rescoring from the published labels" below.
+
 ```bash
 python3 benchmarks/run_toolret_llm_stages.py --stage decompose --model haiku --split heldout --sample 400
 python3 benchmarks/run_toolret_sae.py --stage pools --stage label --split heldout --sample 400
@@ -439,6 +442,8 @@ python3 benchmarks/run_toolret_sae.py --stage score --stage export-labels --stag
 ```
 
 - **Splits**: dev / test halve the sample of `run_toolret_benchmark.py` (1,689 queries). The held-out split is 852 queries outside that sample (18 subsets), frozen in [`toolret_sae_heldout_ids.json`](toolret_sae_heldout_ids.json). The evaluation below uses the first 400 of them in SHA-1 order of the id (valid variants: S 400, E 205, A 167).
+- **Overlap with earlier evaluations** (#78): the held-out split excludes **only the sample (1,689 queries)**. The full test half under the same split rule (parity of the id's SHA-1; 3,920 queries), whose retrieval and decomposition were measured in [`results/toolret-test-full.json`](results/toolret-test-full.json), is not excluded. Counted on the pinned ToolRet data (below), 431 of the 852 frozen queries and 206 of the 400 evaluated queries are in that full test split by id. Queries under another id whose normalized text (whitespace collapsed, lower-cased; `toolret.normalize_text`) equals one in the full test split number 13 of 852 and 5 of 400. Overlap with the sample is 0 by id and by text. Whether the full-test results were used to tune any method is not recorded and unconfirmed. So **the ToolRet-SAE held-out split is not "unused data" independent of earlier evaluations for retrieval and decomposition methods**; read this section as a comparison of rules tuned on the sample (dev) and LLM methods on held-out queries.
+- **Split of unused data**: to claim an evaluation of a retrieval or decomposition method on unused data, freeze before evaluating, and commit, a split that drops every query in the sample, the full test split, and the SAE held-out list, plus any query whose normalized text matches one of them, with `python3 benchmarks/run_toolret_sae.py --stage fresh-heldout` (`toolret.select_fresh_heldout`; on the current data 853 queries over 14 subsets, SHA-256 of the id list `6278eecd…`). No frozen list is committed yet, so none of the results in this section is an evaluation on unused data. Scoring on this split is not implemented. The old split (`select_heldout` and `toolret_sae_heldout_ids.json`) keeps its function, ids, and defaults, so results on it stay comparable.
 - **Models**: labels by Sonnet; `LLMSetSelector` and the second annotator are Haiku. Retrieval is `llm:hybrid-0.5`, and every method chooses among the top 20 candidates.
 - **Primary metric**: the macro average of accuracy on S, E, and A. S counts as correct only when the selected set contains every needed gold tool or a substitute.
 
@@ -455,10 +460,36 @@ Results are in [`results/toolret-sae-heldout.json`](results/toolret-sae-heldout.
 - **An LLM asked for the set and the status together selects anyway.** `LLMSetSelector` is best on S but selects something in 68% of A and 58% of E. Its macro accuracy does not differ from greedy's (−0.010 [−0.053, 0.033]).
 - A research selector that decides the status from per-requirement capability judgments and the declared constraints reached 0.552 on the same held-out queries (`benchmarks/results/toolret-sae-heldout.json` at commit f4ef28e7 of the `research/requirement-coverage` branch; not in this branch's result file), but missed one pre-registered adoption criterion (unneeded escalation on S), so it is not in `main` (#45, branch `research/requirement-coverage`).
 
+**Metric version** (#79): `metric_version` in a results JSON is the version of the metrics. **The table above and [`results/toolret-sae-heldout.json`](results/toolret-sae-heldout.json) are version 1** (a JSON without the key is version 1): E counted as correct whenever the status was `escalate`. In the published results Haiku returned `escalate` on 58 of 205 E variants but named a required permission on none (`E_named_gold_scope` 0.0). Version 2 keeps the meaning of every version-1 key and adds `correct_v2`, `macro_correct_v2`, and `actionable_escalation`.
+
+- **Correct E (version 2)**: the escalation names permissions that are not yet granted (`missing_permissions`); granting them leaves a candidate for every needed item (the gold tool or one of its substitutes) (`grant_sufficient`); and dropping any one requested permission breaks that (`actionable`: it asks for nothing needless). Correct S (`sufficient`) and correct A are as in version 1.
+- **One substitute for several items**: a tool judged a substitute for several needed gold tools counts as satisfying each of them (shared cover). `sufficient` for S and `actionable` for E use this meaning and do not depend on the order of the gold tools (49 of the 2,089 labelled queries have a substitute shared by two needed gold tools). The ranking metric `toolret.group_metrics` credits a tool to one item only and assigns greedily in the order of the items, so recall changes with that order. `toolret.group_metrics_matched` (version 2) is a one-to-one maximum matching and does not depend on the order; use it with `--stage substitutes --substitute-matching matched` (the default is the greedy version that produced the published values; the result JSON records it as `group_matching`).
+- **Not measured**: version-2 values have not been measured. The candidate pools and LLM reply caches are not available here, and they cannot be recomputed without the LLM. For the 15 queries with 6 or more needed items (12 with 6, 3 with 7) the size limit on the set (5 tools) is not checked.
+
 **Label checks and release** (#48):
 
 - Agreement with a second annotator (Haiku, 100 held-out queries): kappa 0.80 on substitute judgments (7,520 pairs), 0.79 on necessity, and 0.88 on variant validity. Both are Claude models, so correlated errors cannot be ruled out; agreement with another model family or with people has not been measured.
 - The labels are in [`results/toolret-sae-heldout-labels.json`](results/toolret-sae-heldout-labels.json) (dev 833, test 856, held-out 400 queries): ToolRet query and tool ids with the necessity and substitute judgments. The labels and the held-out id list are released under CC0 1.0. They contain no ToolRet query or tool text, which is not redistributed (ToolRet's own terms apply to it).
+
+**Rescoring from the published labels** (#77): starting from an empty cache, score with the published labels (ToolRet ids only) and no annotator calls. You need only the candidate pools of the 833 dev queries and of the evaluated split (stored under `benchmarks/cache/`), and, for an LLM method, its replies.
+
+```bash
+python -m pip install -e '.[benchmark,benchmark-toolret]'
+python3 benchmarks/run_toolret_benchmark.py --download --retrievers lexical     # data at the pinned revision
+python3 benchmarks/run_toolret_llm_stages.py --stage decompose --model sonnet --split dev
+python3 benchmarks/run_toolret_llm_stages.py --stage decompose --model haiku --split heldout --sample 400
+python3 benchmarks/run_toolret_sae.py --stage pools --split dev                  # computes embeddings (about 40 min with MiniLM)
+python3 benchmarks/run_toolret_sae.py --stage pools --split heldout --sample 400
+python3 benchmarks/run_toolret_sae.py --stage methods --split heldout --sample 400   # LLM method replies (Haiku); skip for the rules only
+python3 benchmarks/run_toolret_sae.py --stage score --method llm-set \
+    --labels-input benchmarks/results/toolret-sae-heldout-labels.json --output /tmp/toolret-sae-rescored.json
+```
+
+- With `--labels-input` the published labels replace the label cache. Scoring stops if the label model (`--label-model`), the candidate depth, the ToolRet ids and gold tools, or the splits disagree with the data. Labels with `candidates_sha256` (from now on, written by `export-labels`) are also checked against the candidate ids and their order. The first release has no such field, so the result's `inputs.label_pool_mismatch` counts the queries with a substitute that is not among the rebuilt candidates.
+- If dev or evaluation queries needed for scoring are missing, or their candidate pools are, scoring prints the counts and the commands to run and **exits non-zero** (it used to save a dev=0 / held-out=0 result with exit code 0). The same holds when the replies of an LLM method named with `--method` are missing for any evaluated query.
+- The label cache is matched by a key that includes a digest of the model, the prompt, and the gold and candidate ids in order. LLM method replies are keyed by a digest of the prompt (candidate ids, order, texts, and granted permissions) and stored in one file per model. After the candidate order changes the same reply no longer matches and is not replayed (a label reply keyed by query id alone used to attach to different tools when the order changed). A label cache in the old layout is not used; `--stage label` labels those queries again.
+- Decomposition replies are LLM output and may differ from the stored ones when rerun; the candidate pools, and so the results, then differ from the published values. The decomposition model is not recorded in the cache, so the `--model` values above follow this README's description (Sonnet for the sample, Haiku for held-out).
+- ToolRet data is fetched from the commits in `toolret.DATASET_REVISIONS` (change them with `toolret.download(revisions=...)`). The result JSON records the revisions and the file hashes in `inputs.toolret_data`.
 
 **Effect of substitutes on ToolRet's standard metrics** ([`results/toolret-substitutes.json`](results/toolret-substitutes.json); 2,089 labelled queries, macro):
 
@@ -499,6 +530,8 @@ With the hash control, flat ANN outperforms the hierarchy on both quality metric
 
 The initial flat ANN index build with BGE took 2,953.6 seconds (about 49.2 minutes), including embedding computation; the index itself was 286,262,656 bytes (about 273 MiB). This is a cold build on the measurement machine, separated from warm search latency. All values are recorded in the same run’s [`ann-scale-model-100000.json`](results/ann-scale-model-100000.json).
 
+The current `run_ann_scale_benchmark.py` measures each arm's first build with its own embedding provider (cache) and records document and query embedding time separately under `cold_start` in the result JSON. In the results above (measured 2026-09) the hierarchy reused the embeddings the flat arm had already computed, so its `warmup_seconds` is not an independent first-build cost (#80; quality metrics and warm latency are unaffected, and the re-measurement has not been run).
+
 ## ToolRet: Large-scale, multi-tool selection on a public benchmark
 
 The evaluations so far use a corpus and labels created in this repository. `run_toolret_benchmark.py` measures Layers 1 and 2 on **ToolRet**, a public benchmark created by others (Shi et al., ACL 2025 Findings, “Retrieval Models Aren’t Tool-Savvy”). ToolRet combines 35 public tool-use datasets and has 44,453 tools and 7,961 queries. ToolBench, ToolLens, Tool-Be-Honest, ReverseChain, and others contain **multi-tool gold sets**, allowing us to measure whether the required combination can be selected with neither omissions nor extras from a large catalog, without self-created labels.
@@ -512,7 +545,7 @@ python3 benchmarks/run_toolret_benchmark.py --per-subset 60 \
     --retrievers hybrid-0.5,lexical,dense,hybrid-0.9,rrf,clause:hybrid-0.5,llm-rrf:hybrid-0.5,llm!:hybrid-0.5,llm:hybrid-0.5,rerank:llm!:hybrid-0.5
 ```
 
-**Data handling**: The dataset cards do not state licenses, and licenses vary by source, so the data is not redistributed. `--download` retrieves it from HuggingFace into `benchmarks/data/toolret/` (not tracked by git). Only aggregate values in `results/toolret.json` are committed.
+**Data handling**: The dataset cards do not state licenses, and licenses vary by source, so the data is not redistributed. `--download` retrieves it from HuggingFace into `benchmarks/data/toolret/` (not tracked by git). Only aggregate values in `results/toolret.json` are committed. Downloads are pinned to the commits in `toolret.DATASET_REVISIONS`; the fetched commits and file SHA-256 hashes are recorded in `manifest.json` and under `provenance` in the result JSON.
 
 **Protocol**
 
@@ -521,7 +554,7 @@ python3 benchmarks/run_toolret_benchmark.py --per-subset 60 \
 - Tool documents are converted to Tool resources with `toolret.tool_resource`, and permissions, trust, side effects, and cost are identical for every item. Ranking is determined only by body relevance.
 - Embeddings use `sentence-transformers/all-MiniLM-L6-v2` (fastembed / ONNX / CPU, one of the models evaluated by ToolRet). Embedding text is limited to the first 512 characters. `bge-small-en-v1.5` is not used because it processes only 4 documents per second of 512 characters in this environment, taking hours for 44k items.
 - LLM stages (decomposition, reranking, set selection) use the library’s `LLMQueryDecomposer`, `LLMRerankRetriever`, and `LLMSetSelector` directly with Claude Sonnet (through the Claude Code CLI, `benchmarks/_claude_cli.py`). Responses are saved in `benchmarks/cache/` and replayed for scoring. Responses are not reproducible, so values change if the cache is deleted.
-- **Tune on dev, report on test**: Query IDs are split 50/50 by SHA-1; fusion weights, `min_gain`, semantic weight, and other parameters are chosen on dev, and test values are reported. Confidence intervals for differences use paired bootstrap on test (2,000 samples, 95%).
+- **Tune on dev, report on test**: Query IDs are split 50/50 by SHA-1; fusion weights, `min_gain`, semantic weight, and other parameters are chosen on dev, and test values are reported. Differences and their intervals use the same weighting as the macro columns: a paired bootstrap on the test split (2,000 resamples, 95%) that resamples queries within each subset and averages the per-subset mean differences with equal weight. The query-equal (micro) difference is stored separately under `micro` in the result JSON; it is a different quantity. Set F1 differences are query means, like the table, so they are micro. **The ranking differences and intervals printed in this section were measured before this definition was adopted (query-equal)** (#76). Re-measuring needs the LLM decomposition cache and has not been done; each table is annotated.
 
 ### Layer 1: Ranking (1,689 queries, macro)
 
@@ -581,6 +614,8 @@ None improved results in the dev split or offline analyses during development (v
 
 The sample limits larger subsets to 60 cases. We decomposed the full test split (3,920 queries, including 1,729 multi-tool queries) and remeasured with the same settings ([`results/toolret-test-full.json`](results/toolret-test-full.json), `--per-subset 0 --split test`). LLM reranking and `LLMSetSelector` were excluded because of the number of calls.
 
+The difference columns of the first table are the earlier query-equal differences and intervals, so they do not correspond to the difference between the macro columns of the same table. Computed from `per_subset`, the macro differences are +0.0224 nDCG@10 and +0.0149 C@10 for `llm:hybrid-0.5`, and −0.0446 / −0.0425 for `lexical` (intervals will be updated after re-measurement).
+
 | Configuration | nDCG@10 | C@10 | C@100 | Multi-tool C@10 | nDCG@10 difference [95% CI] | C@10 difference [95% CI] |
 |---|---:|---:|---:|---:|---:|---:|
 | `lexical` | 0.200 | 0.192 | 0.321 | 0.113 | −0.061 [−0.069, −0.055] | −0.068 [−0.078, −0.058] |
@@ -614,7 +649,7 @@ python3 benchmarks/run_toolret_benchmark.py --per-subset 60 --retrievers hybrid-
 python3 benchmarks/compare_toolret_records.py minilm=/tmp/minilm.json arctic-s=/tmp/arctic.json --output /tmp/cmp.json
 ```
 
-Results are in [`results/toolret-arctic-s.json`](results/toolret-arctic-s.json) and [`results/toolret-arctic-s-no-instruction.json`](results/toolret-arctic-s-no-instruction.json); paired differences are in [`results/toolret-embeddings.json`](results/toolret-embeddings.json) (against MiniLM) and [`results/toolret-query-instruction.json`](results/toolret-query-instruction.json) (with versus without the instruction). The MiniLM-L6 row has the same values as [`results/toolret.json`](results/toolret.json). Differences are micro-averaged over the 1,689 queries, with 95% bootstrap intervals.
+Results are in [`results/toolret-arctic-s.json`](results/toolret-arctic-s.json) and [`results/toolret-arctic-s-no-instruction.json`](results/toolret-arctic-s-no-instruction.json); paired differences are in [`results/toolret-embeddings.json`](results/toolret-embeddings.json) (against MiniLM) and [`results/toolret-query-instruction.json`](results/toolret-query-instruction.json) (with versus without the instruction). The MiniLM-L6 row has the same values as [`results/toolret.json`](results/toolret.json). Differences are micro-averaged over the 1,689 queries, with 95% bootstrap intervals. (This is the earlier definition; the current `compare_toolret_records.py` reports the macro difference first and the micro difference alongside it.)
 
 | Embedding | hybrid-0.5 macro nDCG@10 | hybrid-0.5 macro C@10 | dense macro nDCG@10 | dense macro C@10 | Difference from MiniLM (dense nDCG@10) |
 |---|---:|---:|---:|---:|---:|

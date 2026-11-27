@@ -98,7 +98,9 @@ class CrossEncoderRerankRetriever(Retriever):
         )
         candidates = self.inner.search(registry, widened)
         if len(candidates) < 2:
-            return candidates[: query.top_k]
+            # The inner search ran unfiltered by score and per-kind limits, so
+            # a lone candidate still has to clear them.
+            return self._finish(candidates, query)
         pool = candidates[: self.rerank_pool]
         documents = [_document_text(result) for result in pool]
         raw = self.provider.score(task, documents)
@@ -129,7 +131,9 @@ class CrossEncoderRerankRetriever(Retriever):
             ),
             reverse=True,
         )
-        ordered = rescored + list(candidates[self.rerank_pool :])
+        return self._finish(rescored + list(candidates[self.rerank_pool :]), query)
+
+    def _finish(self, ordered: list[SearchResult], query: SearchQuery) -> list[SearchResult]:
         filtered = [result for result in ordered if result.score >= query.min_score]
         return self.lexical.apply_limits(filtered, query)
 

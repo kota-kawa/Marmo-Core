@@ -4,6 +4,11 @@ Three independent collectors and one step that depends on all of them. The
 Planner derives the waves from the dependencies the resources declare, so the
 collectors overlap and the render step waits. Runs offline after installation.
 
+Overlap is proven by a barrier, not by timing: each collector waits at a
+threading.Barrier until all three are running at once, so a serial executor
+would fail instead of passing slowly. The dependency order is checked from the
+order of the recorded start and end events.
+
     python examples/planned_execution.py
 """
 
@@ -21,21 +26,33 @@ from marmo_core import (
 )
 
 
+COLLECTORS = ("tool.sales", "tool.costs", "tool.risk")
+# Generous only to avoid a deadlock if the steps never overlap; success does not depend on it.
+BARRIER_TIMEOUT_SECONDS = 30.0
+
+# (seconds since start, "start" | "end", step label), in the order the events happened.
 TIMELINE: list[tuple[float, str, str]] = []
 _LOCK = threading.Lock()
 _STARTED = time.perf_counter()
+_ALL_COLLECTORS_RUNNING = threading.Barrier(len(COLLECTORS))
 
 
 def _collector(label: str):
-    """A slow step, so overlapping is visible in wall-clock time."""
+    """A collector that finishes only once every collector is running at the same time."""
 
     def handler(name: str) -> dict:
         _record("start", label)
-        time.sleep(0.15)
+        _ALL_COLLECTORS_RUNNING.wait(timeout=BARRIER_TIMEOUT_SECONDS)
         _record("end", label)
         return {"tool": label, "period": name}
 
     return handler
+
+
+def _render(name: str) -> dict:
+    _record("start", "tool.render")
+    _record("end", "tool.render")
+    return {"tool": "tool.render", "period": name}
 
 
 def _record(event: str, label: str) -> None:
@@ -78,7 +95,7 @@ RESOURCES = [
         "tool.render",
         "Render the quarterly report from the collected figures.",
         # Declared here, so the planner does not have to guess the order.
-        dependencies=["tool.sales", "tool.costs", "tool.risk"],
+        dependencies=list(COLLECTORS),
     ),
 ]
 
@@ -93,17 +110,17 @@ def main() -> None:
         MockLLMProvider(script=[LLMResponse(content="Quarterly report assembled.")]),
         planner=RuleBasedPlanner(),
         policy_context=PolicyContext(),
-        tool_implementations={entry["id"]: _collector(entry["id"]) for entry in RESOURCES},
+        tool_implementations={
+            **{label: _collector(label) for label in COLLECTORS},
+            "tool.render": _render,
+        },
         set_limits={"tool": 4},
     )
 
-    started = time.perf_counter()
     result = kernel.run_goal("collect the quarterly figures and render the report")
-    elapsed = time.perf_counter() - started
 
     print(f"status: {result.status}")
     print(f"output: {result.output}")
-    print(f"wall clock: {elapsed:.2f}s (four 0.15s steps run one after another would be ~0.60s)")
 
     print("\nplan:")
     for step in kernel.get_state(result.task_id)["plan"]["steps"]:
@@ -115,7 +132,15 @@ def main() -> None:
         print(f"  t={at:>5}s  {event:<5} {label}")
 
     assert result.completed, result.detail
-    assert elapsed < 0.55, "the independent steps did not overlap"
+    events = [(event, label) for _, event, label in TIMELINE]
+    # Overlap: every collector started before any collector finished.
+    first_end = min(events.index(("end", label)) for label in COLLECTORS)
+    assert all(events.index(("start", label)) < first_end for label in COLLECTORS), (
+        "the independent steps did not overlap"
+    )
+    # Dependency order: the render step started after every collector finished.
+    last_end = max(events.index(("end", label)) for label in COLLECTORS)
+    assert events.index(("start", "tool.render")) > last_end, "render started before its dependencies finished"
     assert kernel.audit_log.verify() == [], "audit hash chain is broken"
     print("\nindependent steps overlapped; audit hash chain verified.")
 

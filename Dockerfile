@@ -12,6 +12,7 @@ COPY resources ./resources
 # Benchmark modules that the test suite imports, and the fixtures they read.
 COPY benchmarks/run_evidence_benchmark.py benchmarks/run_forgery_benchmark.py benchmarks/_provenance.py \
      benchmarks/_claude_cli.py benchmarks/compare_toolret_records.py benchmarks/toolret.py \
+     benchmarks/run_toolret_benchmark.py \
      benchmarks/toolret_sae_heldout_ids.json \
      benchmarks/evidence_cases.json benchmarks/set_scenarios.json ./benchmarks/
 COPY benchmarks/corpus/set_corpus.json ./benchmarks/corpus/

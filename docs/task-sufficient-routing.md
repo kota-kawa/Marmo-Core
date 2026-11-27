@@ -7,6 +7,8 @@ Memory・Skill・Tool・Agent の共通登録、検索から集合選択への2�
 ## 要求と資源契約
 
 `TaskSpec.from_mapping` は `requirements` 内の `all_of` / `one_of` を解釈する。
+1 つの要件ノードに書ける演算子は 1 つだけで、`all_of` と `one_of` が同居するノードは
+曖昧として `unknown_items` に記録し、TaskSpec を不確実として扱う（片方を黙って捨てない）。
 要求は action、entity_type、target_scope、output_type、mode の型付き記述とする。
 5項目の欠落は wildcard とせず unknown とする。
 effect（実行）、information（情報提供）、context（手順・文脈）を区別し、

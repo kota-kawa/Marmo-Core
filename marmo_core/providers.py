@@ -35,7 +35,7 @@ from .environment import (
     required_environment,
     required_positive_int_environment,
 )
-from .errors import ProviderHTTPError
+from .errors import ProviderError, ProviderHTTPError
 from .llm import ChatMessage, LLMProvider, LLMResponse, LLMToolSpec, ToolCall
 from .secrets import redact_credentials
 from .semantic import DEFAULT_OPENAI_BASE_URL, _post_json, with_missing_api_key_hint
@@ -148,7 +148,7 @@ class AnthropicLLMProvider(LLMProvider):
             "anthropic-version": ANTHROPIC_VERSION,
         }
         response = self.transport(f"{self.base_url}/v1/messages", payload, headers, self.timeout)
-        return self.parse_response(response)
+        return _parsed(self.parse_response, response)
 
     def build_request(
         self,
@@ -314,7 +314,7 @@ class OpenAICompatibleLLMProvider(LLMProvider):
                 ),
                 headers,
             )
-        return self.parse_response(response)
+        return _parsed(self.parse_response, response)
 
     def _request(self, url: str, payload: dict[str, Any], headers: dict[str, str]) -> dict:
         try:
@@ -373,6 +373,10 @@ class OpenAICompatibleLLMProvider(LLMProvider):
             try:
                 arguments = json.loads(raw_arguments) if isinstance(raw_arguments, str) else dict(raw_arguments)
             except json.JSONDecodeError:
+                arguments = {"_raw": raw_arguments}
+            if not isinstance(arguments, dict):
+                # Valid JSON that is not an object ("[1]", "null") is no more
+                # usable as arguments than unparseable text.
                 arguments = {"_raw": raw_arguments}
             tool_calls.append(
                 ToolCall(
@@ -438,6 +442,26 @@ class BedrockLLMProvider(OpenAICompatibleLLMProvider):
                               if reasoning_effort is None else reasoning_effort),
             transport=transport,
         )
+
+
+def _parsed(parse: Callable[[Mapping[str, Any]], LLMResponse], response: Any) -> LLMResponse:
+    """Parse a provider reply, reporting an unexpected wire shape as a provider failure.
+
+    A proxy or a half-compatible server can answer 200 with a body that is
+    JSON but not a completion. Without this the parser's own ``TypeError`` or
+    ``AttributeError`` would escape the kernel loop and leave the task running.
+    """
+
+    if not isinstance(response, Mapping):
+        raise ProviderError(
+            f"the provider returned a {type(response).__name__} where a JSON object was expected"
+        )
+    try:
+        return parse(response)
+    except (AttributeError, IndexError, KeyError, TypeError, ValueError) as exc:
+        raise ProviderError(
+            f"the provider response does not have the expected shape: {type(exc).__name__}: {exc}"
+        ) from exc
 
 
 def _parse_usage(data: Any, input_key: str, output_key: str) -> dict[str, int]:

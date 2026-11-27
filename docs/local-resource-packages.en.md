@@ -52,7 +52,9 @@ The fields mean the following:
 | `description` | No | A description of the package |
 | `kernel` | Yes | The supported Marmo-Core version range |
 | `resources` | Yes | File paths relative to the package root |
-| `dependencies` | Yes | Local packages to load together and their version ranges |
+| `dependencies` | No | Local packages to load together and their version ranges. When omitted, the package has no dependencies (an empty array) |
+
+The required fields are `schema_version`, `namespace`, `name`, `version`, `kernel`, and `resources`. `resources` needs at least one entry, and each file must end in `.json` or `.md`. Only `description` and `dependencies` may be omitted.
 
 Version ranges support exact matches, `>`, `>=`, `<`, `<=`, comma-separated
 AND conditions, caret (`^1.2.3`), tilde (`~1.2.3`), and `*`. OR with `||` is
@@ -147,9 +149,28 @@ marmo validate ./my-package
 - The SHA-256 hash of each resource listed in the manifest
 
 If you intentionally change the manifest or a resource, review the diff and
-then run `marmo package lock` again. A missing lock file, added or deleted
-files, hash mismatches, an incompatible kernel, or missing dependency packages
-are rejected before even one resource is registered.
+then run `marmo package lock` again.
+
+`marmo package verify` and `marmo validate` guarantee different things.
+
+| Check | `marmo package verify` | `marmo validate` |
+|---|:---:|:---:|
+| Manifest schema (required fields, namespace, SemVer, resource paths) | Yes | Yes |
+| Compatibility with the kernel version range | Yes | Yes |
+| The lock exists, matches the package identity, and lists exactly the manifest's files | Yes | Yes |
+| SHA-256 of the manifest and every listed resource file matches the lock | Yes | Yes |
+| Every package in `dependencies` is loaded together and satisfies its version range | No | Yes |
+| The resource files are actually parsed and are valid resource definitions (kind-specific required fields, etc.) | No | Yes |
+| Resource IDs are inside the package namespace | No | Yes |
+| No duplicate resource IDs across everything loaded | No | Yes |
+
+`verify` examines one package on its own and only confirms that it is unmodified
+and compatible, so it succeeds even when a dependency package is missing. A
+missing dependency package is first detected by `marmo validate` (or
+`load_registry`), which loads the package together with the others and rejects
+it before even one resource is registered. A missing lock file, added or deleted
+files, hash mismatches, and an incompatible kernel are already rejected at the
+`verify` stage. Run both before publishing.
 
 The lock verifies that local content has not changed since review; it is not a
 cryptographic signature proving the author's identity. Signatures and public

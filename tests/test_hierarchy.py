@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from dataclasses import replace
 
 from marmo_core import (
     EmbeddingProvider,
@@ -15,6 +16,7 @@ from marmo_core import (
     PermissionGrouping,
     ProviderGrouping,
     ResourceDefinition,
+    ResourceStats,
     SearchQuery,
 )
 from marmo_core.registry import ResourceRegistry
@@ -216,6 +218,118 @@ class HierarchicalRetrieverTests(unittest.TestCase):
         first = state.union_registry(("invoicing",))
         second = state.union_registry(("invoicing",))
         self.assertIs(first, second)
+
+
+class HierarchicalKindFilterTests(unittest.TestCase):
+    """Groups that cannot serve the query's filters must not use up ``route_k``."""
+
+    def setUp(self) -> None:
+        self.registry = _registry(
+            [
+                _resource(
+                    "skill.reports.procedure",
+                    "skill",
+                    "Procedure for monthly report summaries.",
+                    capabilities=["reports.procedure"],
+                ),
+                _resource(
+                    "tool.exports.runner",
+                    "tool",
+                    "Run report summaries export.",
+                    capabilities=["exports.execution"],
+                ),
+                _resource(
+                    "tool.other.thing",
+                    "tool",
+                    "Unrelated gadget.",
+                    capabilities=["other.execution"],
+                ),
+            ]
+        )
+        self.retriever = HierarchicalRetriever(LexicalRetriever(), NamespaceGrouping(), route_k=1)
+        self.task = "monthly report summaries procedure"
+
+    def test_the_best_group_without_the_wanted_kind_is_skipped(self) -> None:
+        query = SearchQuery(task=self.task, top_k=5)
+        self.assertEqual(self.retriever.route(self.registry, query)[0].group, "reports")
+        results = self.retriever.search(self.registry, replace(query, kinds=("tool",)))
+        self.assertEqual([result.resource.metadata.id for result in results], ["tool.exports.runner"])
+
+    def test_unfiltered_search_still_takes_the_best_group(self) -> None:
+        results = self.retriever.search(self.registry, SearchQuery(task=self.task, top_k=5))
+        self.assertEqual([result.resource.metadata.id for result in results], ["skill.reports.procedure"])
+
+    def test_search_goes_flat_when_no_scoring_group_can_serve_the_filters(self) -> None:
+        query = SearchQuery(task="monthly report summaries", kinds=("agent",), top_k=5)
+        self.assertEqual(self.retriever.search(self.registry, query), [])
+        query = SearchQuery(task="gadget", kinds=("tool",), side_effects=("none",), top_k=5)
+        flat = LexicalRetriever().search(self.registry, query)
+        self.assertEqual(
+            [result.resource.metadata.id for result in self.retriever.search(self.registry, query)],
+            [result.resource.metadata.id for result in flat],
+        )
+
+
+class _CountingEmbeddings(EmbeddingProvider):
+    def __init__(self) -> None:
+        self.documents = 0
+
+    def embed(self, texts):
+        self.documents += len(texts)
+        return self._vectors(texts)
+
+    def embed_queries(self, texts):
+        return self._vectors(texts)
+
+    @staticmethod
+    def _vectors(texts):
+        return [[float(text.lower().count(letter)) for letter in "abcdefghijklmnopqrstuvwxyz"] for text in texts]
+
+
+class HierarchicalHybridEmbeddingReuseTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.registry = _registry(_two_domain_definitions())
+        self.provider = _CountingEmbeddings()
+        self.retriever = HierarchicalRetriever(
+            HybridRetriever(self.provider), NamespaceGrouping(), route_k=1
+        )
+        self.query = SearchQuery(task="create and send the customer invoices", top_k=10)
+
+    def _search(self) -> list[str]:
+        return [result.resource.metadata.id for result in self.retriever.search(self.registry, self.query)]
+
+    def test_a_stats_write_reuses_the_embeddings_and_reaches_the_score(self) -> None:
+        before = self._search()
+        embedded = self.provider.documents
+        target = self.registry.get("tool.invoicing.workbench")
+        worse = replace(target, metadata=replace(target.metadata, stats=ResourceStats(success_rate=0.0)))
+        score_before = next(
+            result.score
+            for result in self.retriever.search(self.registry, self.query)
+            if result.resource.metadata.id == target.metadata.id
+        )
+        self.registry.replace(worse)
+
+        after = self.retriever.search(self.registry, self.query)
+
+        self.assertEqual(self.provider.documents, embedded)
+        self.assertEqual([result.resource.metadata.id for result in after], before)
+        score_after = next(r.score for r in after if r.resource.metadata.id == target.metadata.id)
+        self.assertLess(score_after, score_before)
+        self.assertEqual(
+            next(r for r in after if r.resource.metadata.id == target.metadata.id).resource.metadata.stats.success_rate,
+            0.0,
+        )
+
+    def test_a_text_change_embeds_the_routed_documents_again(self) -> None:
+        self._search()
+        embedded = self.provider.documents
+        target = self.registry.get("tool.invoicing.workbench")
+        self.registry.replace(replace(target, metadata=replace(target.metadata, description="Brand new wording.")))
+
+        self._search()
+
+        self.assertGreater(self.provider.documents, embedded)
 
 
 if __name__ == "__main__":

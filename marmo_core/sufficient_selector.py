@@ -470,29 +470,35 @@ class GoalAwareSetSelector(SetSelector):
 
         if _has_cycle(graph):
             return _Assessment("invalid", "selection contains a dependency or context cycle")
-        selected_graph, truncated = _choose_context_alternatives(graph, one_of_groups, self.max_nodes)
+
+        def root_rejection(candidate: Mapping[str, set[str]]) -> str | None:
+            dependencies = {child for children in candidate.values() for child in children}
+            ineligible_roots = sorted(
+                (
+                    identity
+                    for identity in set(candidate) - dependencies
+                    if not _is_eligible(pool[identity], context)
+                ),
+                key=_identity_key,
+            )
+            if not ineligible_roots:
+                return None
+            return (
+                "selected root resource(s) are below the active score or relevance threshold: "
+                + ", ".join(ineligible_roots)
+            )
+
+        selected_graph, truncated, rejection = _choose_context_alternatives(
+            graph, one_of_groups, self.max_nodes, root_rejection
+        )
         if truncated:
             return _Assessment("unknown", "context one_of validation reached its search limit")
         if selected_graph is None:
-            return _Assessment("invalid", "context one_of alternatives create a dependency cycle")
-        graph = selected_graph
-
-        dependencies = {child for children in graph.values() for child in children}
-        roots = set(graph) - dependencies
-        ineligible_roots = sorted(
-            (
-                identity
-                for identity in roots
-                if not _is_eligible(pool[identity], context)
-            ),
-            key=_identity_key,
-        )
-        if ineligible_roots:
             return _Assessment(
                 "invalid",
-                "selected root resource(s) are below the active score or relevance threshold: "
-                + ", ".join(ineligible_roots),
+                rejection or "context one_of alternatives create a dependency cycle",
             )
+        graph = selected_graph
 
         conflict = _first_conflict(ordered)
         if conflict:
@@ -876,21 +882,34 @@ def _choose_context_alternatives(
     base_graph: Mapping[str, set[str]],
     groups: Sequence[tuple[str, tuple[str, ...]]],
     max_nodes: int,
-) -> tuple[dict[str, set[str]] | None, bool]:
-    """Choose one selected alternative per group without creating a cycle."""
+    reject: Callable[[Mapping[str, set[str]]], str | None],
+) -> tuple[dict[str, set[str]] | None, bool, str | None]:
+    """Choose one selected alternative per group without creating a cycle.
+
+    ``reject`` returns the reason a complete acyclic choice fails the final
+    checks (or ``None``), so the search backtracks to another alternative
+    instead of committing to the first one. The third item is the reason of
+    the first rejected choice, for diagnostics when none is accepted.
+    """
 
     graph = {identity: set(children) for identity, children in base_graph.items()}
     explored = 0
     truncated = False
+    first_rejection: str | None = None
 
     def visit(index: int) -> dict[str, set[str]] | None:
-        nonlocal explored, truncated
+        nonlocal explored, truncated, first_rejection
         if explored >= max_nodes:
             truncated = True
             return None
         explored += 1
         if index == len(groups):
-            return {identity: set(children) for identity, children in graph.items()}
+            reason = reject(graph)
+            if reason is None:
+                return {identity: set(children) for identity, children in graph.items()}
+            if first_rejection is None:
+                first_rejection = reason
+            return None
         parent, alternatives = groups[index]
         for alternative in alternatives:
             already_present = alternative in graph[parent]
@@ -905,7 +924,7 @@ def _choose_context_alternatives(
                 return None
         return None
 
-    return visit(0), truncated
+    return visit(0), truncated, first_rejection
 
 
 def _has_prohibited_affordance(contract: ResourceContract, prohibited: Sequence[str]) -> bool:

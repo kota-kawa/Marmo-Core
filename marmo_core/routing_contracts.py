@@ -517,13 +517,21 @@ def _parse_expression(
     if not isinstance(value, Mapping):
         unknown.append(f"{path} is malformed")
         return None
-    if "all_of" in value or value.get("op") == "all_of":
+    operators = {name for name in ("all_of", "one_of") if name in value}
+    if value.get("op") in ("all_of", "one_of"):
+        operators.add(value["op"])
+    if len(operators) > 1:
+        unknown.append(
+            f"{path} is ambiguous: it declares more than one operator ({', '.join(sorted(operators))})"
+        )
+        return None
+    if "all_of" in operators:
         raw_children = value.get("all_of", value.get("children", ()))
         children = _parse_expression_children(raw_children, unknown, path)
         if not children:
             unknown.append(f"{path} all_of is empty")
         return AllOf(children)
-    if "one_of" in value or value.get("op") == "one_of":
+    if "one_of" in operators:
         raw_children = value.get("one_of", value.get("children", ()))
         children = _parse_expression_children(raw_children, unknown, path)
         if not children:

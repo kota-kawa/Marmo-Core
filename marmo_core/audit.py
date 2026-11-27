@@ -13,6 +13,7 @@ import uuid
 
 
 from .secrets import redact_credentials
+from .state import _exclusive_file
 
 REDACTED = "[REDACTED]"
 
@@ -154,6 +155,44 @@ class AuditLog:
                 json.dump(record.to_dict(), file, ensure_ascii=False, sort_keys=True)
                 file.write("\n")
 
+    def extend_jsonl(self, path: str | Path) -> int:
+        """Append the records ``path`` does not hold yet and return how many were written.
+
+        The file must hold an intact prefix of this chain: it is read and
+        verified first, and its records are compared with this log's by hash.
+        A file another writer changed since this log was read, or one that is
+        corrupt, raises ``ValueError`` and is left as it was; ``write_jsonl``
+        would replace such a file and drop the other writer's records.
+        """
+
+        destination = Path(path)
+        # Reading the stored chain and appending to it are one step for every
+        # process writing this file; otherwise two writers that both verified
+        # the same prefix would each append and fork the chain.
+        with _exclusive_file(destination.with_name(destination.name + ".lock"), blocking=True):
+            return self._extend(destination)
+
+    def _extend(self, destination: Path) -> int:
+        stored = AuditLog.from_jsonl(destination).records
+        if [record.hash for record in stored] != [record.hash for record in self.records[: len(stored)]]:
+            raise ValueError(
+                f"audit log {destination} no longer matches the chain this run continued; "
+                "another writer changed it, so the new records were not written"
+            )
+        new_records = self.records[len(stored):]
+        if not new_records:
+            return 0
+        # One write call, so an interrupt cannot leave half a record behind.
+        text = "".join(
+            json.dumps(record.to_dict(), ensure_ascii=False, sort_keys=True) + "\n" for record in new_records
+        )
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if stored and not _ends_with_newline(destination):
+            text = "\n" + text
+        with destination.open("a", encoding="utf-8") as file:
+            file.write(text)
+        return len(new_records)
+
     @classmethod
     def from_jsonl(cls, path: str | Path) -> "AuditLog":
         source = Path(path)
@@ -225,6 +264,12 @@ def _is_sensitive_key(key: str) -> bool:
     if normalized in _NON_SECRET_TOKEN_KEYS:
         return False
     return any(part in normalized for part in _SENSITIVE_KEY_PARTS)
+
+
+def _ends_with_newline(path: Path) -> bool:
+    with path.open("rb") as file:
+        file.seek(-1, 2)
+        return file.read(1) == b"\n"
 
 
 def _hash_record(data: Mapping[str, Any]) -> str:

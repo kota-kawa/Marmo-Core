@@ -1,9 +1,15 @@
 """Paired 100k flat ANN versus hierarchical retrieval comparison.
 
-Both arms use the same corpus, query set, embeddings, lexical scorer, blend
-weight, pool size, and constrained selector. Hash vectors are the quick
+Both arms use the same corpus, query set, embedding model, lexical scorer,
+blend weight, pool size, and constrained selector. Hash vectors are the quick
 algorithmic baseline; --embedding model uses the real benchmark model. ANN is
 an optional benchmark dependency and does not enter the runtime package.
+
+Each arm gets its own embedding provider and therefore its own cache, so the
+first-build time of an arm (``warmup_seconds``) includes embedding the corpus
+itself instead of reusing vectors the other arm already computed. The time
+spent embedding documents and queries is timed separately under ``cold_start``.
+The price is that the corpus is embedded once per arm.
 """
 
 from __future__ import annotations
@@ -20,6 +26,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).parent))
 
 from marmo_core import (  # noqa: E402
+    EmbeddingProvider,
     HashingEmbeddingProvider,
     HierarchicalRetriever,
     HybridRetriever,
@@ -31,9 +38,36 @@ from marmo_core.retriever import RELEVANCE_WEIGHT  # noqa: E402
 from marmo_core.models import SearchResult  # noqa: E402
 from marmo_core.semantic import _cosine_01  # noqa: E402
 
-from _provenance import stamp  # noqa: E402
+from _provenance import sha256_file, stamp  # noqa: E402
 from generate_scale_corpus import ensure_scale_corpus  # noqa: E402
 from run_scale_benchmark import run_one  # noqa: E402
+
+
+class TimedEmbeddingProvider(EmbeddingProvider):
+    """Times document and query embedding of the provider it wraps, which keeps its own cache."""
+
+    def __init__(self, inner: EmbeddingProvider) -> None:
+        self.inner = inner
+        self.document_seconds = 0.0
+        self.query_seconds = 0.0
+
+    def embed(self, texts):
+        started = time.perf_counter()
+        try:
+            return self.inner.embed(texts)
+        finally:
+            self.document_seconds += time.perf_counter() - started
+
+    def embed_queries(self, texts):
+        started = time.perf_counter()
+        try:
+            return self.inner.embed_queries(texts)
+        finally:
+            self.query_seconds += time.perf_counter() - started
+
+    def cold_start(self) -> dict:
+        return {"document_embedding_seconds": round(self.document_seconds, 3),
+                "query_embedding_seconds": round(self.query_seconds, 3)}
 
 
 class FlatAnnHybrid(HybridRetriever):
@@ -100,36 +134,56 @@ class FlatAnnHybrid(HybridRetriever):
 
 def run(*, size: int, embedding: str, pool: int, route_k: int, min_relevance: float,
         model_name: str = "BAAI/bge-small-en-v1.5") -> dict:
-    if embedding == "model":
-        from run_benchmark import FastembedEmbeddingProvider
+    def new_provider() -> TimedEmbeddingProvider:
+        if embedding == "model":
+            from run_benchmark import FastembedEmbeddingProvider
 
-        provider = FastembedEmbeddingProvider(model_name)
-        model = provider.model_name
-    else:
-        provider = HashingEmbeddingProvider(dimensions=64)
-        model = "hash-64 (non-semantic control)"
-    paths = [str(Path(__file__).parent / "corpus/set_corpus.json"), str(ensure_scale_corpus(size))]
-    registry = load_registry(paths)
+            return TimedEmbeddingProvider(FastembedEmbeddingProvider(model_name))
+        return TimedEmbeddingProvider(HashingEmbeddingProvider(dimensions=64))
+
+    flat_provider = new_provider()
+    hierarchical_provider = new_provider()
+    model = flat_provider.inner.model_name if embedding == "model" else "hash-64 (non-semantic control)"
+    set_corpus = Path(__file__).parent / "corpus/set_corpus.json"
+    scale_corpus = ensure_scale_corpus(size)
+    scenario_files = {"set_scenarios.json": Path(__file__).parent / "set_scenarios.json",
+                      "scale_scenarios.json": Path(__file__).parent / "scale_scenarios.json"}
+    registry = load_registry([str(set_corpus), str(scale_corpus)])
     by_id = {definition.metadata.id: definition for definition in registry.all()}
-    scenarios = json.loads((Path(__file__).parent / "set_scenarios.json").read_text(encoding="utf-8"))["scenarios"]
-    scenarios += json.loads((Path(__file__).parent / "scale_scenarios.json").read_text(encoding="utf-8"))["scenarios"]
+    scenarios = [scenario for path in scenario_files.values()
+                 for scenario in json.loads(path.read_text(encoding="utf-8"))["scenarios"]]
     args = argparse.Namespace(pool=pool, route_k=route_k, min_score=0.45, min_relevance=min_relevance)
-    flat = FlatAnnHybrid(provider, pool=pool)
+    flat = FlatAnnHybrid(flat_provider, pool=pool)
     hierarchical = HierarchicalRetriever(
-        HybridRetriever(provider, semantic_weight=0.9, candidate_pool=pool),
+        HybridRetriever(hierarchical_provider, semantic_weight=0.9, candidate_pool=pool),
         NamespaceGrouping(), route_k=route_k,
     )
     flat_result = run_one("flat-ann", flat, registry, by_id, scenarios, args)
     hierarchical_result = run_one("hier-namespace", hierarchical, registry, by_id, scenarios, args)
-    return {
+    flat_result["cold_start"] = flat_provider.cold_start()
+    hierarchical_result["cold_start"] = hierarchical_provider.cold_start()
+    report = {
         "corpus_size": len(registry), "scenarios": len(scenarios), "embedding": model,
+        "embedding_cache": "independent per arm: each arm embeds the corpus itself, "
+                           "so warmup_seconds is the arm's own first build",
         "pool": pool, "route_k": route_k, "min_relevance": min_relevance,
         "ann_parameters": {"metric": "cos", "dtype": "f32", "connectivity": 16,
                            "expansion_add": 128, "expansion_search": 128},
         "flat_ann_index_seconds_including_embeddings": round(flat.index_seconds, 3),
+        "flat_ann_index_seconds_excluding_embeddings": round(flat.index_seconds - flat_provider.document_seconds, 3),
         "flat_ann_index_bytes": flat.index_bytes,
         "retrievers": {"flat-ann": flat_result, "hier-namespace": hierarchical_result},
     }
+    inputs = {"set_corpus.json": sha256_file(set_corpus), f"scale_corpus_{size}.json": sha256_file(scale_corpus)}
+    inputs |= {name: sha256_file(path) for name, path in scenario_files.items()}
+    return stamp(
+        report,
+        inputs=inputs,
+        model={"embedding": model},
+        arguments={"size": size, "embedding": embedding, "model": model_name, "pool": pool, "route_k": route_k,
+                   "min_relevance": min_relevance, "min_score": args.min_score, "semantic_weight": 0.9,
+                   "grouping": "NamespaceGrouping", "embedding_dimensions": 64 if embedding != "model" else None},
+    )
 
 
 def main() -> None:
@@ -142,8 +196,8 @@ def main() -> None:
     parser.add_argument("--min-relevance", type=float, default=0.35)
     parser.add_argument("--output", type=Path, default=None)
     args = parser.parse_args()
-    report = stamp(run(size=args.size, embedding=args.embedding, pool=args.pool,
-                       route_k=args.route_k, min_relevance=args.min_relevance, model_name=args.model))
+    report = run(size=args.size, embedding=args.embedding, pool=args.pool,
+                 route_k=args.route_k, min_relevance=args.min_relevance, model_name=args.model)
     output = args.output or Path(__file__).parent / "results" / f"ann-scale-{args.embedding}-{args.size}.json"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

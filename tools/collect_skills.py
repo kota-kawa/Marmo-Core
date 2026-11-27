@@ -4,14 +4,27 @@
 Strategy (rate-limit aware, stdlib only):
   1. Discover repos via GitHub *code search* for SKILL.md (varied queries to
      get past the 1000-result-per-query cap and maximize diversity).
-  2. For each unique repo, fetch the recursive git tree once (1 core call).
+  2. For each unique repo, resolve the default branch to one commit SHA and
+     fetch that commit's recursive git tree once. Everything else for the repo
+     (file downloads, the manifest, the source URLs) uses that SHA, never the
+     branch name, so a push in the middle of a run cannot mix two revisions.
+     Use `--commit owner/repo=SHA` to collect a specific commit instead.
   3. For every directory that contains a SKILL.md, download the whole skill
      folder via raw.githubusercontent.com (raw fetches are NOT rate limited).
+     Every file must arrive, match its git blob SHA from the tree, and match
+     again when read back from disk; only then is the folder moved into place
+     and recorded in the manifest. A skill that fails any step is left out.
   4. Dedup skills by SKILL.md content hash; stop once TARGET is reached.
+
+Output goes to <repo>/resources/skills (the benchmark default; git-ignored and
+not shipped). Override with OUT_DIR.
 
 Auth: expects a GitHub token in env GH_TOKEN (e.g. `GH_TOKEN=$(gh auth token)`).
 """
+import argparse
 import os
+import re
+import shutil
 import sys
 import json
 import time
@@ -23,7 +36,7 @@ import urllib.error
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 TARGET = int(os.environ.get("TARGET", "1000"))
-OUT_DIR = os.environ.get("OUT_DIR", os.path.join(os.path.dirname(__file__), "..", "skills"))
+OUT_DIR = os.environ.get("OUT_DIR", os.path.join(os.path.dirname(__file__), "..", "resources", "skills"))
 OUT_DIR = os.path.abspath(OUT_DIR)
 MANIFEST = os.path.join(OUT_DIR, "manifest.jsonl")
 STATE = os.path.join(OUT_DIR, ".state.json")
@@ -31,7 +44,6 @@ def _read_token():
     t = os.environ.get("GH_TOKEN", "").strip()
     # Old gh lacks `gh auth token`; fall back to hosts.yml.
     if not t or " " in t:
-        import re
         for p in (os.path.expanduser("~/.config/gh/hosts.yml"),):
             try:
                 m = re.search(r"oauth_token:\s*(\S+)", open(p).read())
@@ -122,8 +134,11 @@ def api_get(path, params=None, raw=False, retries=4):
     return None
 
 
-def raw_get(repo, branch, path):
-    url = f"{RAW}/{repo}/{branch}/{urllib.parse.quote(path)}"
+COMMIT_RE = re.compile(r"[0-9a-f]{40}")
+
+
+def raw_get(repo, commit, path):
+    url = f"{RAW}/{repo}/{commit}/{urllib.parse.quote(path)}"
     try:
         with urllib.request.urlopen(req(url, accept="*/*"), timeout=60) as resp:
             return resp.read()
@@ -218,121 +233,230 @@ def sanitize(s):
     return "".join(c if c.isalnum() or c in "-_." else "_" for c in s)[:120]
 
 
+def git_blob_sha(data):
+    """The git object id of a blob, as listed in a git tree."""
+    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
+
+
 class Ctx:
-    def __init__(self, skill_hashes, done_repos, count, mf):
+    def __init__(self, skill_hashes, done_repos, count, mf, out_dir=None, pins=None):
         self.skill_hashes = skill_hashes
+        self.inflight = set()
         self.done_repos = done_repos
         self.count = count
         self.mf = mf
+        self.out_dir = out_dir or OUT_DIR
+        self.pins = pins or {}
         self.lock = threading.Lock()
 
 
-def _download_files(repo, branch, sdir, blobs):
-    """Fetch all blobs under a skill dir in parallel. Returns {rel_path: bytes}."""
-    out = {}
+def _fetch_verified(repo, commit, path, blob_sha):
+    """Return the blob's bytes, or None unless they hash to the tree's blob SHA."""
+    data = raw_get(repo, commit, path)
+    if data is None:
+        log(f"  [skip] {repo}@{commit[:8]}:{path}: download failed")
+        return None
+    if git_blob_sha(data) != blob_sha:
+        log(f"  [skip] {repo}@{commit[:8]}:{path}: content does not match tree blob {blob_sha[:8]}")
+        return None
+    return data
 
-    def fetch(item):
-        p, size = item
-        if size and size > MAX_FILE:
-            return None
-        return p, raw_get(repo, branch, p)
 
-    workers = min(FILE_WORKERS, max(1, len(blobs)))
+def _download_files(repo, commit, sdir, blobs, known=None):
+    """Fetch all blobs under a skill dir in parallel.
+
+    Returns ({rel_path: bytes}, [rel_path of blobs over MAX_FILE]), or None if
+    any blob that should have been fetched is missing or does not match its
+    git blob SHA. `known` maps repo paths to bytes that were already fetched
+    and verified.
+    """
+    known = known or {}
+    out, skipped, todo = {}, [], []
+    for p, size, blob_sha in blobs:
+        rel = p[len(sdir):].lstrip("/") if sdir else p
+        if p in known:
+            out[rel] = known[p]
+        elif size and size > MAX_FILE:
+            skipped.append(rel)
+        else:
+            todo.append((p, rel, blob_sha))
+
+    workers = min(FILE_WORKERS, max(1, len(todo)))
     with ThreadPoolExecutor(max_workers=workers) as ex:
-        for res in ex.map(fetch, blobs):
-            if res and res[1] is not None:
-                p = res[0]
-                rel = p[len(sdir):].lstrip("/") if sdir else p
-                out[rel] = res[1]
-    return out
+        fetched = list(ex.map(lambda t: _fetch_verified(repo, commit, t[0], t[2]), todo))
+    for (_, rel, _), data in zip(todo, fetched):
+        if data is None:
+            return None
+        out[rel] = data
+    return out, sorted(skipped)
+
+
+def _write_file(path, content):
+    with open(path, "wb") as f:
+        f.write(content)
+
+
+def _store(tmp, files, blob_shas):
+    """Write files under tmp and read each one back; True only if all bytes match."""
+    for rel, content in files.items():
+        fp = os.path.join(tmp, rel)
+        os.makedirs(os.path.dirname(fp), exist_ok=True)
+        _write_file(fp, content)
+    for rel, blob_sha in blob_shas.items():
+        with open(os.path.join(tmp, rel), "rb") as f:
+            if git_blob_sha(f.read()) != blob_sha:
+                return False
+    return True
+
+
+def resolve_commit(repo, branch, ctx):
+    """The commit every later request for this repo uses: the pinned SHA, else the branch head now."""
+    pinned = ctx.pins.get(repo)
+    if pinned:
+        return pinned
+    head = api_get(f"/repos/{repo}/commits/{urllib.parse.quote(branch, safe='')}")
+    sha = (head or {}).get("sha", "")
+    return sha if COMMIT_RE.fullmatch(sha) else None
 
 
 def process_repo(repo, ctx):
+    """Collect the skills of one repo. True when the repo was fully handled (nothing failed or was cut short)."""
     if STOP.is_set():
-        return
+        return False
     info = api_get(f"/repos/{repo}")
     if not info:
-        return
+        return False
     lic = (info.get("license") or {}).get("spdx_id")
     if lic not in ALLOW_LICENSES:
-        return  # skip non-permissive / unlicensed repos
+        return True  # skip non-permissive / unlicensed repos
     branch = info.get("default_branch", "main")
-    tree = api_get(f"/repos/{repo}/git/trees/{branch}", {"recursive": "1"})
+    commit = resolve_commit(repo, branch, ctx)
+    if not commit:
+        log(f"  [skip] {repo}: could not resolve a commit for {branch}")
+        return False
+    tree = api_get(f"/repos/{repo}/git/trees/{commit}", {"recursive": "1"})
     if not tree or "tree" not in tree:
-        return
+        return False
+    if tree.get("truncated"):
+        log(f"  [skip] {repo}@{commit[:8]}: git tree is truncated, the file list would be incomplete")
+        return False
     entries = tree["tree"]
     skill_dirs = {}
     for e in entries:
         if e["type"] == "blob" and os.path.basename(e["path"]).lower() == SKILL_NAME:
             skill_dirs[os.path.dirname(e["path"])] = []
     if not skill_dirs:
-        return
+        return True
     for e in entries:
         if e["type"] != "blob":
             continue
         cur = os.path.dirname(e["path"])
         while True:
             if cur in skill_dirs:
-                skill_dirs[cur].append((e["path"], e.get("size", 0)))
+                skill_dirs[cur].append((e["path"], e.get("size", 0), e["sha"]))
                 break
             if not cur:
                 break
             cur = os.path.dirname(cur)
 
+    complete = True
     for sdir, blobs in skill_dirs.items():
         if STOP.is_set():
-            return
-        skill_md = next((p for p, _ in blobs
-                         if os.path.basename(p).lower() == SKILL_NAME), None)
-        if not skill_md:
-            continue
-        md = raw_get(repo, branch, skill_md)
-        if not md:
-            continue
-        h = hashlib.sha256(md).hexdigest()
-        with ctx.lock:
-            if h in ctx.skill_hashes:
-                continue
-            ctx.skill_hashes.add(h)
+            return False
+        if not _collect_skill(repo, branch, commit, lic, sdir, blobs, ctx):
+            complete = False
+    return complete
+
+
+def _collect_skill(repo, branch, commit, lic, sdir, blobs, ctx):
+    """Collect one skill folder. False when it could not be completed."""
+    skill_md, skill_size, skill_sha = next(b for b in blobs if os.path.basename(b[0]).lower() == SKILL_NAME)
+    if skill_size and skill_size > MAX_FILE:
+        log(f"  [skip] {repo}@{commit[:8]}:{skill_md}: SKILL.md is over {MAX_FILE} bytes")
+        return False
+    md = _fetch_verified(repo, commit, skill_md, skill_sha)
+    if md is None:
+        return False
+    h = hashlib.sha256(md).hexdigest()
+    with ctx.lock:
+        if h in ctx.skill_hashes or h in ctx.inflight:
+            return True
+        ctx.inflight.add(h)
+    tmp = None
+    try:
         name, desc = parse_frontmatter(md.decode("utf-8", "replace"))
-        files = _download_files(repo, branch, sdir, blobs)
-        if not files:
-            continue
+        downloaded = _download_files(repo, commit, sdir, blobs, known={skill_md: md})
+        if downloaded is None:
+            return False
+        files, skipped = downloaded
+        blob_shas = {
+            (p[len(sdir):].lstrip("/") if sdir else p): blob_sha for p, _, blob_sha in blobs
+        }
+        os.makedirs(ctx.out_dir, exist_ok=True)
+        tmp = os.path.join(ctx.out_dir, f".partial-{os.getpid()}-{threading.get_ident()}")
+        shutil.rmtree(tmp, ignore_errors=True)
+        if not _store(tmp, files, {rel: blob_shas[rel] for rel in files}):
+            log(f"  [skip] {repo}@{commit[:8]}:{sdir or '/'}: stored bytes differ from what was downloaded")
+            return False
         owner, rname = repo.split("/", 1)
+        base = sanitize(f"{owner}__{rname}__{os.path.basename(sdir) or 'root'}")
         with ctx.lock:
             if STOP.is_set():
-                return
+                return False
+            folder = base
+            if os.path.exists(os.path.join(ctx.out_dir, folder)):
+                folder = f"{base}__{h[:8]}"
+            dest = os.path.join(ctx.out_dir, folder)
+            os.replace(tmp, dest)
+            tmp = None
             ctx.count += 1
             cid = ctx.count
             if ctx.count >= TARGET:
                 STOP.set()
-        folder = sanitize(f"{owner}__{rname}__{os.path.basename(sdir) or 'root'}")
-        dest = os.path.join(OUT_DIR, folder)
-        if os.path.exists(dest):
-            folder = f"{folder}__{h[:8]}"
-            dest = os.path.join(OUT_DIR, folder)
-        for rel, content in files.items():
-            fp = os.path.join(dest, rel)
-            os.makedirs(os.path.dirname(fp) or dest, exist_ok=True)
-            with open(fp, "wb") as f:
-                f.write(content)
-        with ctx.lock:
+            ctx.skill_hashes.add(h)
             ctx.mf.write(json.dumps({
                 "id": cid,
                 "name": name,
                 "description": desc,
                 "repo": repo,
+                "branch": branch,
+                "commit": commit,
                 "license": lic,
                 "path": skill_md,
                 "local": folder,
                 "files": len(files),
+                "skipped_oversize": skipped,
                 "sha256": h,
             }, ensure_ascii=False) + "\n")
             ctx.mf.flush()
-        log(f"[{cid}/{TARGET}] {repo}:{sdir or '/'}  ({len(files)} files)  {name[:50]}")
+        log(f"[{cid}/{TARGET}] {repo}@{commit[:8]}:{sdir or '/'}  ({len(files)} files)  {name[:50]}")
+        return True
+    finally:
+        with ctx.lock:
+            ctx.inflight.discard(h)
+        if tmp:
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
-def main():
+def parse_pins(values):
+    """Turn ['owner/repo=<40-hex sha>', ...] into {repo: sha}; ValueError on a malformed entry."""
+    pins = {}
+    for value in values:
+        repo, sep, sha = value.partition("=")
+        if not sep or repo.count("/") != 1 or not COMMIT_RE.fullmatch(sha):
+            raise ValueError(f"expected owner/repo=<40-hex commit sha>, got {value!r}")
+        pins[repo] = sha
+    return pins
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("--commit", action="append", default=[], metavar="OWNER/REPO=SHA",
+                        help="collect this exact commit of a repo instead of its default branch head")
+    try:
+        pins = parse_pins(parser.parse_args(argv).commit)
+    except ValueError as err:
+        parser.error(str(err))
     if not TOKEN:
         log("ERROR: set GH_TOKEN (e.g. GH_TOKEN=$(gh auth token))")
         sys.exit(1)
@@ -352,10 +476,11 @@ def main():
             json.dump(repos, f)
         log(f"discovered {len(repos)} repos")
 
+    repos += [r for r in pins if r not in repos]
     if count >= TARGET:
         STOP.set()
     mf = open(MANIFEST, "a", encoding="utf-8")
-    ctx = Ctx(skill_hashes, done_repos, count, mf)
+    ctx = Ctx(skill_hashes, done_repos, count, mf, OUT_DIR, pins)
     pending = [r for r in repos if r not in done_repos]
     log(f"processing {len(pending)} repos with {REPO_WORKERS} workers ...")
     try:
@@ -365,11 +490,13 @@ def main():
             for fut in as_completed(fut_map):
                 repo = fut_map[fut]
                 try:
-                    fut.result()
+                    finished = fut.result()
                 except Exception as ex_err:
                     log(f"  [repo err] {repo}: {ex_err}")
-                with ctx.lock:
-                    ctx.done_repos.add(repo)
+                    finished = False
+                if finished:  # a repo that failed or was cut short is retried on the next run
+                    with ctx.lock:
+                        ctx.done_repos.add(repo)
                 processed += 1
                 if processed % 25 == 0:
                     save_state(ctx.done_repos, ctx.skill_hashes, ctx.count)

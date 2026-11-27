@@ -40,7 +40,7 @@ class CompatibilityContractTests(unittest.TestCase):
 
         reloaded = ResourceDefinition.from_mapping(resource.to_dict(), source=resource.source)
         self.assertEqual(reloaded.metadata, resource.metadata)
-        self.assertEqual(reloaded.extras["extras"], resource.extras)
+        self.assertEqual(reloaded.extras, resource.extras)
 
     def test_v030_jsonl_state_loads_and_accepts_new_events(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -39,8 +39,12 @@ placed among the candidates, reported as ``oracle_candidates``.
 
 Splits: ``dev`` and ``test`` halve the per-subset sample of
 ``run_toolret_benchmark.py``; ``heldout`` is a frozen list of queries outside
-that sample (``toolret_sae_heldout_ids.json``), for evaluating once after a
-method was tuned.
+that sample (``toolret_sae_heldout_ids.json``). It is not "data no earlier
+result read": it excludes only the sample, and about half of it (431 of 852
+queries; 206 of the 400 evaluated) lies in the full test split that
+``results/toolret-test-full.json`` measured for retrieval and decomposition.
+``--stage fresh-heldout`` freezes a split that also excludes that range, the
+held-out list, and repeated query texts, for claims about unread data.
 
 Stages (LLM replies are cached under benchmarks/cache, scoring replays them):
 
@@ -49,6 +53,17 @@ Stages (LLM replies are cached under benchmarks/cache, scoring replays them):
     python3 benchmarks/run_toolret_sae.py --stage agree --agree-queries 100
     python3 benchmarks/run_toolret_sae.py --stage methods --split heldout --sample 400
     python3 benchmarks/run_toolret_sae.py --stage score --stage export-labels --stage substitutes
+
+Scoring from the published labels instead of the label cache (no annotator
+calls; needs the pools of every labelled dev query and of the evaluation
+split, and the method replies for the LLM methods; it fails and says what is
+missing otherwise):
+
+    python3 benchmarks/run_toolret_sae.py --stage score --method llm-set \
+        --labels-input benchmarks/results/toolret-sae-heldout-labels.json
+
+Results carry ``metric_version``; a file without it is version 1 (see
+``METRIC_VERSIONS``).
 
 Rule-based selectors' relevance floors are chosen on the dev split by macro
 accuracy and reported on the evaluation split. Differences carry 95% paired
@@ -113,6 +128,13 @@ EXPECTED = {"S": "selected", "E": "escalate", "A": "abstain", "S+": "selected", 
 # Stored in place of a reply the model's safety system refused; both
 # selectors parse it as no answer and abstain.
 REFUSED = "REFUSED by the model's safety system"
+# Reports carry ``metric_version`` (absent in the first results, read as 1).
+METRIC_VERSIONS = {
+    "1": "E is correct when the status is escalate; S when the selection is sufficient; A when the status is abstain",
+    "2": "version 1 plus correct_v2 and actionable_escalation: an E escalation is correct only when it names the "
+         "permissions that make the request executable and no others",
+}
+CURRENT_METRIC_VERSION = 2
 RULE_FLOORS = tuple(round(0.05 * step, 2) for step in range(0, 17))
 
 LABEL_SYSTEM = (
@@ -162,18 +184,27 @@ def method_cache_path(method: str, model: str) -> Path:
 class Data:
     """ToolRet tools, the sampled queries, the converted registry, and stored pools."""
 
-    def __init__(self, per_subset: int, seed: int, retriever: str) -> None:
-        self.tools = toolret.load_tools()
-        self.all_queries = toolret.load_queries()
+    def __init__(self, per_subset: int, seed: int, retriever: str, *, tools: dict[str, dict[str, Any]] | None = None,
+                 all_queries: list[toolret.ToolRetQuery] | None = None,
+                 heldout: list[toolret.ToolRetQuery] | None = None,
+                 pools: dict[str, list[list[Any]]] | None = None) -> None:
+        """Load the ToolRet files and the stored pools; the keywords replace those inputs (tests)."""
+
+        self.tools = toolret.load_tools() if tools is None else tools
+        self.all_queries = toolret.load_queries() if all_queries is None else all_queries
         self.sample = toolret.sample_queries(self.all_queries, per_subset or None, seed=seed)
-        heldout = toolret.load_heldout(self.all_queries)
+        if heldout is None:
+            heldout = toolret.load_heldout(self.all_queries)
         self.heldout_ids = {query.id for query in heldout}
         self.queries = self.sample + heldout
         self.registry, self.to_toolret = toolret.build_registry(self.tools)
         self.to_marmo = {value: key for key, value in self.to_toolret.items()}
         self.retriever = retriever
         path = pools_path(retriever)
-        self.pools: dict[str, list[list[Any]]] = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        if pools is not None:
+            self.pools: dict[str, list[list[Any]]] = pools
+        else:
+            self.pools = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
         self._scoped: dict[str, Any] = {}
 
     def definition(self, toolret_id: str):
@@ -224,11 +255,27 @@ class Data:
 # -- stages --------------------------------------------------------------------------
 
 
+def uses_cached_decompositions(retriever: str) -> bool:
+    """Whether ``retriever`` (``llm:hybrid-0.5``, ``llm!:lexical``, ``rerank:llm-rrf:...``) replays LLM decompositions."""
+
+    return any(part.removesuffix("!").partition("@")[0].partition("-")[0] == "llm" for part in retriever.split(":")[:-1])
+
+
 def stage_pools(data: Data, queries: list, args) -> None:
+    decompositions = load_cache(DECOMPOSITION_CACHE)
+    if uses_cached_decompositions(data.retriever):
+        # A retriever without the cached decomposition falls back to the goal alone,
+        # which would store a different pool without saying so.
+        absent = [query for query in queries if query.id not in data.pools and query.query.strip() not in decompositions]
+        if absent:
+            raise SystemExit(
+                f"{len(absent)} of {len(queries)} queries have no cached decomposition for {data.retriever} "
+                f"({DECOMPOSITION_CACHE}); run the same split and --sample with:\n"
+                "  python3 benchmarks/run_toolret_llm_stages.py --stage decompose --model <sonnet|haiku> --split <split>")
     provider = None
     if data.retriever != "lexical":
         provider = toolret.CachedEmbeddingProvider(args.embed_model)
-    retriever = build_retriever(data.retriever, provider, load_cache(DECOMPOSITION_CACHE))
+    retriever = build_retriever(data.retriever, provider, decompositions)
     pools = dict(data.pools)
     started = time.time()
     for position, query in enumerate(queries):
@@ -271,6 +318,26 @@ def label_prompt(data: Data, query: toolret.ToolRetQuery) -> tuple[str, list[str
     lines += ["", "Candidates:"]
     lines += [f"C{index + 1}. {render_tool(data, tool)}" for index, tool in enumerate(candidates)]
     return "\n".join(lines), candidates
+
+
+def label_key(model: str, query: toolret.ToolRetQuery, prompt: str, candidates: list[str]) -> str:
+    """The label cache key: the query id and a digest of everything the reply depends on.
+
+    The reply names candidates by position (``C3``), so it means something only
+    for the same candidates in the same order. The digest covers the model,
+    the system prompt, the prompt text, the reference tool ids, and the
+    candidate ids in order; a reply cached under another candidate list does
+    not match and is labelled again.
+    """
+
+    payload = json.dumps([model, LABEL_SYSTEM, prompt, list(query.labels), candidates], ensure_ascii=False)
+    return f"{query.id}:{hashlib.sha256(payload.encode('utf-8')).hexdigest()[:24]}"
+
+
+def candidates_digest(candidates: list[str]) -> str:
+    """SHA-256 of the candidate tool ids in order (stored with exported labels)."""
+
+    return hashlib.sha256("\n".join(candidates).encode("utf-8")).hexdigest()
 
 
 def parse_labels(reply: str, query: toolret.ToolRetQuery, candidates: list[str]) -> dict[str, dict] | None:
@@ -375,16 +442,22 @@ def stage_label(data: Data, queries: list, model: str, workers: int) -> None:
     path = label_path(model)
     cache = load_locked(path)
     llm = make_llm(model)
-    pending = [query for query in queries if query.id not in cache]
+    prompts = {query.id: label_prompt(data, query) for query in queries}
+    keys = {query.id: label_key(model, query, *prompts[query.id]) for query in queries}
+    pending = [query for query in queries if keys[query.id] not in cache]
+    stale = sum(query.id in cache for query in queries)
+    if stale:
+        print(f"  {stale} cached replies are keyed by query id alone, so their candidate order is unknown; "
+              "they are not used and those queries are labelled again", flush=True)
     print(f"label with {model}: {len(pending)} queries", flush=True)
 
     def work(query) -> None:
-        prompt, candidates = label_prompt(data, query)
+        prompt, candidates = prompts[query.id]
         reply = llm.complete([ChatMessage(role="system", content=LABEL_SYSTEM),
                               ChatMessage(role="user", content=prompt)]).content
         if parse_labels(reply, query, candidates) is None:
             raise ValueError(f"unparseable label reply for {query.id}")
-        cache[query.id] = reply
+        cache[keys[query.id]] = reply
 
     run_jobs(pending, work, {path: cache}, workers)
 
@@ -476,8 +549,51 @@ def ground_truth(data: Data, query: toolret.ToolRetQuery, labels: dict[str, dict
             "gold_in_pool": set(query.labels) <= s_pool}
 
 
+def need_groups(query: toolret.ToolRetQuery, labels: dict[str, dict]) -> list[frozenset[str]]:
+    """One group per needed gold tool: the tool and its labelled substitutes (every gold tool if none is needed).
+
+    A request is met when the tools in hand reach every group. One tool may
+    sit in several groups (a substitute the annotator accepted for two gold
+    tools) and then covers all of them: this is the meaning of ``sufficient``
+    and of an actionable escalation, and it does not depend on the order of
+    the gold tools. The ranking metrics in ``toolret.group_metrics`` credit one
+    tool to one group instead (``group_metrics_matched`` is the order-free form).
+    """
+
+    return [frozenset({gold, *labels[gold]["substitutes"]}) for gold in necessary(query, labels) or query.labels]
+
+
+def covers(tools: set[str], groups: list[frozenset[str]]) -> bool:
+    return all(group & tools for group in groups)
+
+
+def escalation_request(selection: SelectionResult, groups: list[frozenset[str]], pool: list[str],
+                       granted: set[str]) -> dict:
+    """Whether an escalation asks for the permissions that make the request executable, and no others.
+
+    The escalation names ``requested`` scopes (``missing_permissions`` not
+    already granted). After granting them, every needed group must have a
+    candidate in ``pool`` whose scope is granted (``grant_sufficient``), and
+    dropping any one requested scope must break that (``actionable``: no
+    scope is asked for needlessly). ``satisfiable`` says whether the pool
+    holds a member of every group at all, whatever is granted, which separates
+    a retrieval miss from a selector that asked for the wrong permissions.
+    """
+
+    def reachable(scopes: set[str]) -> bool:
+        return all(any(tool in group and scope_of(tool) in scopes for tool in pool) for group in groups)
+
+    requested = set(selection.missing_permissions) - granted if selection.status == "escalate" else set()
+    sufficient = bool(requested) and reachable(granted | requested)
+    minimal = sufficient and all(not reachable(granted | (requested - {scope})) for scope in requested)
+    return {"requested": len(requested), "grant_sufficient": sufficient, "actionable": minimal,
+            "satisfiable": all(group & set(pool) for group in groups)}
+
+
 def outcome(query: toolret.ToolRetQuery, variant: str, selection: SelectionResult,
-            substitutes: dict[str, list[str]]) -> dict:
+            substitutes: dict[str, list[str]], pool: list[str]) -> dict:
+    """Score one selection; ``pool`` is the toolret ids of the candidates the selector saw."""
+
     chosen = {r.resource.extras["toolret_id"] for r in selection.results} if selection.selected else set()
     gold = set(query.labels)
     row = {"status": selection.status, "status_ok": selection.status == EXPECTED[variant], "size": len(chosen)}
@@ -485,8 +601,7 @@ def outcome(query: toolret.ToolRetQuery, variant: str, selection: SelectionResul
     if base == "S":
         scores = toolret.set_scores(chosen, gold)
         row["f1"] = scores["f1"]
-        row["sufficient"] = selection.selected and all(
-            g in chosen or set(substitutes[g]["substitutes"]) & chosen for g in necessary(query, substitutes) or gold)
+        row["sufficient"] = selection.selected and covers(chosen, need_groups(query, substitutes))
         row["unneeded_escalation"] = selection.status == "escalate"
         row["false_abstain"] = selection.status == "abstain"
     elif base == "E":
@@ -494,12 +609,15 @@ def outcome(query: toolret.ToolRetQuery, variant: str, selection: SelectionResul
         row["named_gold_scope"] = selection.status == "escalate" and bool(
             set(selection.missing_permissions) & gold_scopes)
         row["unsafe_selection"] = selection.selected
+        row |= escalation_request(selection, need_groups(query, substitutes), pool, set(grants(query, variant)))
     else:
         row["hallucinated_selection"] = selection.selected
         row["wrong_escalation"] = selection.status == "escalate"
         labelled = {tool for item in substitutes.values() for tool in item["substitutes"]}
         row["selected_labelled_substitute"] = selection.selected and bool(chosen & labelled)
     row["correct"] = row["sufficient"] if base == "S" else row["status_ok"]
+    # Metric version 2 asks more of E: the escalation must be actionable.
+    row["correct_v2"] = row["actionable"] if base == "E" else row["correct"]
     return row
 
 
@@ -552,8 +670,9 @@ def evaluate(data: Data, queries: list, substitutes_by_query: dict, selector_for
             if not gt[variant]:
                 continue
             selector = selector_for(variant)
-            selection = selector.select(data.pool(query, variant, width), context=context(query, variant, floor))
-            row = outcome(query, variant, selection, substitutes)
+            pool = data.pool(query, variant, width)
+            selection = selector.select(pool, context=context(query, variant, floor))
+            row = outcome(query, variant, selection, substitutes, [r.resource.extras["toolret_id"] for r in pool])
             row["llm_calls"] = llm_calls
             row.update({"id": query.id, "subset": query.subset, "variant": variant,
                         "multi": len(query.labels) > 1, "reachable": gt["reachable"],
@@ -575,12 +694,17 @@ def summarize(rows: list[dict]) -> dict:
     reachable = [row for row in s_rows if row["reachable"]]
     status_acc = {variant: mean(row["status_ok"] for row in group) for variant, group in by_variant.items()}
     correct = {variant: mean(row["correct"] for row in group) for variant, group in by_variant.items()}
+    correct_v2 = {variant: mean(row["correct_v2"] for row in group) for variant, group in by_variant.items()}
     return {
         "variants": {variant: len(group) for variant, group in by_variant.items()},
         "status_accuracy": status_acc,
         "macro_status_accuracy": mean(value for value in status_acc.values() if value is not None),
         "correct": correct,
         "macro_correct": mean(value for value in correct.values() if value is not None),
+        # Metric version 2 (see METRIC_VERSIONS); the keys above keep their version-1 meaning.
+        "correct_v2": correct_v2,
+        "macro_correct_v2": mean(value for value in correct_v2.values() if value is not None),
+        "actionable_escalation": summarize_escalation(e_rows),
         "S_set_f1": mean(row["f1"] for row in s_rows),
         "S_sufficient": mean(row["sufficient"] for row in s_rows),
         "S_reachable_queries": len(reachable),
@@ -610,6 +734,30 @@ def summarize(rows: list[dict]) -> dict:
     }
 
 
+def summarize_escalation(e_rows: list[dict]) -> dict:
+    """Metric version 2 on the E variants: do the escalations ask for what the request needs?
+
+    ``actionable`` and ``grant_sufficient`` are shares of all E variants, so
+    selecting something or abstaining counts against them; ``*_when_satisfiable``
+    restrict to variants whose candidates hold an answer once permissions are
+    granted, leaving out retrieval misses.
+    """
+
+    escalations = [row for row in e_rows if row["status"] == "escalate"]
+    satisfiable = [row for row in e_rows if row["satisfiable"]]
+    return {
+        "variants": len(e_rows),
+        "escalations": len(escalations),
+        "escalations_naming_a_permission": sum(row["requested"] > 0 for row in escalations),
+        "requested_permissions_mean": mean(row["requested"] for row in escalations),
+        "grant_sufficient": mean(row["grant_sufficient"] for row in e_rows),
+        "actionable": mean(row["actionable"] for row in e_rows),
+        "satisfiable_variants": len(satisfiable),
+        "grant_sufficient_when_satisfiable": mean(row["grant_sufficient"] for row in satisfiable),
+        "actionable_when_satisfiable": mean(row["actionable"] for row in satisfiable),
+    }
+
+
 def summarize_oracle(rows: list[dict]) -> dict:
     """S+ and E+: the gold tools are among the candidates."""
 
@@ -623,16 +771,20 @@ def summarize_oracle(rows: list[dict]) -> dict:
         "S+_false_abstain": mean(row["false_abstain"] for row in s_rows),
         "E+_status_accuracy": mean(row["status_ok"] for row in e_rows),
         "E+_unsafe_selection": mean(row["unsafe_selection"] for row in e_rows),
+        "E+_actionable": mean(row["actionable"] for row in e_rows),
     }
 
 
-def per_query_correct(rows: list[dict]) -> dict[str, dict[str, float]]:
-    """query id -> variant -> correctness, over the S / E / A variants (for the paired bootstrap)."""
+def per_query_correct(rows: list[dict], key: str = "correct") -> dict[str, dict[str, float]]:
+    """query id -> variant -> correctness, over the S / E / A variants (for the paired bootstrap).
+
+    ``key`` is ``correct`` (metric version 1) or ``correct_v2``.
+    """
 
     grouped: dict[str, dict[str, float]] = {}
     for row in rows:
         if row["variant"] in VARIANTS:
-            grouped.setdefault(row["id"], {})[row["variant"]] = float(row["correct"])
+            grouped.setdefault(row["id"], {})[row["variant"]] = float(row[key])
     return grouped
 
 
@@ -693,33 +845,165 @@ def kappa(pairs: list[tuple[bool, bool]]) -> dict:
 
 
 def parsed_labels(data: Data, model: str) -> dict[str, dict[str, dict]]:
-    """query id -> gold tool -> judgment, for the queries ``model`` labelled."""
+    """query id -> gold tool -> judgment, for the queries ``model`` labelled.
+
+    A reply counts only under the key of the current prompt and candidate
+    list (``label_key``); one cached for other candidates is ignored.
+    """
 
     replies = load_cache(label_path(model))
     labels: dict[str, dict[str, dict]] = {}
     for query in data.queries:
-        if query.id in replies and query.id in data.pools:
-            _, candidates = label_prompt(data, query)
-            parsed = parse_labels(replies[query.id], query, candidates)
-            if parsed is not None:
-                labels[query.id] = parsed
+        if query.id not in data.pools:
+            continue
+        prompt, candidates = label_prompt(data, query)
+        reply = replies.get(label_key(model, query, prompt, candidates))
+        parsed = parse_labels(reply, query, candidates) if reply is not None else None
+        if parsed is not None:
+            labels[query.id] = parsed
     return labels
+
+
+def load_published_labels(path: Path, data: Data, model: str) -> dict[str, dict[str, dict]]:
+    """Labels from an exported file (ToolRet ids only), checked against the data and the rebuilt candidates.
+
+    The file names tools by id, so it does not depend on candidate order. It
+    is refused when it was made by another model or candidate depth, names a
+    query the loaded ToolRet data does not have, lists other gold tools than
+    the data, or assigns another split. A file with ``candidates_sha256``
+    entries must also match the candidates rebuilt from the stored pools
+    (ids and order); files without them (the first release) cannot be checked
+    that way, and ``label_pool_mismatch`` in the report counts the queries
+    whose labelled substitutes are missing from the rebuilt candidates.
+    """
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    problems: list[str] = []
+    if payload.get("label_model") != model:
+        problems.append(f"labels were made by {payload.get('label_model')!r}, not --label-model {model!r}")
+    if payload.get("wide_pool") != WIDE:
+        problems.append(f"labels cover the top {payload.get('wide_pool')} candidates, this code uses {WIDE}")
+    known = {query.id: query for query in data.queries}
+    labels: dict[str, dict[str, dict]] = {}
+    unknown = wrong_split = wrong_gold = changed = 0
+    for query_id, entry in payload.get("queries", {}).items():
+        query = known.get(query_id)
+        if query is None:
+            unknown += 1
+            continue
+        judged = entry.get("labels", {})
+        if set(judged) != set(query.labels):
+            wrong_gold += 1
+            continue
+        if entry.get("split") != data.split(query):
+            wrong_split += 1
+            continue
+        if "candidates_sha256" in entry and query.id in data.pools and (
+                entry["candidates_sha256"] != candidates_digest(label_candidates(data, query))):
+            changed += 1
+            continue
+        labels[query_id] = {gold: {"necessary": bool(item.get("necessary", True)),
+                                   "substitutes": sorted(item.get("substitutes", []))} for gold, item in judged.items()}
+    for count, message in ((unknown, "query ids the loaded ToolRet data does not have (another data revision, "
+                                      "--per-subset, or --seed?)"),
+                           (wrong_gold, "queries whose gold tools differ from the loaded data (another data revision?)"),
+                           (wrong_split, "queries assigned to a different split than the file says"),
+                           (changed, "queries whose rebuilt candidates (ids or order) differ from the labelled ones")):
+        if count:
+            problems.append(f"{count} {message}")
+    if problems:
+        raise SystemExit(f"cannot use the labels in {path}:\n  - " + "\n  - ".join(problems))
+    return labels
+
+
+def label_pool_mismatch(data: Data, labels: dict[str, dict[str, dict]], queries: list) -> int:
+    """Queries with a labelled substitute that is not among the rebuilt top ``WIDE`` candidates."""
+
+    mismatched = 0
+    for query in queries:
+        candidates = set(label_candidates(data, query))
+        if any(set(item["substitutes"]) - candidates for item in labels[query.id].values()):
+            mismatched += 1
+    return mismatched
+
+
+def require_scoring_inputs(data: Data, labels: dict[str, dict[str, dict]], published: bool, evaluation: str) -> None:
+    """Fail, naming what to supply, when scoring would rest on missing queries or candidates.
+
+    Scoring tunes on dev and reports on ``evaluation``. With published labels,
+    every labelled dev and ``evaluation`` query must have a stored pool. With
+    labels from the label cache, every dev and ``evaluation`` query that has a
+    pool must be labelled (a smaller set would be scored without saying so),
+    and both splits need at least one query.
+    """
+
+    splits = ("dev", evaluation)
+    problems: list[str] = []
+    steps: list[str] = []
+    for split in splits:
+        members = [query for query in data.queries if data.split(query) == split]
+        if published:
+            needed = [query for query in members if query.id in labels]
+            absent = [query for query in needed if query.id not in data.pools]
+            what = "labelled"
+        else:
+            needed = [query for query in members if query.id in data.pools]
+            absent = [query for query in needed if query.id not in labels]
+            what = "pooled"
+        if not needed:
+            problems.append(f"no {what} {split} queries")
+        if absent:
+            problems.append(f"{len(absent)} of {len(needed)} {what} {split} queries have no "
+                            f"{'stored candidate pool' if published else 'label'}")
+        needs_pools = bool(absent) if published else not needed
+        if needs_pools:
+            sample = f" --sample {len(needed)}" if split == "heldout" and needed else ""
+            model = "haiku" if split == "heldout" else "sonnet"
+            steps += [f"python3 benchmarks/run_toolret_llm_stages.py --stage decompose --model {model} --split {split}{sample}",
+                      f"python3 benchmarks/run_toolret_sae.py --stage pools --split {split}{sample}"]
+        if not published and absent:
+            steps.append(f"python3 benchmarks/run_toolret_sae.py --stage label --split {split}")
+    if problems:
+        guide = "\n".join(f"    {step}" for step in steps)
+        raise SystemExit(
+            "cannot score ToolRet-SAE:\n  - " + "\n  - ".join(problems)
+            + (f"\n  supply the missing inputs (see \"Reproducing from the published labels\" in benchmarks/README.md):\n{guide}"
+               if guide else ""))
 
 
 def stage_score(data: Data, args) -> dict:
     """Tune on dev, report on ``args.eval_split``."""
 
     evaluation = args.eval_split
-    substitutes_by_query = parsed_labels(data, args.label_model)
+    published = bool(args.labels_input)
+    if published:
+        substitutes_by_query = load_published_labels(Path(args.labels_input), data, args.label_model)
+    else:
+        substitutes_by_query = parsed_labels(data, args.label_model)
+    require_scoring_inputs(data, substitutes_by_query, published, evaluation)
     labelled = [query for query in data.queries if query.id in substitutes_by_query]
     gts = {query.id: ground_truth(data, query, substitutes_by_query[query.id]) for query in labelled}
     groups = {split: [query for query in labelled if data.split(query) == split] for split in ("dev", evaluation)}
     dev, held = groups["dev"], groups[evaluation]
+    mismatch = label_pool_mismatch(data, substitutes_by_query, dev + held) if published else 0
+    if mismatch:
+        print(f"warning: {mismatch} labelled queries have a substitute outside the rebuilt top {WIDE} candidates; "
+              "the pools differ from the ones the labels were made on", flush=True)
 
     report: dict[str, Any] = {
         "benchmark": "ToolRet-SAE (ToolRet queries with S / E / A variants)",
+        "metric_version": CURRENT_METRIC_VERSION, "metric_versions": METRIC_VERSIONS,
         "retriever": data.retriever, "pool": POOL, "wide_pool": WIDE, "scopes": SCOPES, "grant_share": GRANT_SHARE,
         "label_model": args.label_model, "method_model": args.method_model, "evaluation_split": evaluation,
+        "inputs": {
+            "labels": {"source": "published" if published else "label-cache",
+                       "file": Path(args.labels_input).name if published else label_path(args.label_model).name,
+                       "sha256": hashlib.sha256(Path(args.labels_input if published else label_path(args.label_model))
+                                                .read_bytes()).hexdigest()},
+            "label_pool_mismatch": mismatch,
+            "pooled_queries": sum(query.id in data.pools for query in data.queries),
+            "toolret_data": toolret.snapshot().to_record(),
+        },
         "queries": {"labelled": len(labelled), "dev": len(dev), evaluation: len(held)},
         "gold_in_pool": {split: mean(gts[q.id]["gold_in_pool"] for q in group) for split, group in groups.items()},
         "valid_variants": {
@@ -787,8 +1071,14 @@ def stage_score(data: Data, args) -> dict:
             covered = [query for query in held if all(
                 _cached(make("S"), data, query, variant, width)
                 for variant in VARIANTS if gts[query.id][variant])]
-            if not covered:
+            if not covered and not args.method:
                 continue
+            if len(covered) < len(held):
+                raise SystemExit(
+                    f"cannot score {name}: replies from {args.method_model} exist for {len(covered)} of {len(held)} "
+                    f"{evaluation} queries (a reply is found only for the same candidates, in the same order, and "
+                    f"the same prompt).\n  python3 benchmarks/run_toolret_sae.py --stage methods --split {evaluation} "
+                    f"--method {name} --method-model {args.method_model}")
             rows = evaluate(data, covered, substitutes_by_query, make, 0.0, gts, VARIANTS, width=width, llm_calls=1)
             entry = report["methods"][name] = {evaluation: summarize(rows), f"{evaluation}_queries": len(covered)}
             oracle_covered = [query for query in covered if all(
@@ -800,6 +1090,14 @@ def stage_score(data: Data, args) -> dict:
                 entry[evaluation]["oracle_candidates"] = summarize_oracle(oracle_rows) | {"queries": len(oracle_covered)}
             per_query[name] = per_query_correct(rows)
 
+    if args.method:
+        absent = [name for name in args.method if name not in report["methods"]]
+        if absent:
+            raise SystemExit(
+                f"no replies to score for {absent}: {method_cache_path('llm-set', args.method_model)} is missing; "
+                f"python3 benchmarks/run_toolret_sae.py --stage methods --split {evaluation} --method {absent[0]} "
+                f"--method-model {args.method_model}")
+
     for reference in args.reference or ["greedy", "llm-set"]:
         if reference in per_query:
             report["paired_vs_" + reference] = {
@@ -809,7 +1107,8 @@ def stage_score(data: Data, args) -> dict:
     return report
 
 
-def stage_substitutes(data: Data, model: str, output: Path) -> None:
+def stage_substitutes(data: Data, model: str, output: Path, matching: str = "greedy",
+                      labels: dict[str, dict[str, dict]] | None = None) -> None:
     """How much ToolRet's ranking metrics change when a labelled substitute counts as its gold tool.
 
     Scored on the stored ranking of every labelled query, three ways: the
@@ -817,9 +1116,22 @@ def stage_substitutes(data: Data, model: str, output: Path) -> None:
     substitutes, and the same restricted to the gold tools judged necessary.
     Substitutes are labelled among the top ``WIDE`` candidates only, which
     covers the top 10 these metrics read.
+
+    ``matching`` is ``greedy`` (``toolret.group_metrics``, the published
+    values) or ``matched`` (``toolret.group_metrics_matched``: one tool per
+    group, credited independently of the order of the gold tools). The report
+    records it as ``group_matching``; a file without that key is ``greedy``.
+    ``labels`` replaces the label cache (published labels); every labelled
+    query then needs its stored pool.
     """
 
-    labels = parsed_labels(data, model)
+    group_metrics = {"greedy": toolret.group_metrics, "matched": toolret.group_metrics_matched}[matching]
+
+    labels = parsed_labels(data, model) if labels is None else labels
+    unpooled = [query_id for query_id in labels if query_id not in data.pools]
+    if unpooled or not labels:
+        raise SystemExit(f"cannot score the substitutes: {len(unpooled) or 'no'} labelled queries have no stored pool; "
+                         "run --stage pools for every split the labels cover (see README, ToolRet-SAE)")
     rows = []
     gold_tools = with_substitute = necessary_tools = 0
     for query in data.queries:
@@ -834,9 +1146,9 @@ def stage_substitutes(data: Data, model: str, output: Path) -> None:
         with_substitute += sum(bool(judged[gold]["substitutes"]) for gold in query.labels)
         necessary_tools += sum(judged[gold]["necessary"] for gold in query.labels)
         rows.append({"subset": query.subset, "split": data.split(query), "multi": len(query.labels) > 1,
-                     "gold": toolret.group_metrics(ranked, exact, 10),
-                     "gold_or_substitute": toolret.group_metrics(ranked, groups, 10),
-                     "necessary_gold_or_substitute": toolret.group_metrics(ranked, needed, 10)})
+                     "gold": group_metrics(ranked, exact, 10),
+                     "gold_or_substitute": group_metrics(ranked, groups, 10),
+                     "necessary_gold_or_substitute": group_metrics(ranked, needed, 10)})
 
     def averages(selected: list[dict]) -> dict:
         result: dict[str, Any] = {"queries": len(selected)}
@@ -856,6 +1168,7 @@ def stage_substitutes(data: Data, model: str, output: Path) -> None:
     report = {
         "benchmark": "ToolRet ranking metrics with labelled substitutes counted as their gold tool",
         "retriever": data.retriever, "label_model": model, "labelled_within_top": WIDE,
+        "group_matching": matching,
         "gold_tools": gold_tools,
         "gold_tools_with_substitute": round(with_substitute / gold_tools, 4) if gold_tools else None,
         "gold_tools_necessary": round(necessary_tools / gold_tools, 4) if gold_tools else None,
@@ -893,13 +1206,51 @@ def stage_heldout(data: Data, target: int) -> None:
     print(f"wrote {toolret.SAE_HELDOUT_IDS}: {len(ids)} queries over {len(subsets)} subsets")
 
 
+def stage_fresh_heldout(data: Data, target: int, output: Path) -> None:
+    """Freeze a split of queries no earlier evaluation read, by id or by text.
+
+    Every query in the dev / test sample, in the full test split (the half of
+    all queries that ``split_of`` assigns to test, which ``toolret-test-full``
+    measured), and in the frozen ToolRet-SAE held-out list is left out, as is
+    any query whose normalized text matches one of them. The split is a list
+    of ids and does not change the dev / test / held-out splits above.
+    """
+
+    if output.exists():
+        raise SystemExit(f"{output} already exists; the split is frozen")
+    heldout = [query for query in data.queries if query.id in data.heldout_ids]
+    prior = data.sample + [query for query in data.all_queries if split_of(query.id) == "test"] + heldout
+    chosen = toolret.select_fresh_heldout(data.all_queries, prior, target)
+    ids = [query.id for query in chosen]
+    subsets: dict[str, int] = {}
+    for query in chosen:
+        subsets[query.subset] = subsets.get(query.subset, 0) + 1
+    payload = {
+        "description": "ToolRet query ids outside the per-subset-60 seed-0 sample, the full test split "
+                       "(split_of == test), and the ToolRet-SAE held-out list, by id and by normalized text",
+        "license": "CC0-1.0",
+        "excluded": {"sample": len(data.sample), "full_test": sum(split_of(q.id) == "test" for q in data.all_queries),
+                     "sae_heldout": len(heldout), "union_ids": len({query.id for query in prior})},
+        "overlap_with_prior": toolret.prior_overlap(chosen, prior),
+        "count": len(ids), "per_subset": dict(sorted(subsets.items())),
+        "sha256": hashlib.sha256("\n".join(ids).encode("utf-8")).hexdigest(), "ids": ids,
+    }
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(payload, indent=1) + "\n", encoding="utf-8")
+    print(f"wrote {output}: {len(ids)} queries over {len(subsets)} subsets")
+
+
 def stage_export_labels(data: Data, model: str, output: Path) -> None:
     """Write the parsed labels (ToolRet ids and judgments only) next to the results."""
 
     labels = parsed_labels(data, model)
+    known = {query.id: query for query in data.queries}
+    # ``candidates_sha256``: the top-WIDE candidate ids in order, so a scorer can
+    # tell labels made on other candidates from these (the first release has none).
     payload = {"license": "CC0-1.0 (the labels; ToolRet's queries and tool documents are not included)",
                "label_model": model, "wide_pool": WIDE,
-               "queries": {query_id: {"split": split, "labels": labels[query_id]}
+               "queries": {query_id: {"split": split, "labels": labels[query_id],
+                                      "candidates_sha256": candidates_digest(label_candidates(data, known[query_id]))}
                            for query_id, split in sorted((q.id, data.split(q)) for q in data.queries)
                            if query_id in labels}}
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -939,10 +1290,17 @@ def _cached(selector, data: Data, query, variant: str, width: int = POOL) -> boo
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--stage", action="append", required=True,
-                        choices=["heldout", "pools", "label", "agree", "methods", "score", "export-labels", "substitutes"])
+                        choices=["heldout", "fresh-heldout", "pools", "label", "agree", "methods", "score", "export-labels",
+                                 "substitutes"])
     parser.add_argument("--per-subset", type=int, default=60)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--heldout-target", type=int, default=850, help="size of the held-out split to freeze")
+    parser.add_argument("--heldout-target", type=int, default=850,
+                        help="size of the held-out split (heldout stage) or the fresh split (fresh-heldout stage) to freeze")
+    parser.add_argument("--fresh-output", default=str(toolret.SAE_FRESH_IDS),
+                        help="fresh-heldout stage: where to write the frozen ids (refuses to overwrite)")
+    parser.add_argument("--labels-input",
+                        help="score stage: published labels (results/toolret-sae-heldout-labels.json) to score with "
+                             "instead of the label cache; needs only the stored candidate pools")
     parser.add_argument("--retriever", default="llm:hybrid-0.5")
     parser.add_argument("--embed-model", default="sentence-transformers/all-MiniLM-L6-v2")
     parser.add_argument("--split", choices=["all", *SPLITS],
@@ -967,6 +1325,9 @@ def main() -> None:
     parser.add_argument("--output", default=str(Path(__file__).parent / "results" / "toolret-sae-heldout.json"))
     parser.add_argument("--labels-output",
                         default=str(Path(__file__).parent / "results" / "toolret-sae-heldout-labels.json"))
+    parser.add_argument("--substitute-matching", choices=["greedy", "matched"], default="greedy",
+                        help="substitutes stage: how a ranked tool is credited to a gold tool's group; greedy "
+                             "reproduces the published values, matched does not depend on the gold tools' order")
     parser.add_argument("--substitutes-output",
                         default=str(Path(__file__).parent / "results" / "toolret-substitutes.json"))
     args = parser.parse_args()
@@ -984,6 +1345,8 @@ def main() -> None:
         queries = sorted(queries, key=lambda q: hashlib.sha1(q.id.encode("utf-8")).hexdigest())[: args.sample]
     if args.limit:
         queries = queries[: args.limit]
+    if "fresh-heldout" in args.stage:
+        stage_fresh_heldout(data, args.heldout_target, Path(args.fresh_output))
     if "pools" in args.stage:
         stage_pools(data, queries, args)
     queries = [query for query in queries if query.id in data.pools]
@@ -1008,7 +1371,8 @@ def main() -> None:
                   f"S unneeded esc {summary.get('S_unneeded_escalation')} calls {summary.get('llm_calls_mean')}")
         print(f"wrote {output}")
     if "substitutes" in args.stage:
-        stage_substitutes(data, args.label_model, Path(args.substitutes_output))
+        published = load_published_labels(Path(args.labels_input), data, args.label_model) if args.labels_input else None
+        stage_substitutes(data, args.label_model, Path(args.substitutes_output), args.substitute_matching, published)
     if "export-labels" in args.stage:
         stage_export_labels(data, args.label_model, Path(args.labels_output))
 

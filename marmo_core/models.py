@@ -43,6 +43,11 @@ LATENCY_CLASSES = tuple(item.value for item in LatencyClass)
 SIDE_EFFECTS = tuple(item.value for item in SideEffect)
 TRUST_LEVELS = tuple(item.value for item in TrustLevel)
 
+# The JSON Schema ``type`` names the lightweight schema subset understands.
+# Loading, default-argument generation and argument validation all use this
+# one list, so a schema accepted by one of them is accepted by the others.
+SCHEMA_TYPES = ("string", "number", "integer", "boolean", "array", "object", "null")
+
 _SEMVER_RE = re.compile(
     r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
     r"(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
@@ -269,6 +274,16 @@ class ResourceDefinition:
             metadata_keys.add("stats")
             metadata_data = {key: value for key, value in data.items() if key in metadata_keys}
             extras = {key: value for key, value in data.items() if key not in metadata_keys}
+        wrapped = extras.get("extras")
+        if isinstance(wrapped, Mapping):
+            # ``to_dict()`` (``marmo inspect --format json``) nests the extras
+            # under "extras" and adds "source"; unwrap them so the output loads
+            # back as the same definition.
+            extras.pop("extras")
+            extras = {**wrapped, **extras}
+            published_source = extras.pop("source", "")
+            if not source and isinstance(published_source, str):
+                source = published_source
         return cls(metadata=ResourceMetadata.from_mapping(metadata_data), extras=dict(extras), source=source)
 
     @property
@@ -396,12 +411,61 @@ def semver_major(version: str) -> int | None:
     return int(match.group(1))
 
 
+def schema_types(schema: Any) -> tuple[str, ...]:
+    """Supported ``type`` names a schema declares; empty when absent or unsupported.
+
+    ``"type"`` is either one name or a list of names (``["string", "null"]``).
+    """
+
+    declared = schema.get("type") if isinstance(schema, Mapping) else None
+    if isinstance(declared, str):
+        names: tuple[Any, ...] = (declared,)
+    elif isinstance(declared, list) and declared:
+        names = tuple(declared)
+    else:
+        return ()
+    if not all(isinstance(name, str) and name in SCHEMA_TYPES for name in names):
+        return ()
+    return tuple(names)
+
+
+def unsupported_schema_types(schema: Mapping[str, Any]) -> list[tuple[str, str]]:
+    """``(location, message)`` for each ``type`` outside :data:`SCHEMA_TYPES`.
+
+    Checks the schema's own ``type`` and the ``type`` of each entry in its
+    ``properties``; that is as deep as argument validation looks.
+    """
+
+    problems: list[tuple[str, str]] = []
+    candidates: list[tuple[str, Any]] = [("", schema)]
+    properties = schema.get("properties")
+    if isinstance(properties, Mapping):
+        candidates.extend((f".properties.{name}", prop) for name, prop in properties.items())
+    for where, candidate in candidates:
+        if not isinstance(candidate, Mapping) or "type" not in candidate:
+            continue
+        if not schema_types(candidate):
+            problems.append(
+                (
+                    f"{where}.type",
+                    f"unsupported schema type {candidate['type']!r}; "
+                    f"use one of {', '.join(SCHEMA_TYPES)} or a list of them",
+                )
+            )
+    return problems
+
+
 def _validate_kind_extras(kind: str, extras: Mapping[str, Any], path: str) -> list[ValidationIssue]:
     issues: list[ValidationIssue] = []
     if kind == ResourceKind.TOOL.value:
         input_schema = extras.get("input_schema")
         if input_schema is not None and not isinstance(input_schema, Mapping):
             issues.append(ValidationIssue("tool input_schema must be an object when provided", f"{path}.input_schema"))
+        elif input_schema is not None:
+            issues.extend(
+                ValidationIssue(message, f"{path}.input_schema{where}")
+                for where, message in unsupported_schema_types(input_schema)
+            )
         output_schema = extras.get("output_schema")
         if output_schema is not None and not isinstance(output_schema, Mapping):
             issues.append(ValidationIssue("tool output_schema must be an object when provided", f"{path}.output_schema"))

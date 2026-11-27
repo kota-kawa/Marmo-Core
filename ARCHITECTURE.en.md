@@ -167,16 +167,18 @@ to allow that Agent's child to call another Agent.
 
 ### 3.2 `marmo run` / `marmo resume`
 
-- `run`: `_build_kernel(continue_audit=False)` assembles `load_registry` (default
+- `run`: `_build_kernel` assembles `load_registry` (default
   paths, in order: `resources/`, `skills/`, `examples/resources/`; disabled by
   `--no-default-resources`), `PolicyContext` and `HitlPolicy` from CLI arguments,
   `ConsoleHitlBroker` (`--confirm`) or `PendingHitlBroker`, `_build_llm` (mock /
   openai / anthropic / bedrock), `_build_retriever` (lexical / hyde), planner,
   connectors, and `JsonFileStateStore(--state-dir)`, then runs
-  `kernel.run_goal(--task)`. `_report_task` writes `--audit-log` and checks
-  `--strict`. Exit codes: completed=0, all other task results=1, exception=2.
-- `resume`: `_build_kernel(continue_audit=True)` reads the existing `--audit-log`
-  with `AuditLog.from_jsonl` (including chain verification), creates a
+  `kernel.run_goal(--task)`. An existing `--audit-log` is verified with
+  `AuditLog.from_jsonl` and continued; `_report_task` appends to it with
+  `AuditLog.extend_jsonl` (never replacing the file) and checks `--strict`. A
+  broken chain, or a file another writer changed, is left untouched and ends
+  with exit code 2. Exit codes: completed=0, all other task results=1, exception=2.
+- `resume`: verifies and continues the existing `--audit-log` as `run` does, creates a
   `HitlResponse` from `--approve/--reject/--defer/--modify`, and calls
   `kernel.resume(task_id, response)`. Once selection is confirmed, resource
   identity and content fingerprints are saved in a state `snapshot` event; on
@@ -310,8 +312,9 @@ variables on its allowlist (default: `PATH`).
   committed result JSON; and `_provenance.py` (records the commit SHA in results).
 - `scripts/`: Checks called by CI (`release_check.py`, `check_doc_paths.py`,
   `check_env_documentation.py`). Included in the sdist and Docker image.
-- `tools/`: Developer-only (collects the Skill corpus). Not included in
-  distributions.
+- `tools/`: Developer-only (collects the Skill corpus). Not included in the sdist,
+  the wheel, or the Docker image (the sdist leaves it out of `MANIFEST.in` and lists it
+  under `[tool.check-manifest] ignore` in `pyproject.toml`).
 - `docs/`: User guides (`connectors.md`, [`local-resource-packages.en.md`](docs/local-resource-packages.en.md)), the
   threat model, `knowledge/`, and `decisions/`.
 - `.github/`: CI / Release workflows, Dependabot, branch protection records, and

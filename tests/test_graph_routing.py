@@ -171,3 +171,56 @@ class CapabilityGraphRetrieverTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VersionedDependencyEdgeTests(unittest.TestCase):
+    """A dependency reference becomes a graph edge only when it names one resource."""
+
+    TASK = "create and send the monthly invoices"
+
+    def _registry(self, dependency: str, *skill_versions: str) -> ResourceRegistry:
+        definitions = [
+            _resource(
+                "tool.billing.workbench",
+                "tool",
+                "Create and send invoices for the monthly billing run.",
+                capabilities=["billing.execution"],
+                dependencies=[dependency],
+            )
+        ]
+        definitions.extend(
+            _resource(
+                "skill.checklist",
+                "skill",
+                "Checklist for dunning and payment terms.",
+                # One namespace per version, so no sibling edge links them.
+                capabilities=[f"checklist{version[0]}.procedure"],
+                version=version,
+            )
+            for version in skill_versions
+        )
+        return _registry(definitions)
+
+    def _expanded(self, registry: ResourceRegistry) -> dict[str, str]:
+        results = CapabilityGraphRetriever(LexicalRetriever()).search(
+            registry, SearchQuery(task=self.TASK, top_k=10)
+        )
+        return {
+            r.resource.identity: " ".join(r.reasons) for r in results if "graph" in r.components
+        }
+
+    def test_a_versioned_dependency_is_followed_to_exactly_that_version(self) -> None:
+        registry = self._registry("skill.checklist@1.0.0", "1.0.0", "2.0.0")
+        expanded = self._expanded(registry)
+        self.assertEqual(set(expanded), {"skill.checklist@1.0.0"})
+        self.assertIn("depends_on", expanded["skill.checklist@1.0.0"])
+
+    def test_a_dependency_on_an_absent_version_adds_no_edge(self) -> None:
+        self.assertEqual(self._expanded(self._registry("skill.checklist@3.0.0", "1.0.0", "2.0.0")), {})
+
+    def test_a_bare_id_names_its_only_version(self) -> None:
+        expanded = self._expanded(self._registry("skill.checklist", "2.0.0"))
+        self.assertEqual(set(expanded), {"skill.checklist@2.0.0"})
+
+    def test_a_bare_id_shared_by_several_versions_is_ambiguous(self) -> None:
+        self.assertEqual(self._expanded(self._registry("skill.checklist", "1.0.0", "2.0.0")), {})

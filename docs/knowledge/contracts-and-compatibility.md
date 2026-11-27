@@ -64,3 +64,20 @@ Marmo-Core は SemVer に従い、同一メジャー内で次の表面を壊さ�
   `structured_task` の子 task は同じ State Store に別 task として保存し、親 task は子 ToolResult を
   `step` event に記録する。Agent Card の structured input には required string `goal` を追加し、
   `metadata.dependencies` が子の実行 Resource 集合を決める。
+- Unreleased: 状態ファイルに event kind `call`（呼び出しの着手・解放）と、`step` の `call_id`、
+  `frame` / `paused` / `plan` の `closed_calls`、`frame.paused_call` を追加。いずれも追加のキーで、
+  持たない旧形式のログは従来どおり読める。実行中のタスクへの二つ目の `run` / `resume` は
+  `StateConflictError` になる（`docs/decisions/0015-execution-right-and-call-journal.md`）。
+- Unreleased: `marmo run --audit-log` は既存ファイルを置換せず、チェーンを検証して追記する。
+  壊れたチェーンは終了コード 2。型不正の `--tool-args`、読み込めない `--tool-impl` /
+  `--agent-impl`、空の `--modify` も終了コード 2（以前はトレースバックと 1、または保留）。
+- Unreleased: リソース JSON の `extras` / `source`（`ResourceDefinition.to_dict()` の出力形）を
+  読み込み時に展開する。入力スキーマの対応外の `type` は検証エラーになる（以前は無視）。
+- Unreleased: 依存参照の `id@version` はその版だけを指し、複数版が共有する裸 ID は曖昧として
+  解決しない（グラフ・各 Selector・ルールベース Planner で共通）。Connector のハンドラーは
+  `id@version` で登録する。`tool_implementations` に裸 ID で渡したハンドラーは、従来どおり
+  その ID のどの版にも使われる。
+- Unreleased: モデル応答が `finish_reason=length` で打ち切られたタスクは `completed` ではなく
+  `failed` で終わる（途中までの出力は `output` に残る）。Planner 経路の最後の要約だけが打ち切られた
+  場合は、ステップは完了しているので `completed` のまま `detail` に注記する。Planner 経路も
+  `max_tool_calls` に従う。

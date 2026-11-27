@@ -38,10 +38,35 @@ jobs:
       - run: python -m build
       - run: python -m twine check dist/*
       - run: check-wheel-contents dist/*.whl
+      - name: Smoke-test the built wheel in a clean environment
+        run: |
+          python -m venv "$RUNNER_TEMP/wheel-smoke"
+          "$RUNNER_TEMP/wheel-smoke/bin/python" -m pip install --no-cache-dir dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/wheel-smoke/bin/python" - <<'PY'
+          import sys
+          from pathlib import Path
+
+          import marmo_core
+
+          installed = Path(marmo_core.__file__).resolve()
+          assert installed.is_relative_to(Path(sys.prefix).resolve()), f"imported from outside the venv: {installed}"
+          print(marmo_core.__version__)
+          PY
+          "$RUNNER_TEMP/wheel-smoke/bin/marmo" --version
+          "$RUNNER_TEMP/wheel-smoke/bin/marmo-core" --help
       - uses: actions/upload-artifact@v7
         with:
           name: distributions
           path: dist/
+
+  # A version tag is published only after the full CI workflow (every job that
+  # .github/BRANCH_PROTECTION.md lists as required) has passed on the tagged
+  # commit. A manual run never reaches PyPI, so it skips this job.
+  ci:
+    name: Required CI on the tagged commit
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/ci.yml
 
   publish-testpypi:
     name: Publish to TestPyPI
@@ -65,8 +90,8 @@ jobs:
 
   publish-pypi:
     name: Publish to PyPI
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [build, ci]
     runs-on: ubuntu-latest
     environment:
       name: pypi

@@ -214,7 +214,10 @@ def build_parser(*, language: str = "en") -> _ArgumentParser:
     run_parser.add_argument(
         "--strict",
         action="store_true",
-        help=_("return non-zero when a resource is skipped or a tool named in --tool-args is not evaluated"),
+        help=_(
+            "return non-zero when a resource is skipped or a tool named in --tool-args is not evaluated "
+            "(--tool-args counts only where it is used, see its help)"
+        ),
     )
     _add_safety_args(run_parser)
     _add_isolation_args(run_parser)
@@ -238,8 +241,8 @@ def build_parser(*, language: str = "en") -> _ArgumentParser:
         default="",
         metavar="JSON",
         help=_(
-            'arguments the mock LLM passes per tool id, e.g. \'{"tool.files.read-text": {"path": "README.md"}}\'; '
-            "ignored when --llm is a real provider"
+            'arguments per tool id, e.g. \'{"tool.files.read-text": {"path": "README.md"}}\'; used by '
+            "--llm mock and by --planner rule, ignored otherwise (a real provider chooses its own arguments)"
         ),
     )
     run_parser.add_argument("--top-k", type=int, default=8, help=_("search candidates considered before set selection"))
@@ -266,7 +269,13 @@ def build_parser(*, language: str = "en") -> _ArgumentParser:
     )
     run_parser.add_argument("--timeout", type=float, default=30.0, help=_("per-tool execution timeout in seconds"))
     run_parser.add_argument("--timeout-mode", choices=("thread", "process"), default="thread", help=_("process mode stops importable handlers at the deadline"))
-    run_parser.add_argument("--audit-log", help=_("write this run's hash-chained audit records to a JSONL file (overwrites)"))
+    run_parser.add_argument(
+        "--audit-log",
+        help=_(
+            "append this run's hash-chained audit records to a JSONL file; an existing file's chain "
+            "is verified and continued, and a broken chain is refused"
+        ),
+    )
     _add_state_args(run_parser)
     _add_hitl_args(run_parser)
     _add_recovery_args(run_parser)
@@ -306,7 +315,11 @@ def build_parser(*, language: str = "en") -> _ArgumentParser:
         metavar="JSON",
         help=_('approve with replacement tool arguments, e.g. \'{"path": "safe.txt"}\''),
     )
-    resume_parser.add_argument("--responder", default="", help=_("who is answering (checked against --approver)"))
+    resume_parser.add_argument(
+        "--responder",
+        default="",
+        help=_("who is answering; required to approve or modify when --approver is set (checked against --approver)"),
+    )
     resume_parser.add_argument("--note", default="", help=_("free-text reason recorded in the audit log"))
     resume_parser.add_argument("--granted-permission", action="append", default=[], help=_("permission granted to the task context; repeatable"))
     resume_parser.add_argument("--max-cost", type=float, help=_("deny resources whose cost_estimate exceeds this value"))
@@ -322,14 +335,22 @@ def build_parser(*, language: str = "en") -> _ArgumentParser:
     resume_parser.add_argument(
         "--strict",
         action="store_true",
-        help=_("return non-zero when a resource is skipped or a tool named in --tool-args is not evaluated"),
+        help=_(
+            "return non-zero when a resource is skipped or a tool named in --tool-args is not evaluated "
+            "(--tool-args counts only where it is used, see its help)"
+        ),
     )
     _add_safety_args(resume_parser)
     _add_isolation_args(resume_parser)
     _add_connector_args(resume_parser)
     resume_parser.add_argument("--tool-impl", action="append", default=[], metavar="ID=MODULE:FUNC", help=_("bind a tool resource id to an importable callable; repeatable"))
     resume_parser.add_argument("--agent-impl", action="append", default=[], metavar="ID=MODULE:FUNC", help=_("bind an agent resource id to a synchronous callable; repeatable"))
-    resume_parser.add_argument("--tool-args", default="", metavar="JSON", help=_("mock-LLM arguments per tool id"))
+    resume_parser.add_argument(
+        "--tool-args",
+        default="",
+        metavar="JSON",
+        help=_("arguments per tool id for --llm mock or --planner rule; ignored otherwise"),
+    )
     resume_parser.add_argument("--top-k", type=int, default=8, help=_("search candidates considered before set selection"))
     resume_parser.add_argument("--set-limit", action="append", default=[], metavar="KIND=N", help=_("limit selected set per kind; repeatable"))
     resume_parser.add_argument("--max-tool-calls", type=int, default=5, help=_("tool call budget before the task fails"))
@@ -705,7 +726,7 @@ def _cmd_policy_check(args: argparse.Namespace) -> int:
     return 0 if decision.allowed else 1
 
 
-def _build_kernel(args: argparse.Namespace, *, continue_audit: bool) -> Kernel:
+def _build_kernel(args: argparse.Namespace) -> Kernel:
     """Assemble the kernel that ``run`` and ``resume`` share."""
 
     registry = load_registry(_default_paths(args.paths, no_defaults=args.no_default_resources))
@@ -728,7 +749,7 @@ def _build_kernel(args: argparse.Namespace, *, continue_audit: bool) -> Kernel:
         ),
         dry_run=args.dry_run,
     )
-    tool_arguments = _parse_tool_arguments(args.tool_args)
+    tool_arguments = _effective_tool_arguments(args)
     hitl_policy = HitlPolicy(
         approvers=tuple(args.approver),
         always_confirm_resources=tuple(args.always_confirm),
@@ -741,7 +762,7 @@ def _build_kernel(args: argparse.Namespace, *, continue_audit: bool) -> Kernel:
         ),
         circuit_breaker=CircuitBreaker(failure_threshold=args.circuit_threshold),
     )
-    audit_log = AuditLog.from_jsonl(args.audit_log) if continue_audit and args.audit_log else AuditLog()
+    audit_log = _load_audit_log(args.audit_log)
     llm_choice = getattr(args, "llm", "mock")
     llm = _build_llm(llm_choice, tool_arguments)
     retriever_choice = getattr(args, "retriever", "lexical")
@@ -812,11 +833,36 @@ def _audit_log_preserved(args: argparse.Namespace, kernel: Kernel) -> Iterator[N
         raise
 
 
+def _load_audit_log(path: str | None) -> AuditLog:
+    """Read the chain ``--audit-log`` already holds so this run continues it.
+
+    A run that started a new chain over an existing file used to replace the
+    file and drop the history. A chain that does not verify is refused rather
+    than extended or replaced: appending to it would bury the tampering.
+    """
+
+    if not path:
+        return AuditLog()
+    try:
+        return AuditLog.from_jsonl(path)
+    except ValueError as exc:
+        raise CLIInputError(
+            "cannot continue the audit log {path}: {detail}; fix or move the file, or choose another --audit-log",
+            path=path,
+            detail=str(exc),
+        ) from exc
+
+
 def _write_audit_log(args: argparse.Namespace, kernel: Kernel) -> None:
-    # write_jsonl replaces the file, so a run that produced nothing would
-    # otherwise truncate a log that already holds a verified chain.
+    # Only the records the file lacks are appended; the file is never replaced,
+    # so neither an interrupted run nor a second writer can shorten the chain.
     if getattr(args, "audit_log", None) and kernel.audit_log.records:
-        kernel.audit_log.write_jsonl(args.audit_log)
+        try:
+            kernel.audit_log.extend_jsonl(args.audit_log)
+        except ValueError as exc:
+            raise CLIInputError(
+                "cannot write the audit log {path}: {detail}", path=args.audit_log, detail=str(exc)
+            ) from exc
 
 
 def _report_task(args: argparse.Namespace, kernel: Kernel, result) -> int:
@@ -869,15 +915,17 @@ def _report_task(args: argparse.Namespace, kernel: Kernel, result) -> int:
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
-    kernel = _build_kernel(args, continue_audit=False)
+    kernel = _build_kernel(args)
     with _audit_log_preserved(args, kernel):
         result = kernel.run_goal(args.task)
     return _report_task(args, kernel, result)
 
 
 def _cmd_resume(args: argparse.Namespace) -> int:
-    kernel = _build_kernel(args, continue_audit=True)
-    if args.modify:
+    kernel = _build_kernel(args)
+    if args.modify is not None:
+        if not args.modify.strip():
+            raise CLIInputError("--modify must not be empty; pass replacement tool arguments as a JSON object")
         arguments = json.loads(args.modify)
         if not isinstance(arguments, dict):
             raise CLIInputError("--modify must be a JSON object of replacement tool arguments")
@@ -917,9 +965,30 @@ def _parse_tool_arguments(raw: str) -> dict[str, Any]:
     if not raw:
         return {}
     parsed = json.loads(raw)
-    if not isinstance(parsed, dict):
+    if not isinstance(parsed, dict) or not all(isinstance(value, dict) for value in parsed.values()):
         raise CLIInputError("--tool-args must be a JSON object mapping tool ids to argument objects")
     return parsed
+
+
+def _tool_args_apply(args: argparse.Namespace) -> bool:
+    """True when something consumes ``--tool-args``.
+
+    The mock model replays them as its tool calls and the rule-based planner
+    copies them into its steps. A real provider chooses its own arguments, so
+    with ``--llm`` set to one and no ``--planner rule`` the option is inert.
+    """
+
+    return getattr(args, "llm", "mock") == "mock" or getattr(args, "planner", "none") == "rule"
+
+
+def _effective_tool_arguments(args: argparse.Namespace) -> dict[str, Any]:
+    """The parsed ``--tool-args``, or nothing when no component would use them.
+
+    Inert arguments are neither parsed nor counted by ``--strict``; otherwise
+    an ignored option could turn a successful run into a failing one.
+    """
+
+    return _parse_tool_arguments(args.tool_args) if _tool_args_apply(args) else {}
 
 
 # Options that ``marmo resume`` accepts and that a paused run must be resumed
@@ -1007,6 +1076,11 @@ def resume_command(args: argparse.Namespace, task_id: str) -> str:
 
     defaults = vars(build_parser().parse_args(["resume", "--task-id", "_", "--state-dir", "_", "--approve"]))
     parts = ["marmo", "resume", "--task-id", task_id, "--state-dir", str(args.state_dir), "--approve"]
+    approvers = tuple(args.approver)
+    if approvers:
+        # The policy refuses an anonymous approval, so the hint must name who answers.
+        # With several approvers the person picks; a placeholder cannot pass the check by accident.
+        parts.extend(("--responder", approvers[0] if len(approvers) == 1 else "<APPROVER>"))
     for dest, option in _RESUME_FORWARDED_OPTIONS:
         value = getattr(args, dest, None)
         if value is None or value == defaults.get(dest):
@@ -1021,6 +1095,8 @@ def resume_command(args: argparse.Namespace, task_id: str) -> str:
             parts.extend((option, _redacted_tool_args(str(value))))
         else:
             parts.extend((option, str(value)))
+    if any(str(path).startswith("-") for path in args.paths):
+        parts.append("--")
     parts.extend(str(path) for path in args.paths)
     return " ".join(shlex.quote(part) for part in parts)
 
@@ -1033,7 +1109,7 @@ def _strict_violations(args: argparse.Namespace, result: Any) -> tuple[str, ...]
         violations.append("no resource matched the goal; the model answered without tools")
     if result.detail == NO_CALLABLE_SELECTED_DETAIL:
         violations.append("no Tool or Agent reached the model; the answer used no guarded call")
-    requested = set(_parse_tool_arguments(args.tool_args))
+    requested = set(_effective_tool_arguments(args))
     evaluated = {item.tool_id for item in result.tool_results}
     violations.extend(f"requested tool was not evaluated: {tool_id}" for tool_id in sorted(requested - evaluated))
     return tuple(dict.fromkeys(violations))
@@ -1044,11 +1120,17 @@ def _parse_implementations(
 ) -> dict[str, Callable[..., Any]]:
     implementations: dict[str, Callable[..., Any]] = {}
     for value in values:
-        if "=" not in value or ":" not in value.split("=", 1)[1]:
-            raise CLIInputError("{resource_kind} impl must be ID=MODULE:FUNC: {value}", resource_kind=resource_kind, value=value)
-        resource_id, target = value.split("=", 1)
+        resource_id, _, target = value.partition("=")
         module_name, _, attribute = target.rpartition(":")
-        module = importlib.import_module(module_name)
+        if not resource_id or not module_name or module_name.startswith(".") or not attribute:
+            raise CLIInputError("{resource_kind} impl must be ID=MODULE:FUNC: {value}", resource_kind=resource_kind, value=value)
+        try:
+            module = importlib.import_module(module_name)
+        # Whatever the module raises while it is imported, it cannot be loaded.
+        except Exception as exc:
+            raise CLIInputError(
+                "cannot load {target}: {detail}", target=target, detail=f"{type(exc).__name__}: {exc}"
+            ) from exc
         handler = getattr(module, attribute, None)
         if not callable(handler):
             raise CLIInputError("{target} is not a callable", target=target)

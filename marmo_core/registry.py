@@ -208,6 +208,11 @@ class ResourceRegistry:
 
         return self._kind_counts.get(kind, 0)
 
+    def has_enabled(self) -> bool:
+        """Whether any enabled resource exists, without materializing the catalog."""
+
+        return any(count > 0 for count in self._kind_counts.values())
+
     def summary(self) -> dict[str, int]:
         counts = {kind: 0 for kind in KINDS}
         for definition in self.all():

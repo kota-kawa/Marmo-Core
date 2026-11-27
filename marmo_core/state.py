@@ -20,12 +20,16 @@ rather than here (F-STATE-06).
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from bisect import bisect_right
+from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
+from hashlib import sha256
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import IO, Any, Iterable, Iterator, Mapping
 import json
 import sqlite3
+import sys
 import threading
 import uuid
 
@@ -53,6 +57,7 @@ EVENT_KINDS = (
     "variable",
     "activated",
     "step",
+    "call",
     "plan",
     "frame",
     "snapshot",
@@ -65,11 +70,76 @@ EVENT_KINDS = (
 
 
 class StateConflictError(MarmoError):
-    """Raised when a write loses an optimistic-locking race (F-STATE-07)."""
+    """Raised when a write loses an optimistic-locking race (F-STATE-07),
+    or when a task's right to execute is already held."""
 
 
 class TaskNotFoundError(MarmoError):
     """Raised when a task id is absent from the store."""
+
+
+def _lock_file(handle: IO[bytes], *, blocking: bool) -> bool:
+    """Take an exclusive OS lock on ``handle``; False when it is already held.
+
+    The lock belongs to the open file, so two store instances -- in one
+    process or in two -- exclude each other, and a crashed holder releases it.
+    """
+
+    if sys.platform == "win32":
+        import msvcrt
+
+        # The lock covers the first byte, wherever the file position is.
+        handle.seek(0)
+        while True:
+            try:
+                msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK if blocking else msvcrt.LK_NBLCK, 1)
+            except OSError:
+                # LK_LOCK gives up after ten one-second tries; a blocking
+                # caller keeps waiting, as flock does.
+                if blocking:
+                    continue
+                return False
+            return True
+    import fcntl
+
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX if blocking else fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return False
+    return True
+
+
+def _unlock_file(handle: IO[bytes]) -> None:
+    if sys.platform == "win32":
+        import msvcrt
+
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        return
+    import fcntl
+
+    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+@contextmanager
+def _exclusive_file(path: Path, *, blocking: bool, busy: str = "") -> Iterator[None]:
+    """Hold an exclusive lock on ``path`` for the duration of the block."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("ab") as handle:
+        if not _lock_file(handle, blocking=blocking):
+            raise StateConflictError(busy)
+        try:
+            yield
+        finally:
+            _unlock_file(handle)
+
+
+def _execution_busy(task_id: str) -> str:
+    return (
+        f"task {task_id} is already being executed by another kernel; "
+        "wait for it to finish or pause before calling run() or resume() again"
+    )
 
 
 @dataclass(frozen=True)
@@ -192,6 +262,34 @@ class StateStore(ABC):
         # Parallel plan steps (F-PLAN-05) append concurrently, so the pair has
         # to be atomic or two steps race for the same seq.
         self._mutation_lock = threading.RLock()
+        self._executing: set[str] = set()
+
+    @contextmanager
+    def execution(self, task_id: str) -> Iterator[None]:
+        """Hold the right to execute ``task_id`` until the block ends.
+
+        Raises :class:`StateConflictError` when another holder already has
+        it, so a second ``run`` or ``resume`` stops before any side effect.
+        This default only excludes holders that share the store instance;
+        the file-backed stores also exclude other instances and processes.
+        """
+
+        with self._mutation_lock:
+            if task_id in self._executing:
+                raise StateConflictError(_execution_busy(task_id))
+            self._executing.add(task_id)
+        try:
+            with self._execution_guard(task_id):
+                yield
+        finally:
+            with self._mutation_lock:
+                self._executing.discard(task_id)
+
+    @contextmanager
+    def _execution_guard(self, task_id: str) -> Iterator[None]:
+        """Backend hook: exclude executors outside this store instance."""
+
+        yield
 
     # -- storage hooks ------------------------------------------------------
 
@@ -417,6 +515,17 @@ class JsonFileStateStore(StateStore):
             raise ValueError(f"invalid task id for file storage: {task_id!r}")
         return self.root / f"{task_id}.jsonl"
 
+    def _lock_path(self, task_id: str, purpose: str) -> Path:
+        self._task_path(task_id)
+        return self.root / "locks" / f"{task_id}.{purpose}"
+
+    @contextmanager
+    def _execution_guard(self, task_id: str) -> Iterator[None]:
+        with _exclusive_file(
+            self._lock_path(task_id, "run"), blocking=False, busy=_execution_busy(task_id)
+        ):
+            yield
+
     def _read_events(self, task_id: str) -> list[StateEvent]:
         path = self._task_path(task_id)
         if not path.exists():
@@ -426,6 +535,10 @@ class JsonFileStateStore(StateStore):
             for line_number, line in enumerate(file, start=1):
                 if not line.strip():
                     continue
+                if not line.endswith("\n"):
+                    # Another store is in the middle of appending this line;
+                    # the event exists once its newline is written.
+                    break
                 try:
                     events.append(StateEvent.from_dict(json.loads(line)))
                 except (json.JSONDecodeError, ValueError) as exc:
@@ -434,15 +547,17 @@ class JsonFileStateStore(StateStore):
 
     def _write_event(self, event: StateEvent) -> None:
         path = self._task_path(event.task_id)
-        with self._lock:
+        # The sequence check and the append have to be one step for every
+        # store opened on this directory, not just for this instance.
+        with self._lock, _exclusive_file(self._lock_path(event.task_id, "write"), blocking=True):
             existing = self._read_events(event.task_id)
             if existing and existing[-1].seq >= event.seq:
                 raise StateConflictError(
                     f"task {event.task_id} already has an event at seq {event.seq}; reload and retry"
                 )
+            line = json.dumps(event.to_dict(), ensure_ascii=False, sort_keys=True, default=str) + "\n"
             with path.open("a", encoding="utf-8") as file:
-                json.dump(event.to_dict(), file, ensure_ascii=False, sort_keys=True, default=str)
-                file.write("\n")
+                file.write(line)
 
     def task_ids(self) -> list[str]:
         return sorted(path.stem for path in self.root.glob("*.jsonl"))
@@ -502,6 +617,16 @@ class SQLiteStateStore(StateStore):
 
     def close(self) -> None:
         self._connection.close()
+
+    @contextmanager
+    def _execution_guard(self, task_id: str) -> Iterator[None]:
+        if str(self.path) == ":memory:":
+            yield
+            return
+        name = sha256(task_id.encode("utf-8")).hexdigest()[:32]
+        lock_path = self.path.with_name(f"{self.path.name}.locks") / f"{name}.run"
+        with _exclusive_file(lock_path, blocking=False, busy=_execution_busy(task_id)):
+            yield
 
     def _read_events(self, task_id: str) -> list[StateEvent]:
         with self._lock:
@@ -570,17 +695,25 @@ def _project(events: Iterable[StateEvent]) -> TaskState:
         created_at=first.timestamp,
         updated_at=first.timestamp,
     )
-    for index, event in enumerate(ordered[1:], start=1):
+    # The state after each event, so a rollback restores its target in one
+    # lookup instead of replaying the log (and every earlier rollback) again.
+    seqs = [first.seq]
+    history = [state]
+    for event in ordered[1:]:
         if event.kind == "rollback":
             target = event.payload.get("target_seq")
             if not isinstance(target, int):
                 raise ValueError(
                     f"rollback event {event.seq} target_seq must be an integer"
                 )
-            restored = _project([item for item in ordered[:index] if item.seq <= target])
-            state = replace(restored, version=event.seq, updated_at=event.timestamp)
-            continue
-        state = replace(_apply(state, event), version=event.seq, updated_at=event.timestamp)
+            position = bisect_right(seqs, target)
+            if not position:
+                raise ValueError("cannot project an empty event sequence")
+            state = replace(history[position - 1], version=event.seq, updated_at=event.timestamp)
+        else:
+            state = replace(_apply(state, event), version=event.seq, updated_at=event.timestamp)
+        seqs.append(event.seq)
+        history.append(state)
     return state
 
 
