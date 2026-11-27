@@ -1,8 +1,8 @@
 {
- "generated_at": "2026-11-27T04:43:10+00:00",
+ "generated_at": "2026-11-27T04:51:20+00:00",
  "label_model": "sonnet",
  "license": "CC0-1.0 (the labels; ToolRet's queries and tool documents are not included)",
- "marmo_core_commit": "ee0671c1",
+ "marmo_core_commit": "3cda7c18",
  "marmo_core_version": "0.7.0",
  "queries": {
   "apibank_query_0": {

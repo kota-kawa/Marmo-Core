@@ -453,7 +453,7 @@ Results are in [`results/toolret-sae-heldout.json`](results/toolret-sae-heldout.
 
 - **A relevance floor cannot decide the status.** The floor fitted on dev leaves the rules selecting almost nothing on S (greedy 0.160) and leaning on abstention.
 - **An LLM asked for the set and the status together selects anyway.** `LLMSetSelector` is best on S but selects something in 68% of A and 58% of E. Its macro accuracy does not differ from greedy's (−0.010 [−0.053, 0.033]).
-- A research selector that decides the status from per-requirement capability judgments and the declared constraints reached 0.552 on the same held-out queries, but missed one pre-registered adoption criterion (unneeded escalation on S), so it is not in `main` (#45, branch `research/requirement-coverage`).
+- A research selector that decides the status from per-requirement capability judgments and the declared constraints reached 0.552 on the same held-out queries (`benchmarks/results/toolret-sae-heldout.json` at commit f4ef28e7 of the `research/requirement-coverage` branch; not in this branch's result file), but missed one pre-registered adoption criterion (unneeded escalation on S), so it is not in `main` (#45, branch `research/requirement-coverage`).
 
 **Label checks and release** (#48):
 

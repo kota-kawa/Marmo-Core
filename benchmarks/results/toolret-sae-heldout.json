@@ -485,61 +485,6 @@
       }
     },
     "llm-set": {
-      "dev": {
-        "variants": {
-          "S": 237,
-          "E": 132,
-          "A": 114
-        },
-        "status_accuracy": {
-          "S": 0.8565,
-          "E": 0.2348,
-          "A": 0.193
-        },
-        "macro_status_accuracy": 0.4281,
-        "correct": {
-          "S": 0.5105,
-          "E": 0.2348,
-          "A": 0.193
-        },
-        "macro_correct": 0.3128,
-        "S_set_f1": 0.2444,
-        "S_sufficient": 0.5105,
-        "S_reachable_queries": 136,
-        "S_reachable_sufficient": 0.8897,
-        "S_reachable_f1": 0.3633,
-        "S_unneeded_escalation": 0.0549,
-        "S_false_abstain": 0.0886,
-        "S_mean_size": 3.7586,
-        "llm_calls_mean": 1.0,
-        "llm_calls_max": 1,
-        "E_named_gold_scope": 0.0,
-        "E_unsafe_selection": 0.6591,
-        "A_hallucinated_selection": 0.7193,
-        "A_wrong_escalation": 0.0877,
-        "diagnostics": {
-          "S_escalations": 13,
-          "S_escalations_without_permitted_answer": 12,
-          "S_abstentions": 21,
-          "S_abstentions_unreachable": 20,
-          "A_selections": 82,
-          "A_selections_with_labelled_substitute": 24
-        },
-        "oracle_candidates": {
-          "variants": {
-            "S+": 80,
-            "E+": 38
-          },
-          "S+_sufficient": 0.9625,
-          "S+_set_f1": 0.524,
-          "S+_unneeded_escalation": 0.0,
-          "S+_false_abstain": 0.0,
-          "E+_status_accuracy": 0.3421,
-          "E+_unsafe_selection": 0.5789,
-          "queries": 80
-        }
-      },
-      "dev_queries": 237,
       "heldout": {
         "variants": {
           "S": 400,
@@ -595,63 +540,6 @@
         }
       },
       "heldout_queries": 400
-    },
-    "llm-set-wide": {
-      "dev": {
-        "variants": {
-          "S": 50,
-          "E": 27,
-          "A": 22
-        },
-        "status_accuracy": {
-          "S": 0.94,
-          "E": 0.4815,
-          "A": 0.0909
-        },
-        "macro_status_accuracy": 0.5041,
-        "correct": {
-          "S": 0.64,
-          "E": 0.4815,
-          "A": 0.0909
-        },
-        "macro_correct": 0.4041,
-        "S_set_f1": 0.3265,
-        "S_sufficient": 0.64,
-        "S_reachable_queries": 31,
-        "S_reachable_sufficient": 0.9032,
-        "S_reachable_f1": 0.4126,
-        "S_unneeded_escalation": 0.06,
-        "S_false_abstain": 0.0,
-        "S_mean_size": 3.4043,
-        "llm_calls_mean": 1.0,
-        "llm_calls_max": 1,
-        "E_named_gold_scope": 0.0,
-        "E_unsafe_selection": 0.5185,
-        "A_hallucinated_selection": 0.7273,
-        "A_wrong_escalation": 0.1818,
-        "diagnostics": {
-          "S_escalations": 3,
-          "S_escalations_without_permitted_answer": 3,
-          "S_abstentions": 0,
-          "S_abstentions_unreachable": 0,
-          "A_selections": 16,
-          "A_selections_with_labelled_substitute": 5
-        },
-        "oracle_candidates": {
-          "variants": {
-            "S+": 19,
-            "E+": 8
-          },
-          "S+_sufficient": 1.0,
-          "S+_set_f1": 0.5371,
-          "S+_unneeded_escalation": 0.0,
-          "S+_false_abstain": 0.0,
-          "E+_status_accuracy": 0.5,
-          "E+_unsafe_selection": 0.5,
-          "queries": 19
-        }
-      },
-      "dev_queries": 50
     }
   },
   "annotator_agreement": {
@@ -1185,6 +1073,6 @@
     }
   },
   "marmo_core_version": "0.7.0",
-  "marmo_core_commit": "ee0671c1",
-  "generated_at": "2026-11-27T04:43:07+00:00"
+  "marmo_core_commit": "3cda7c18",
+  "generated_at": "2026-11-27T04:51:17+00:00"
 }

@@ -626,7 +626,7 @@ python3 benchmarks/run_toolret_sae.py --stage score --stage export-labels --stag
 
 - **関連度の下限では状態を決められません**。dev に合わせた下限は S をほとんど選べなくなり（greedy の S 正答 0.160）、棄権に寄ります。
 - **LLM に集合と状態をまとめて決めさせると、選んでしまいます**。`LLMSetSelector` は S では最良ですが、A の 68%、E の 58% で何かを選びました。主指標は greedy と差がありません（−0.010 [−0.053, 0.033]）。
-- 要求ごとの能力判定と宣言制約から状態を決める研究用の Selector は、同じ held-out で主指標 0.552 でしたが、事前登録した採用基準の 1 つ（S での不要な escalate）を満たさなかったので、`main` には入れていません（#45、`research/requirement-coverage` ブランチ）。
+- 要求ごとの能力判定と宣言制約から状態を決める研究用の Selector は、同じ held-out で主指標 0.552 でしたが（`research/requirement-coverage` ブランチのコミット f4ef28e7 にある `benchmarks/results/toolret-sae-heldout.json`。このブランチの結果ファイルには含まれません）、事前登録した採用基準の 1 つ（S での不要な escalate）を満たさなかったので、`main` には入れていません（#45、`research/requirement-coverage` ブランチ）。
 
 **ラベルの検証と公開**（#48）:
 
