@@ -62,15 +62,16 @@ python3 benchmarks/run_forgery_benchmark.py                                  # L
 | 計算資源 | CPU 4 コア、RAM 15GB、GPU なし |
 | LLM | `claude -p`（`benchmarks/_claude_cli.py` の `ClaudeCLIProvider`）。API キー不要 |
 | 並列度 | 6〜8 並列で約 1.4 呼び出し/秒（Sonnet。Haiku も同程度） |
-| 使えるモデル | **Haiku 5.5 だけ**（`--model haiku`。2026-11 時点で `claude-haiku-5-5` を指す）。Sonnet は使わない |
+| ベンチマークで使えるモデル | **Haiku 5.5 だけ**（`--model haiku`。2026-11 時点で `claude-haiku-5-5` を指す）。Sonnet は使わない |
 | 利用上限 | 5 時間ごとの上限と週の上限がある。`You've hit your 5-hour limit` などで失敗する。Sonnet は約 1,100 回で 5 時間の上限に達した（2026-11） |
 | 外部ネットワーク | プロキシ経由で HuggingFace（データとモデル）と PyPI に届く |
 | 持続性 | ワーカーが再起動すると、裏で動くプロセスが止まる。リポジトリ内のファイル（`benchmarks/cache/` を含む）と scratchpad は残る |
 
 - **LLM の呼び方**: 評価対象と同じライブラリ部品（`LLMQueryDecomposer`、`LLMSetSelector` など）を、
   `ClaudeCLIProvider` で動かす。
-- **モデルは Haiku 5.5 だけを使う**: クラウドセッションでは、ベンチマークの LLM 呼び出しもサブエージェントも
-  Haiku 5.5 にする。Sonnet は利用上限にすぐ達し、測定を 1 回のセッションで終えられないためである。
+- **ベンチマークの LLM 呼び出しは Haiku 5.5 だけを使う**: Sonnet は利用上限にすぐ達し、測定を 1 回の
+  セッションで終えられないためである。コードを書くサブエージェントとレビュー用サブエージェントは対象外で、
+  `development_conventions.md` の「サブエージェントの指定」どおり Sonnet を使う。
   - スクリプトと `ClaudeCLIProvider` の既定は `sonnet` なので、`--model haiku` を必ず付ける
     （`claude-haiku-5-5` のような正式 ID も使える）。`ClaudeCLIProvider` が実行前に拒否するのは
     Sonnet と Haiku 以外だけで、Sonnet の指定は止めない。
