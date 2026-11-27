@@ -835,6 +835,69 @@ def stage_score(data: Data, args) -> dict:
     return report
 
 
+def stage_substitutes(data: Data, model: str, output: Path) -> None:
+    """How much ToolRet's ranking metrics change when a labelled substitute counts as its gold tool.
+
+    Scored on the stored ranking of every labelled query, three ways: the
+    gold tools alone (ToolRet's own scoring), each gold tool or one of its
+    substitutes, and the same restricted to the gold tools judged necessary.
+    Substitutes are labelled among the top ``WIDE`` candidates only, which
+    covers the top 10 these metrics read.
+    """
+
+    labels = parsed_labels(data, model)
+    rows = []
+    gold_tools = with_substitute = necessary_tools = 0
+    for query in data.queries:
+        if query.id not in labels:
+            continue
+        judged = labels[query.id]
+        ranked = [row[0] for row in data.pools[query.id]]
+        exact = [{gold} for gold in query.labels]
+        groups = [{gold} | set(judged[gold]["substitutes"]) for gold in query.labels]
+        needed = [group for gold, group in zip(query.labels, groups) if judged[gold]["necessary"]] or groups
+        gold_tools += len(query.labels)
+        with_substitute += sum(bool(judged[gold]["substitutes"]) for gold in query.labels)
+        necessary_tools += sum(judged[gold]["necessary"] for gold in query.labels)
+        rows.append({"subset": query.subset, "split": data.split(query), "multi": len(query.labels) > 1,
+                     "gold": toolret.group_metrics(ranked, exact, 10),
+                     "gold_or_substitute": toolret.group_metrics(ranked, groups, 10),
+                     "necessary_gold_or_substitute": toolret.group_metrics(ranked, needed, 10)})
+
+    def averages(selected: list[dict]) -> dict:
+        result: dict[str, Any] = {"queries": len(selected)}
+        for scoring in ("gold", "gold_or_substitute", "necessary_gold_or_substitute"):
+            by_subset: dict[str, list[dict]] = {}
+            for row in selected:
+                by_subset.setdefault(row["subset"], []).append(row[scoring])
+            result[scoring] = {
+                f"{metric}@10": {
+                    "micro": mean(row[scoring][metric] for row in selected),
+                    "macro": mean(statistics.mean(item[metric] for item in items) for items in by_subset.values()),
+                }
+                for metric in ("ndcg", "recall", "complete")
+            }
+        return result
+
+    report = {
+        "benchmark": "ToolRet ranking metrics with labelled substitutes counted as their gold tool",
+        "retriever": data.retriever, "label_model": model, "labelled_within_top": WIDE,
+        "gold_tools": gold_tools,
+        "gold_tools_with_substitute": round(with_substitute / gold_tools, 4) if gold_tools else None,
+        "gold_tools_necessary": round(necessary_tools / gold_tools, 4) if gold_tools else None,
+        "all": averages(rows),
+        "multi_tool": averages([row for row in rows if row["multi"]]),
+        "by_split": {split: averages([row for row in rows if row["split"] == split])
+                     for split in SPLITS if any(row["split"] == split for row in rows)},
+    }
+    output.write_text(json.dumps(stamp(report), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    overall = report["all"]
+    print(f"{len(rows)} queries; substitutes for {report['gold_tools_with_substitute']} of gold tools")
+    for scoring in ("gold", "gold_or_substitute", "necessary_gold_or_substitute"):
+        print(f"  {scoring}: " + " ".join(f"{name} {value['macro']}" for name, value in overall[scoring].items()))
+    print(f"wrote {output}")
+
+
 def stage_heldout(data: Data, target: int) -> None:
     """Freeze the held-out query ids: queries outside the dev / test sample."""
 
@@ -898,7 +961,7 @@ def _cached(selector, data: Data, query, variant: str, width: int = POOL) -> boo
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--stage", action="append", required=True,
-                        choices=["heldout", "pools", "label", "agree", "methods", "score", "export-labels"])
+                        choices=["heldout", "pools", "label", "agree", "methods", "score", "export-labels", "substitutes"])
     parser.add_argument("--per-subset", type=int, default=60)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--heldout-target", type=int, default=850, help="size of the held-out split to freeze")
@@ -922,6 +985,8 @@ def main() -> None:
     parser.add_argument("--output", default=str(Path(__file__).parent / "results" / "toolret-sae-heldout.json"))
     parser.add_argument("--labels-output",
                         default=str(Path(__file__).parent / "results" / "toolret-sae-heldout-labels.json"))
+    parser.add_argument("--substitutes-output",
+                        default=str(Path(__file__).parent / "results" / "toolret-substitutes.json"))
     args = parser.parse_args()
 
     if not (toolret.DATA_DIR / "tools" / "web.parquet").exists():
@@ -960,6 +1025,8 @@ def main() -> None:
                     print(f"{name} [{split}]: macro {summary.get('macro_correct')} correct {summary.get('correct')} "
                           f"S unneeded esc {summary.get('S_unneeded_escalation')} calls {summary.get('llm_calls_mean')}")
         print(f"wrote {output}")
+    if "substitutes" in args.stage:
+        stage_substitutes(data, args.label_model, Path(args.substitutes_output))
     if "export-labels" in args.stage:
         stage_export_labels(data, args.label_model, Path(args.labels_output))
 

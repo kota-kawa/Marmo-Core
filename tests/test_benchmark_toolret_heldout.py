@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "benchmarks"))
 
-from toolret import ToolRetQuery, select_heldout  # noqa: E402
+from toolret import ToolRetQuery, completeness_at_k, group_metrics, ndcg_at_k, recall_at_k, select_heldout  # noqa: E402
 
 
 def _query(query_id: str, subset: str, text: str | None = None) -> ToolRetQuery:
@@ -38,6 +38,21 @@ class SelectHeldoutTests(unittest.TestCase):
         forward = select_heldout(self.queries, self.used, target=5)
         backward = select_heldout(list(reversed(self.queries)), self.used, target=5)
         self.assertEqual([query.id for query in forward], [query.id for query in backward])
+
+
+class GroupMetricsTests(unittest.TestCase):
+    def test_one_member_groups_match_the_standard_metrics(self) -> None:
+        ranked, gold = ["x", "a", "y", "b"], {"a", "b", "c"}
+        scores = group_metrics(ranked, [{tool} for tool in sorted(gold)], 3)
+        self.assertAlmostEqual(scores["ndcg"], ndcg_at_k(ranked, gold, 3))
+        self.assertAlmostEqual(scores["recall"], recall_at_k(ranked, gold, 3))
+        self.assertEqual(scores["complete"], completeness_at_k(ranked, gold, 3))
+
+    def test_a_substitute_satisfies_its_group_once(self) -> None:
+        scores = group_metrics(["sub", "other"], [{"a", "sub"}, {"b", "sub"}], 2)
+        self.assertEqual((scores["recall"], scores["complete"]), (0.5, 0.0))
+        self.assertLessEqual(scores["ndcg"], 1.0)
+        self.assertEqual(group_metrics(["sub"], [{"a", "sub"}], 1), {"ndcg": 1.0, "recall": 1.0, "complete": 1.0})
 
 
 if __name__ == "__main__":

@@ -264,6 +264,32 @@ def completeness_at_k(ranked: Sequence[str], gold: set[str], k: int) -> float:
     return 1.0 if gold and gold <= set(ranked[:k]) else 0.0
 
 
+def group_metrics(ranked: Sequence[str], groups: Sequence[set[str]], k: int) -> dict[str, float]:
+    """nDCG, recall and completeness at ``k`` when any member of a group satisfies it.
+
+    A group is a gold tool with the tools accepted in its place. Each ranked
+    tool is credited to at most one group still unmet (the first in
+    ``groups`` order), so a tool that could stand in for two gold tools counts
+    once, and the scores stay within [0, 1]. With one-member groups this is
+    ``ndcg_at_k`` / ``recall_at_k`` / ``completeness_at_k``.
+    """
+
+    unmet = list(range(len(groups)))
+    dcg = 0.0
+    for position, tool in enumerate(ranked[:k]):
+        hit = next((index for index in unmet if tool in groups[index]), None)
+        if hit is not None:
+            unmet.remove(hit)
+            dcg += 1.0 / math.log2(position + 2)
+    ideal = sum(1.0 / math.log2(position + 2) for position in range(min(len(groups), k)))
+    met = len(groups) - len(unmet)
+    return {
+        "ndcg": dcg / ideal if ideal else 0.0,
+        "recall": met / len(groups) if groups else 0.0,
+        "complete": float(bool(groups) and not unmet),
+    }
+
+
 def set_scores(selected: set[str], gold: set[str]) -> dict[str, float]:
     hits = len(selected & gold)
     precision = hits / len(selected) if selected else 0.0
