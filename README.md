@@ -468,7 +468,7 @@ On the public ToolRet benchmark (44,453 tools), decomposition improved the ranki
 ## Execution notes
 
 - `--granted-permission` and `--allow-side-effect` control separate checks. The latter is a repeatable exact allowlist: permitting both no side effect and reads requires both values as shown above.
-- Options and resource paths can be written in any order: `marmo inspect ID --format json PATH` and `marmo inspect --format json ID PATH` are read the same way. Put `--` before a path that starts with `-`.
+- Resource paths can be written before, between, or after options: `marmo inspect ID --format json PATH` and `marmo inspect --format json ID PATH` are read the same way. For `inspect` and `policy-check`, the resource id still comes before the paths. Put `--` before a path that starts with `-`.
 - `marmo run` uses the mock model by default. A skipped resource can be recoverable; use `--strict` in automation to fail when a resource is skipped, a Tool named in `--tool-args` is not evaluated, or retrieval finds no usable resource.
 - On POSIX systems, `--timeout-mode process` stops importable Python Tool handlers with JSON-compatible inputs and outputs at the deadline. Local closures are rejected in this mode; Windows rejects process mode because child-process termination cannot be guaranteed. The default `thread` mode limits waiting but cannot stop a timed-out handler. A timeout requires human reconciliation before retry because an external effect may have completed.
 - A paused task saves its selected resources. Resume keeps that set; if a selected resource or compiled context changed, the task fails and must be resumed with the original catalog and compiler configuration.
@@ -971,7 +971,7 @@ selection = LLMSetSelector(OpenAICompatibleLLMProvider()).select(
 ### 実行時の注意
 
 - `--granted-permission` と `--allow-side-effect` は別々の条件です。後者は値を厳密に照合する繰り返し指定可能な許可リストで、副作用なしと読み取りの両方を許すには、上の例のように両方を指定します。
-- オプションとリソースパスはどの順序で書いても同じように解釈されます（`marmo inspect ID --format json PATH` と `marmo inspect --format json ID PATH` は同じです）。`-` で始まるパスの前には `--` を置きます。
+- リソースパスは、オプションの前・間・後ろのどこに書いても同じように解釈されます（`marmo inspect ID --format json PATH` と `marmo inspect --format json ID PATH` は同じです）。`inspect` と `policy-check` では、リソース ID をパスより先に書きます。`-` で始まるパスの前には `--` を置きます。
 - `marmo run` の既定はモックモデルです。リソースのスキップ後も処理が続く場合があります。自動化では `--strict` を使うと、スキップ、`--tool-args` に指定した Tool の未評価、利用できるリソースとの不一致を失敗として扱えます。
 - POSIX 環境では、import 可能で入出力が JSON 対応の Python Tool ハンドラを `--timeout-mode process` で期限時に停止できます。このモードではローカル関数を実行前に拒否します。Windows では子プロセスの停止を保証できないため process モードを拒否します。既定の `thread` モードは待機時間だけを制限します。timeout 後は外部への副作用が完了した可能性があるため、人が結果を確認してから再実行します。
 - 一時停止した task は選択済み Resource を保存します。再開時もその集合を使い、選択 Resource またはコンパイル済み context が変わっていれば task は失敗します。元のカタログと compiler 設定で再開してください。
