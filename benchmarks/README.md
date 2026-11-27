@@ -92,6 +92,7 @@ python3 benchmarks/run_benchmark.py --llm-rerank             # LLM 再ランク(
 
 ## 結果の読み方
 
+- **結果 JSON の出所には 2 つの形式があります**。`provenance` キーを持つ形式（スキーマ 2）は、`marmo_core_commit`（40 桁）、作業ツリーが dirty かどうか、データセットの revision、入力ファイルの SHA-256、モデル、引数を記録します。`provenance` キーのない旧形式は、`marmo_core_commit` が 8 桁の短縮 SHA か、記録がありません（`adaptive-*`、`scale-routing-*`、`set-selection-*` の 15 件）。旧形式の数値を新しい測定と並べるときは、記載の commit のコードで再測定してください。旧形式の ToolRet の結果は取得先が可変の `main` だったため、データの版を特定できません（両リポジトリの最終更新は 2025-03 で、現在はその commit に固定しています）。
 - **スタイル別の分離が案A(ルールベース路線)の実力を正確に示します**: 語彙が重なる direct では hit@1 90% と実用水準ですが、言い換え(29%)・抽象化(48%)で大きく崩れます。これは要件定義書 15 章の案Aの短所(「語彙の一致に依存」)の定量的な裏付けです。
 - **hybrid-hash はゼロ依存のオフライン代替であり、真のセマンティック検索ではありません**。paraphrase をわずかに改善(+5pt)する一方 abstract を悪化させ、全体では BM25 と同等です。案Bの本命はモデルベース埋め込み(hybrid-model)です。
 - **実埋め込み(hybrid-model)が案Bの主張を実証しました**: hit@1 61%→77%、paraphrase 29%→57%、abstract 48%→70%、recall@50 90%→99%(paraphrase 83%→97%)。前提として候補生成を「BM25 上位のみ」から「**BM25 ∪ 埋め込み近傍の和集合**」へ拡張しています — BM25 候補の再ランクだけでは、語彙が全く重ならない言い換えは候補プールに入れず、recall が BM25 の上限で頭打ちになるためです。
@@ -447,6 +448,8 @@ hash 対照では flat ANN が両品質指標で上回り、p50 / p95 も階層�
 
 BGE を使った flat ANN の初回 index 構築は、埋め込み計算込みで 2,953.6 秒(約49.2分)、index 自体は 286,262,656 bytes(約273 MiB)でした。これは本測定機での cold build で、ウォーム検索レイテンシとは分けています。全値は同一実行の [`ann-scale-model-100000.json`](results/ann-scale-model-100000.json) に記録しています。
 
+現在の `run_ann_scale_benchmark.py` は、初回構築をアームごとに独立した埋め込み provider（キャッシュ）で測り、結果 JSON の `cold_start` に文書埋め込みとクエリ埋め込みの時間を別に記録します。上の結果（2026-09 の測定）は flat が先に作った埋め込みを階層型が再利用していたため、階層型の `warmup_seconds` は独立した初回コストではありません（#80。品質指標とウォーム検索のレイテンシには影響しません。再測定は未実施です）。
+
 ## ToolRet: 公開ベンチマークでの大規模・複数ツール選択
 
 ここまでの評価は、このリポジトリで作ったコーパスとラベルを使っています。`run_toolret_benchmark.py` は、第三者が作った公開ベンチマーク **ToolRet**（Shi et al., ACL 2025 Findings、"Retrieval Models Aren't Tool-Savvy"）で第1層と第2層を測ります。ToolRet は 35 の公開ツール利用データセットを統合したもので、ツール 44,453 件、クエリ 7,961 件です。ToolBench、ToolLens、Tool-Be-Honest、ReverseChain などは**複数ツールの正解集合**を持つため、「大規模カタログから、必要な組み合わせを過不足なく選べるか」を自作ラベルなしで測れます。
@@ -460,7 +463,7 @@ python3 benchmarks/run_toolret_benchmark.py --per-subset 60 \
     --retrievers hybrid-0.5,lexical,dense,hybrid-0.9,rrf,clause:hybrid-0.5,llm-rrf:hybrid-0.5,llm!:hybrid-0.5,llm:hybrid-0.5,rerank:llm!:hybrid-0.5
 ```
 
-**データの扱い**: データセットカードにライセンスの記載がなく、出典ごとにライセンスが異なるため、データは再配布しません。`--download` が HuggingFace から `benchmarks/data/toolret/`（git 管理外）へ取得します。コミットするのは集計値の `results/toolret.json` だけです。
+**データの扱い**: データセットカードにライセンスの記載がなく、出典ごとにライセンスが異なるため、データは再配布しません。`--download` が HuggingFace から `benchmarks/data/toolret/`（git 管理外）へ取得します。コミットするのは集計値の `results/toolret.json` だけです。取得先は `toolret.DATASET_REVISIONS` に固定した commit で、取得した commit とファイルの SHA-256 を `manifest.json` と結果 JSON の `provenance` に記録します。
 
 **プロトコル**
 
@@ -469,7 +472,7 @@ python3 benchmarks/run_toolret_benchmark.py --per-subset 60 \
 - ツール文書は `toolret.tool_resource` で Tool resource に変換し、権限・信頼度・副作用・コストを全件同一にしています。順位は本文の関連度だけで決まります。
 - 埋め込みは `sentence-transformers/all-MiniLM-L6-v2`（fastembed / ONNX / CPU、ToolRet の評価対象モデルの 1 つ）。埋め込み用テキストは先頭 512 字です。`bge-small-en-v1.5` はこの環境で 512 字の文書を 4 件/秒しか処理できず、44k 件に数時間かかるため使っていません。
 - LLM を使う段（分解・再ランク・集合選択）は、ライブラリの `LLMQueryDecomposer`、`LLMRerankRetriever`、`LLMSetSelector` をそのまま Claude Sonnet（Claude Code CLI 経由、`benchmarks/_claude_cli.py`）で動かし、応答を `benchmarks/cache/` に保存して採点時は再生します。応答は再現しないため、キャッシュを消すと数値は変わります。
-- **調整は dev、報告は test**: クエリ id の SHA-1 で 50/50 に分け、融合重み・`min_gain`・意味重みなどは dev で選んで test の値を報告します。差の信頼区間は test 上の対応のあるブートストラップ（2,000 回、95%）です。
+- **調整は dev、報告は test**: クエリ id の SHA-1 で 50/50 に分け、融合重み・`min_gain`・意味重みなどは dev で選んで test の値を報告します。差と信頼区間は表の macro 列と同じ重み付けで計算します。test 上の対応のあるブートストラップ（2,000 回、95%）で、各サブセット内でクエリを再標本化し、サブセットごとの平均差を等重みで平均します。クエリ均等（micro）の差は結果 JSON の `micro` に別の量として併記します。集合選択の Set F1 の差は表がクエリ平均なので micro です。**この節に載っている順位付けの差と区間は、この定義に揃える前（クエリ均等）に測定した値です**（#76）。分解の LLM キャッシュが要るため再測定できておらず、各表にその旨を注記しています。
 
 ### 第1層: 順位付け（1,689 クエリ、macro）
 
@@ -529,6 +532,8 @@ dev 分割または開発中のオフライン分析で、次はいずれも改�
 
 標本は大きなサブセットを 60 件に間引いています。test 分割の全件（3,920 クエリ、うち複数ツール 1,729 件）を分解してから同じ設定で測り直しました（[`results/toolret-test-full.json`](results/toolret-test-full.json)、`--per-subset 0 --split test`）。LLM 再ランクと `LLMSetSelector` は呼び出し数が多いため、この全件評価には含めていません。
 
+1 つ目の表の「差」の列は旧定義（クエリ均等）の差と区間で、同じ表の macro 列どうしの差とは対応しません。macro 列の差を `per_subset` から計算すると、`llm:hybrid-0.5` は nDCG@10 +0.0224、C@10 +0.0149、`lexical` は −0.0446 / −0.0425 です（区間は再測定後に更新します）。
+
 | 構成 | nDCG@10 | C@10 | C@100 | 複数ツール C@10 | nDCG@10 の差 [95% CI] | C@10 の差 [95% CI] |
 |---|---:|---:|---:|---:|---:|---:|
 | `lexical` | 0.200 | 0.192 | 0.321 | 0.113 | −0.061 [−0.069, −0.055] | −0.068 [−0.078, −0.058] |
@@ -562,7 +567,7 @@ python3 benchmarks/run_toolret_benchmark.py --per-subset 60 --retrievers hybrid-
 python3 benchmarks/compare_toolret_records.py minilm=/tmp/minilm.json arctic-s=/tmp/arctic.json --output /tmp/cmp.json
 ```
 
-結果は [`results/toolret-arctic-s.json`](results/toolret-arctic-s.json)、[`results/toolret-arctic-s-no-instruction.json`](results/toolret-arctic-s-no-instruction.json)、対応のある差は [`results/toolret-embeddings.json`](results/toolret-embeddings.json)（MiniLM との差）と [`results/toolret-query-instruction.json`](results/toolret-query-instruction.json)（指示文の有無の差）です。MiniLM-L6 の行は [`results/toolret.json`](results/toolret.json) と同じ値です。差は 1,689 クエリの micro 平均の差と 95% ブートストラップ区間です。
+結果は [`results/toolret-arctic-s.json`](results/toolret-arctic-s.json)、[`results/toolret-arctic-s-no-instruction.json`](results/toolret-arctic-s-no-instruction.json)、対応のある差は [`results/toolret-embeddings.json`](results/toolret-embeddings.json)（MiniLM との差）と [`results/toolret-query-instruction.json`](results/toolret-query-instruction.json)（指示文の有無の差）です。MiniLM-L6 の行は [`results/toolret.json`](results/toolret.json) と同じ値です。差は 1,689 クエリの micro 平均の差と 95% ブートストラップ区間です（旧定義。現在の `compare_toolret_records.py` は macro の差を主に出力し、micro を併記します）。
 
 | 埋め込み | hybrid-0.5 macro nDCG@10 | hybrid-0.5 macro C@10 | dense macro nDCG@10 | dense macro C@10 | MiniLM との差（dense nDCG@10） |
 |---|---:|---:|---:|---:|---:|
@@ -603,6 +608,8 @@ ToolRet はどのクエリにも答えがあり、どのツールも使えるの
 
 権限は不透明なスコープ（ツール ID のハッシュで 40 個に割り当て）で、検索のあとに付けます。E と A が本当に escalate / abstain のケースかどうかは、アノテータのモデル（Claude Sonnet）が決めます。正解ツールごとに「依頼に必要か」と「上位 40 候補のどれが代わりになるか」を判定し、必要な正解に（E では許可された）代替が 1 つも無い変種だけを有効とします。**ラベルは LLM によるもので、人による検証は行っていません。**
 
+ラベルを新しく作る手順は次のとおりです（アノテータの Sonnet を呼びます）。この手順が作るのは held-out のラベルだけで、規則の下限の調整に使う dev 833 件のラベルは作りません。**公開済みのラベルから採点するだけなら、アノテータは要りません。** 下の「公開ラベルから再採点する」に進んでください。
+
 ```bash
 python3 benchmarks/run_toolret_llm_stages.py --stage decompose --model haiku --split heldout --sample 400
 python3 benchmarks/run_toolret_sae.py --stage pools --stage label --split heldout --sample 400
@@ -612,6 +619,8 @@ python3 benchmarks/run_toolret_sae.py --stage score --stage export-labels --stag
 ```
 
 - **分割**: dev / test は `run_toolret_benchmark.py` の標本（1,689 件）を半分に分けたもの。held-out は標本に含まれないクエリ 852 件（18 サブセット）で、ID を [`toolret_sae_heldout_ids.json`](toolret_sae_heldout_ids.json) に固定しています。下の評価は、そのうち ID の SHA-1 順の先頭 400 件です（有効な変種は S 400、E 205、A 167）。
+- **過去の評価との重複**（#78）: held-out が除外するのは**標本（1,689 件）だけ**です。`run_toolret_benchmark.py` と同じ分割規則（ID の SHA-1 の偶奇）で test にあたる全件（3,920 件）は、[`results/toolret-test-full.json`](results/toolret-test-full.json) で検索と分解を測定していますが、除外していません。取得を固定した ToolRet データ（下記）で数えると、固定 852 件のうち 431 件、評価に使う 400 件のうち 206 件が、この test 全件に ID で含まれます。ID が違っても、空白を畳んで小文字にした（`toolret.normalize_text`）クエリ本文が test 全件と一致するものが、852 件中 13 件、400 件中 5 件あります。標本との重複は ID も本文も 0 件です。test 全件の結果が手法の調整に使われたかは記録がなく、未確認です。したがって **ToolRet-SAE の held-out は、検索・分解手法については過去の評価と独立な「未使用データ」ではありません**。この節の結果は、標本（dev）で調整した規則と LLM 手法を held-out で比べたものとして読んでください。
+- **未使用データの分割**: 検索・分解手法を未使用データで評価したと主張する場合は、標本・test 全件・SAE の held-out の ID と、正規化した本文が一致するクエリをすべて除いた分割を、評価の前に `python3 benchmarks/run_toolret_sae.py --stage fresh-heldout` で固定してコミットします（`toolret.select_fresh_heldout`。現在のデータでは 14 サブセット 853 件、ID 一覧の SHA-256 は `6278eecd…`）。固定した一覧はまだこのリポジトリにないので、この節の結果はどれも未使用データでの評価ではありません。この分割を採点に使う機能は未実装です。旧分割（`select_heldout` と `toolret_sae_heldout_ids.json`）の関数・ID・既定値は変えておらず、この節の結果は旧分割のまま比較できます。
 - **モデル**: ラベルは Sonnet、`LLMSetSelector` と第 2 アノテータは Haiku。検索は `llm:hybrid-0.5`、各手法は上位 20 候補から選びます。
 - **主指標**: S / E / A の正答率のマクロ平均。S は必要な正解（または代替）を全部含む集合を選んだときだけ正答です。
 
@@ -628,10 +637,36 @@ python3 benchmarks/run_toolret_sae.py --stage score --stage export-labels --stag
 - **LLM に集合と状態をまとめて決めさせると、選んでしまいます**。`LLMSetSelector` は S では最良ですが、A の 68%、E の 58% で何かを選びました。主指標は greedy と差がありません（−0.010 [−0.053, 0.033]）。
 - 要求ごとの能力判定と宣言制約から状態を決める研究用の Selector は、同じ held-out で主指標 0.552 でしたが（`research/requirement-coverage` ブランチのコミット f4ef28e7 にある `benchmarks/results/toolret-sae-heldout.json`。このブランチの結果ファイルには含まれません）、事前登録した採用基準の 1 つ（S での不要な escalate）を満たさなかったので、`main` には入れていません（#45、`research/requirement-coverage` ブランチ）。
 
+**指標の版**（#79）: 結果 JSON の `metric_version` が指標の版です。**上の表と [`results/toolret-sae-heldout.json`](results/toolret-sae-heldout.json) は版 1** で（このキーが無い JSON は版 1）、E は `escalate` の状態を返せば正答でした。公表結果の Haiku は E の 205 件中 58 件で escalate を返しましたが、必要な権限を名指ししたのは 0 件です（`E_named_gold_scope` 0.0）。版 2 は版 1 のキーの意味を変えずに、`correct_v2`、`macro_correct_v2`、`actionable_escalation` を足します。
+
+- **E の正答（版 2）**: escalate が、まだ付与されていない権限（`missing_permissions`）を名指しし、それを付与すると候補の中に必要な項目（正解ツールまたはその代替）がすべて揃い（`grant_sufficient`）、かつ求めた権限のどれか一つを外すとそれが成り立たない（`actionable`。不要な権限を求めない）こと。S の正答（`sufficient`）と A の正答は版 1 と同じです。
+- **複数項目を一つの代替が満たす場合**: 一つのツールが複数の必要な正解ツールの代替と判定されていれば、そのツール一つで各項目を満たすものとして数えます（共有被覆）。S の `sufficient` と E の `actionable` はこの意味で、正解ツールの並び順に依存しません（ラベル 2,089 件のうち 49 件に、必要な 2 つの正解で共有される代替があります）。順位の指標 `toolret.group_metrics` は一つのツールを一つの項目にしか数えず、項目の順に貪欲に割り当てるため、項目の並びで recall が変わります。版 2 の `toolret.group_metrics_matched` は一対一の最大マッチングで、順序に依存しません。`--stage substitutes --substitute-matching matched` で使えます（既定は公表値と同じ貪欲版で、結果 JSON の `group_matching` に記録します）。
+- **未測定**: 版 2 の値は測っていません。候補プールと LLM の応答キャッシュが手元に無く、LLM なしでは再計算できないためです。必要な項目が 6 件以上のクエリ 15 件（6 件が 12、7 件が 3 件）では、集合の大きさの上限（`tool` 5 件）を検査していません。
+
 **ラベルの検証と公開**（#48）:
 
 - 第 2 アノテータ（Haiku、held-out の 100 クエリ）との一致度は、代替判定（7,520 組）が κ=0.80、必要性が κ=0.79、変種の有効性が κ=0.88 でした。どちらも Claude 系のモデルなので、同系統どうしの相関は排除できません。別系統のモデルや人との一致度は未測定です。
 - ラベルは [`results/toolret-sae-heldout-labels.json`](results/toolret-sae-heldout-labels.json) にあります（dev 833、test 856、held-out 400 件）。中身は ToolRet のクエリ ID とツール ID、必要性と代替の判定だけです。ラベルと held-out の ID 一覧は CC0 1.0 で公開します。ToolRet のクエリやツールの本文は含まず、再配布しません（ToolRet 側のライセンスに従ってください）。
+
+**公開ラベルから再採点する**（#77）: キャッシュが空の状態から、公開ラベル（ToolRet の ID だけを持つ）を入力にして採点します。アノテータは呼びません。必要なのは、採点に使う dev 833 件と評価する分割の候補プール（`benchmarks/cache/` に保存）と、LLM 手法を採点するときはその応答だけです。
+
+```bash
+python -m pip install -e '.[benchmark,benchmark-toolret]'
+python3 benchmarks/run_toolret_benchmark.py --download --retrievers lexical     # 固定した revision のデータを取得
+python3 benchmarks/run_toolret_llm_stages.py --stage decompose --model sonnet --split dev
+python3 benchmarks/run_toolret_llm_stages.py --stage decompose --model haiku --split heldout --sample 400
+python3 benchmarks/run_toolret_sae.py --stage pools --split dev                  # 埋め込みを計算する（MiniLM で約 40 分）
+python3 benchmarks/run_toolret_sae.py --stage pools --split heldout --sample 400
+python3 benchmarks/run_toolret_sae.py --stage methods --split heldout --sample 400   # LLM 手法の応答（Haiku）。規則だけなら省略できる
+python3 benchmarks/run_toolret_sae.py --stage score --method llm-set \
+    --labels-input benchmarks/results/toolret-sae-heldout-labels.json --output /tmp/toolret-sae-rescored.json
+```
+
+- `--labels-input` を付けると、ラベルのキャッシュではなく公開ラベルを使います。ラベルのモデル（`--label-model`）、候補の深さ、ToolRet の ID と正解ツール、分割がデータと食い違うときは、採点せずに終了します。`candidates_sha256` を持つラベル（今後の `export-labels` の出力）は、候補の ID と順序まで照合します。最初の公開版にはこの項目が無く、再構築した候補に入らない代替を持つクエリ数が結果の `inputs.label_pool_mismatch` に残ります。
+- 採点に必要な dev または評価分割のクエリが欠けていたり、候補プールが無かったりすると、不足の件数と実行すべきコマンドを表示して**非ゼロで終了**します（以前は dev=0 / held-out=0 の結果を終了コード 0 で保存しました）。`--method` で指定した LLM 手法の応答が評価クエリの一部にでも欠けるときも同じです。
+- ラベルのキャッシュは、モデル・プロンプト・正解ツールと候補の ID（順序つき）のダイジェストを含むキーで照合します。LLM 手法の応答は、プロンプト（候補の ID・順序・本文・付与済みの権限を含む）のダイジェストをキーにし、モデルごとの別ファイルに保存します。候補の順序が変わると、同じ応答でも一致せず、再生されません（以前は ID だけをキーにしたラベルの応答が、並びの違う別のツールに割り当たりました）。以前の形式のラベルのキャッシュは使われず、`--stage label` で作り直しになります。
+- 分解の応答は LLM の出力で、再実行すると保存済みのものと違うことがあります。候補プールが変わると結果も公表値と変わります。分解のモデルはキャッシュに記録されないので、上のコマンドの `--model` は、この README の記述（標本は Sonnet、held-out は Haiku）に合わせたものです。
+- ToolRet のデータは `toolret.DATASET_REVISIONS` の commit から取得します（`toolret.download(revisions=...)` で変更できます）。結果 JSON の `inputs.toolret_data` に、取得元の revision とファイルのハッシュを記録します。
 
 **代替ツールが ToolRet の標準指標に与える影響**（[`results/toolret-substitutes.json`](results/toolret-substitutes.json)、ラベルのある 2,089 クエリ、macro）:
 

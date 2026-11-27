@@ -30,7 +30,7 @@ import random
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 import math
 
 DATA_DIR = Path(__file__).parent / "data" / "toolret"
@@ -65,20 +65,113 @@ class ToolRetQuery:
     labels: tuple[str, ...]
 
 
-def download(data_dir: Path = DATA_DIR, *, force: bool = False) -> Path:
-    """Fetch the ToolRet parquet files once into ``data_dir``."""
+# Commits of the two dataset repositories at the time this benchmark was built
+# (both unchanged since March 2025). ``download`` fetches these unless told
+# otherwise, so a rerun reads the same files even if ``main`` moves.
+DATASET_REVISIONS = {
+    "ToolRet-Tools": "e06c38c75612b6536bd959e08cdd345894aba6a7",
+    "ToolRet-Queries": "b8c76ad3349ff17497b6bdb28bb5b8f61a0f6445",
+}
+MANIFEST = "manifest.json"
 
-    targets = [(f"{HF_BASE}/ToolRet-Tools/resolve/main/{name}/tools-00000-of-00001.parquet", data_dir / "tools" / f"{name}.parquet") for name in TOOL_CONFIGS]
-    targets += [(f"{HF_BASE}/ToolRet-Queries/resolve/main/{name}/queries-00000-of-00001.parquet", data_dir / "queries" / f"{name}.parquet") for name in QUERY_CONFIGS]
-    for url, path in targets:
-        if path.exists() and not force:
+
+@dataclass(frozen=True)
+class DataSnapshot:
+    """What is in a ToolRet data directory, for a result file to record.
+
+    ``revisions`` maps each dataset repository to the commit its files came
+    from, or ``None`` when some file has no recorded origin (data fetched
+    before the manifest existed) or the files come from different commits.
+    ``files`` maps each parquet path, relative to ``data_dir``, to its SHA-256.
+    """
+
+    data_dir: Path
+    revisions: dict[str, str | None]
+    files: dict[str, str]
+
+    def to_record(self) -> dict[str, Any]:
+        digest = hashlib.sha256("\n".join(f"{name} {value}" for name, value in sorted(self.files.items())).encode("utf-8"))
+        return {"revisions": dict(self.revisions), "files": dict(sorted(self.files.items())),
+                "files_sha256": digest.hexdigest()}
+
+
+def _targets() -> list[tuple[str, str, str]]:
+    """(dataset repository, path inside it, path under the data directory) for every parquet file."""
+
+    tools = [("ToolRet-Tools", f"{name}/tools-00000-of-00001.parquet", f"tools/{name}.parquet") for name in TOOL_CONFIGS]
+    queries = [("ToolRet-Queries", f"{name}/queries-00000-of-00001.parquet", f"queries/{name}.parquet") for name in QUERY_CONFIGS]
+    return tools + queries
+
+
+def resolve_revision(repository: str, revision: str) -> str:
+    """The commit SHA a branch, tag, or SHA of ``repository`` names right now."""
+
+    url = f"https://huggingface.co/api/datasets/mangopy/{repository}/revision/{revision}"
+    request = urllib.request.Request(url, headers={"User-Agent": "marmo-core-benchmark"})
+    with urllib.request.urlopen(request, timeout=60) as response:
+        return str(json.loads(response.read())["sha"])
+
+
+def _read_manifest(data_dir: Path) -> dict[str, dict[str, str]]:
+    path = data_dir / MANIFEST
+    if not path.exists():
+        return {}
+    return dict(json.loads(path.read_text(encoding="utf-8")).get("files", {}))
+
+
+def snapshot(data_dir: Path = DATA_DIR) -> DataSnapshot:
+    """Hash the parquet files under ``data_dir`` and read where each came from."""
+
+    recorded = _read_manifest(data_dir)
+    files: dict[str, str] = {}
+    origins: dict[str, set[str | None]] = {}
+    for repository, _, relative in _targets():
+        path = data_dir / relative
+        if not path.exists():
             continue
-        path.parent.mkdir(parents=True, exist_ok=True)
+        files[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+        entry = recorded.get(relative)
+        origins.setdefault(repository, set()).add(entry["revision"] if entry and entry.get("revision") else None)
+    revisions = {repository: (next(iter(found)) if len(found) == 1 else None) for repository, found in origins.items()}
+    return DataSnapshot(data_dir, revisions, files)
+
+
+def download(
+    data_dir: Path = DATA_DIR, *, force: bool = False, revisions: Mapping[str, str] | None = None
+) -> DataSnapshot:
+    """Fetch the ToolRet parquet files once into ``data_dir``.
+
+    ``revisions`` maps ``"ToolRet-Tools"`` and ``"ToolRet-Queries"`` to the
+    branch, tag, or commit to read; the default is ``DATASET_REVISIONS``
+    (pass ``"main"`` for the moving head). The name is resolved to a commit
+    first, files are fetched from that commit, and the commit of each file is
+    kept in ``data_dir/manifest.json``. A file already present is kept (it was
+    fetched earlier, possibly from another commit); ``force=True`` replaces
+    every file. The returned snapshot has the commits and file hashes to store
+    in a result file.
+    """
+
+    wanted = {**DATASET_REVISIONS, **(revisions or {})}
+    unknown = set(wanted) - set(DATASET_REVISIONS)
+    if unknown:
+        raise ValueError(f"unknown ToolRet dataset repositories: {sorted(unknown)}")
+    commits: dict[str, str] = {}
+    recorded = _read_manifest(data_dir)
+    for repository, path_in_repository, relative in _targets():
+        target = data_dir / relative
+        if target.exists() and not force:
+            continue
+        if repository not in commits:
+            commits[repository] = resolve_revision(repository, wanted[repository])
+        url = f"{HF_BASE}/{repository}/resolve/{commits[repository]}/{path_in_repository}"
+        target.parent.mkdir(parents=True, exist_ok=True)
         request = urllib.request.Request(url, headers={"User-Agent": "marmo-core-benchmark"})
         with urllib.request.urlopen(request, timeout=120) as response:
             payload = response.read()
-        path.write_bytes(payload)
-    return data_dir
+        target.write_bytes(payload)
+        recorded[relative] = {"repository": repository, "revision": commits[repository]}
+        (data_dir / MANIFEST).write_text(json.dumps({"files": recorded}, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    return snapshot(data_dir)
 
 
 def _read_parquet(path: Path) -> list[dict[str, Any]]:
@@ -144,28 +237,69 @@ def sample_queries(queries: Sequence[ToolRetQuery], per_subset: int | None, seed
 
 
 SAE_HELDOUT_IDS = Path(__file__).parent / "toolret_sae_heldout_ids.json"
+SAE_FRESH_IDS = Path(__file__).parent / "toolret_sae_fresh_ids.json"
+
+
+def normalize_text(text: str) -> str:
+    """Whitespace-collapsed, case-folded query text, for finding the same request under another id."""
+
+    return " ".join(text.split()).casefold()
+
+
+def _spread_over_subsets(
+    queries: Sequence[ToolRetQuery], used: Sequence[ToolRetQuery], target: int, key: Callable[[ToolRetQuery], str]
+) -> list[ToolRetQuery]:
+    seen = {key(query) for query in used}
+    used_ids = {query.id for query in used}
+    by_subset: dict[str, list[ToolRetQuery]] = {}
+    for query in sorted(queries, key=lambda q: hashlib.sha1(q.id.encode("utf-8")).hexdigest()):
+        if query.id in used_ids or key(query) in seen:
+            continue
+        seen.add(key(query))
+        by_subset.setdefault(query.subset, []).append(query)
+    largest = max((len(rows) for rows in by_subset.values()), default=0)
+    cap = min(range(largest + 1), key=lambda c: abs(sum(min(len(rows), c) for rows in by_subset.values()) - target))
+    return sorted((query for rows in by_subset.values() for query in rows[:cap]), key=lambda q: q.id)
 
 
 def select_heldout(queries: Sequence[ToolRetQuery], used: Sequence[ToolRetQuery], target: int) -> list[ToolRetQuery]:
     """About ``target`` queries that are not in ``used``, spread over the subsets.
 
     A query whose text also appears in ``used`` is left out, as is a repeat of
-    a text already taken. Every subset contributes its first queries in SHA-1
-    order of the id, up to one cap chosen so the total is closest to
-    ``target``; no random state is involved.
+    a text already taken (texts compared as written). Every subset contributes
+    its first queries in SHA-1 order of the id, up to one cap chosen so the
+    total is closest to ``target``; no random state is involved. This produced
+    ``toolret_sae_heldout_ids.json``; its result must not change.
     """
 
-    seen = {query.query for query in used}
-    used_ids = {query.id for query in used}
-    by_subset: dict[str, list[ToolRetQuery]] = {}
-    for query in sorted(queries, key=lambda q: hashlib.sha1(q.id.encode("utf-8")).hexdigest()):
-        if query.id in used_ids or query.query in seen:
-            continue
-        seen.add(query.query)
-        by_subset.setdefault(query.subset, []).append(query)
-    largest = max((len(rows) for rows in by_subset.values()), default=0)
-    cap = min(range(largest + 1), key=lambda c: abs(sum(min(len(rows), c) for rows in by_subset.values()) - target))
-    return sorted((query for rows in by_subset.values() for query in rows[:cap]), key=lambda q: q.id)
+    return _spread_over_subsets(queries, used, target, lambda query: query.query)
+
+
+def select_fresh_heldout(queries: Sequence[ToolRetQuery], prior: Sequence[ToolRetQuery], target: int) -> list[ToolRetQuery]:
+    """Like ``select_heldout``, with ``prior`` meaning every query any earlier evaluation read.
+
+    Texts are compared after ``normalize_text``, so a request that reappears
+    under another id, in another case, or with different spacing is also left
+    out. Use it to freeze a split for a claim of "data no earlier result used";
+    ``select_heldout`` keeps its original rule so the frozen split it made
+    stays reproducible.
+    """
+
+    return _spread_over_subsets(queries, prior, target, lambda query: normalize_text(query.query))
+
+
+def prior_overlap(queries: Sequence[ToolRetQuery], prior: Sequence[ToolRetQuery]) -> dict[str, int]:
+    """How many of ``queries`` an earlier evaluation already covered.
+
+    ``same_id`` counts ids found in ``prior``; ``same_text_other_id`` counts
+    queries whose id is not in ``prior`` but whose normalized text is.
+    """
+
+    prior_ids = {query.id for query in prior}
+    prior_texts = {normalize_text(query.query) for query in prior}
+    same_id = sum(query.id in prior_ids for query in queries)
+    same_text = sum(query.id not in prior_ids and normalize_text(query.query) in prior_texts for query in queries)
+    return {"queries": len(queries), "same_id": same_id, "same_text_other_id": same_text}
 
 
 def load_heldout(queries: Sequence[ToolRetQuery], path: Path = SAE_HELDOUT_IDS) -> list[ToolRetQuery]:
@@ -265,14 +399,18 @@ def completeness_at_k(ranked: Sequence[str], gold: set[str], k: int) -> float:
 
 
 def group_metrics(ranked: Sequence[str], groups: Sequence[set[str]], k: int) -> dict[str, float]:
-    """nDCG, recall and completeness at ``k`` when any member of a group satisfies it.
+    """nDCG, recall and completeness at ``k`` when any member of a group satisfies it (metric version 1).
 
     A group is a gold tool with the tools accepted in its place. Each ranked
     tool is credited to at most one group still unmet (the first in
     ``groups`` order), so a tool that could stand in for two gold tools counts
-    once, and the scores stay within [0, 1]. The crediting is greedy, not a
-    maximum matching, so recall can be slightly low. With one-member groups this is
-    ``ndcg_at_k`` / ``recall_at_k`` / ``completeness_at_k``.
+    once, and the scores stay within [0, 1]. The crediting is greedy, so the
+    result depends on the order of ``groups`` and recall can be low: with
+    ``ranked = [s, a]`` and groups ``{a, s}``, ``{s}`` it credits ``s`` to the
+    first group and scores 0.5, but 1.0 when the groups are listed the other
+    way round. Published values use this version;
+    ``group_metrics_matched`` removes the order dependence. With one-member
+    groups this is ``ndcg_at_k`` / ``recall_at_k`` / ``completeness_at_k``.
     """
 
     unmet = list(range(len(groups)))
@@ -288,6 +426,41 @@ def group_metrics(ranked: Sequence[str], groups: Sequence[set[str]], k: int) -> 
         "ndcg": dcg / ideal if ideal else 0.0,
         "recall": met / len(groups) if groups else 0.0,
         "complete": float(bool(groups) and not unmet),
+    }
+
+
+def group_metrics_matched(ranked: Sequence[str], groups: Sequence[set[str]], k: int) -> dict[str, float]:
+    """``group_metrics`` with one tool per group, chosen so the groups' order does not matter (version 2).
+
+    Each group needs its own ranked tool: one substitute that fits two gold
+    tools satisfies one of them, as in a ranking where every slot is one tool.
+    Walking down the ranking, a tool is credited when the credited tools stay
+    assignable to distinct groups (an augmenting path exists), so recall is the
+    size of a maximum matching, and which tools are credited depends on the
+    ranking only. ``sufficient`` in ``run_toolret_sae.py`` is the other
+    meaning: a selected set covers a group when it holds any member, and one
+    tool may cover several groups.
+    """
+
+    owner: dict[int, int] = {}  # group index -> ranked position credited to it
+
+    def assign(position: int, visited: set[int]) -> bool:
+        for index, group in enumerate(groups):
+            if ranked[position] in group and index not in visited:
+                visited.add(index)
+                if index not in owner or assign(owner[index], visited):
+                    owner[index] = position
+                    return True
+        return False
+
+    for position in range(min(k, len(ranked))):
+        assign(position, set())
+    dcg = sum(1.0 / math.log2(position + 2) for position in set(owner.values()))
+    ideal = sum(1.0 / math.log2(position + 2) for position in range(min(len(groups), k)))
+    return {
+        "ndcg": dcg / ideal if ideal else 0.0,
+        "recall": len(owner) / len(groups) if groups else 0.0,
+        "complete": float(bool(groups) and len(owner) == len(groups)),
     }
 
 

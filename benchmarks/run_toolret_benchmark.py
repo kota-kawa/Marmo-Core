@@ -31,7 +31,6 @@ import argparse
 import hashlib
 from dataclasses import replace
 import json
-import random
 import statistics
 import sys
 import time
@@ -62,7 +61,8 @@ from marmo_core import (  # noqa: E402
 )
 
 import toolret  # noqa: E402
-from _provenance import stamp  # noqa: E402
+from _provenance import sha256_file, sha256_tree, stamp  # noqa: E402
+from compare_toolret_records import DEFINITIONS, PROVENANCE_KEY, bootstrap_interval, paired  # noqa: E402
 
 POOL = 100
 DECOMPOSITION_CACHE = Path(__file__).parent / "cache" / "toolret-decompositions.json"
@@ -307,27 +307,28 @@ def aggregate(records: list[dict], latencies: list[float]) -> dict:
 def paired_bootstrap(differences: list[float], *, samples: int = 2000, seed: int = 0) -> dict:
     """Mean of per-query differences with a 95% percentile bootstrap interval."""
 
-    rng = random.Random(seed)
-    count = len(differences)
-    means = sorted(statistics.mean(rng.choices(differences, k=count)) for _ in range(samples))
-    return {
-        "mean_difference": round(statistics.mean(differences), 4),
-        "ci95": [round(means[int(0.025 * samples)], 4), round(means[int(0.975 * samples) - 1], 4)],
-        "queries": count,
-    }
+    return {**bootstrap_interval([differences], samples=samples, seed=seed), "queries": len(differences)}
 
 
 def comparisons(records_by_retriever: dict[str, list[dict]], baseline: str, pairs: list[tuple[str, str]]) -> dict:
-    """Paired test-split differences: ranking metrics vs ``baseline``, set F1 vs top-1."""
+    """Paired test-split differences: ranking metrics vs ``baseline``, set F1 vs top-1.
 
-    out: dict = {"ranking_vs_baseline": {}, "set_f1_vs_top1": {}}
+    The ranking differences are weighted like the tables' macro columns (subsets
+    equal, queries resampled within each subset; the query-equal difference is
+    under ``micro``). Set F1 is tabulated as a mean over queries, so its
+    difference is query-equal.
+    """
+
+    out: dict = {"definitions": {"ranking_vs_baseline": DEFINITIONS["macro"] + "; micro: " + DEFINITIONS["micro"],
+                                 "set_f1_vs_top1": DEFINITIONS["micro"]},
+                 "ranking_vs_baseline": {}, "set_f1_vs_top1": {}}
     base = {record["id"]: record for record in records_by_retriever.get(baseline, []) if record["split"] == "test"}
     for name, records in records_by_retriever.items():
         test = [record for record in records if record["split"] == "test"]
         if name != baseline and base:
+            candidate = {record["id"]: record for record in test}
             out["ranking_vs_baseline"][name] = {
-                metric: paired_bootstrap([record[metric] - base[record["id"]][metric] for record in test])
-                for metric in ("ndcg@10", "complete@10")
+                metric: paired(candidate, base, metric) for metric in ("ndcg@10", "complete@10")
             }
         out["set_f1_vs_top1"][name] = {
             strategy: paired_bootstrap([record["sets"][strategy]["f1"] - record["sets"]["top-1"]["f1"] for record in test])
@@ -335,6 +336,30 @@ def comparisons(records_by_retriever: dict[str, list[dict]], baseline: str, pair
             if reference == "top-1" and strategy in test[0]["sets"]
         }
     return out
+
+
+def dataset_provenance() -> dict:
+    """The dataset commits ``toolret.download`` fetches, one entry per Hugging Face repository."""
+
+    return {
+        f"mangopy/{name}": {"repo": f"mangopy/{name}", "revision": revision}
+        for name, revision in toolret.DATASET_REVISIONS.items()
+    }
+
+
+def cache_inputs(names: list[str], language: str) -> dict[str, Path]:
+    """The LLM-reply caches the selected retrievers and selectors replay."""
+
+    caches: dict[str, Path] = {}
+    if any("llm" in name for name in names):
+        caches["decomposition_cache"] = DECOMPOSITION_CACHE
+    if any(name.startswith("rerank:") for name in names):
+        caches["rerank_cache"] = RERANK_CACHE
+    if language == "en" and LLM_STAGE_RETRIEVER in names:
+        caches["set_select_cache"] = SET_SELECT_CACHE
+    if language != "en":
+        caches["translation_cache"] = TRANSLATION_CACHE
+    return {name: path for name, path in caches.items() if path.exists()}
 
 
 def main() -> None:
@@ -420,13 +445,22 @@ def main() -> None:
     report["comparisons"] = comparisons(records_by_retriever, names[0], pairs)
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(stamp(report), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    stamp(
+        report,
+        dataset=dataset_provenance(),
+        inputs={f"data/{path}": digest for path, digest in sha256_tree(toolret.DATA_DIR).items()}
+        | {name: sha256_file(path) for name, path in cache_inputs(names, args.language).items()},
+        model={"embedding": args.embed_model, "query_prefix": args.query_prefix} if provider else {},
+        arguments=args,
+    )
+    output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"wrote {output}")
     if args.records:
         keys = ("subset", "split", "ndcg@10", "complete@10", "recall@100", "complete@100")
         per_query = {name: {record["id"]: {key: record[key] for key in keys} for record in records}
                      for name, records in records_by_retriever.items()}
-        Path(args.records).write_text(json.dumps(per_query) + "\n", encoding="utf-8")
+        Path(args.records).write_text(json.dumps({PROVENANCE_KEY: report["provenance"], **per_query}) + "\n",
+                                      encoding="utf-8")
 
 
 if __name__ == "__main__":
