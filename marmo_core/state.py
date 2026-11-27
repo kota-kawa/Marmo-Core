@@ -70,7 +70,8 @@ EVENT_KINDS = (
 
 
 class StateConflictError(MarmoError):
-    """Raised when a write loses an optimistic-locking race (F-STATE-07)."""
+    """Raised when a write loses an optimistic-locking race (F-STATE-07),
+    or when a task's right to execute is already held."""
 
 
 class TaskNotFoundError(MarmoError):
@@ -87,11 +88,18 @@ def _lock_file(handle: IO[bytes], *, blocking: bool) -> bool:
     if sys.platform == "win32":
         import msvcrt
 
-        try:
-            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK if blocking else msvcrt.LK_NBLCK, 1)
-        except OSError:
-            return False
-        return True
+        # The lock covers the first byte, wherever the file position is.
+        handle.seek(0)
+        while True:
+            try:
+                msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK if blocking else msvcrt.LK_NBLCK, 1)
+            except OSError:
+                # LK_LOCK gives up after ten one-second tries; a blocking
+                # caller keeps waiting, as flock does.
+                if blocking:
+                    continue
+                return False
+            return True
     import fcntl
 
     try:
@@ -527,6 +535,10 @@ class JsonFileStateStore(StateStore):
             for line_number, line in enumerate(file, start=1):
                 if not line.strip():
                     continue
+                if not line.endswith("\n"):
+                    # Another store is in the middle of appending this line;
+                    # the event exists once its newline is written.
+                    break
                 try:
                     events.append(StateEvent.from_dict(json.loads(line)))
                 except (json.JSONDecodeError, ValueError) as exc:
@@ -543,9 +555,9 @@ class JsonFileStateStore(StateStore):
                 raise StateConflictError(
                     f"task {event.task_id} already has an event at seq {event.seq}; reload and retry"
                 )
+            line = json.dumps(event.to_dict(), ensure_ascii=False, sort_keys=True, default=str) + "\n"
             with path.open("a", encoding="utf-8") as file:
-                json.dump(event.to_dict(), file, ensure_ascii=False, sort_keys=True, default=str)
-                file.write("\n")
+                file.write(line)
 
     def task_ids(self) -> list[str]:
         return sorted(path.stem for path in self.root.glob("*.jsonl"))

@@ -374,6 +374,10 @@ class OpenAICompatibleLLMProvider(LLMProvider):
                 arguments = json.loads(raw_arguments) if isinstance(raw_arguments, str) else dict(raw_arguments)
             except json.JSONDecodeError:
                 arguments = {"_raw": raw_arguments}
+            if not isinstance(arguments, dict):
+                # Valid JSON that is not an object ("[1]", "null") is no more
+                # usable as arguments than unparseable text.
+                arguments = {"_raw": raw_arguments}
             tool_calls.append(
                 ToolCall(
                     id=str(call.get("id", "")),

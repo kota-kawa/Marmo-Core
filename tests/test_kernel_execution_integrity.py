@@ -7,8 +7,10 @@ import shutil
 import tempfile
 import threading
 import unittest
+from unittest import mock
 
 from marmo_core import (
+    AnthropicLLMProvider,
     HitlError,
     HitlPolicy,
     HitlResponse,
@@ -249,6 +251,87 @@ class InterruptedPersistenceTests(unittest.TestCase):
         self.assertEqual(result.status, "completed", result.detail)
         self.assertEqual(handler.arguments, ["q3", "q4"])
 
+    def test_calls_sharing_an_id_in_one_round_each_run(self) -> None:
+        for shared_id in ("", "dup"):
+            with self.subTest(call_id=shared_id):
+                handler = _Handler()
+                llm = MockLLMProvider(
+                    script=[
+                        LLMResponse(
+                            content="",
+                            tool_calls=(
+                                ToolCall(id=shared_id, name="tool.report", arguments={"name": "q3"}),
+                                ToolCall(id=shared_id, name="tool.report", arguments={"name": "q4"}),
+                            ),
+                            finish_reason="tool_calls",
+                        ),
+                        LLMResponse(content="done"),
+                    ]
+                )
+                kernel = _kernel([_tool("tool.report")], {"tool.report": handler}, llm)
+
+                result = kernel.run_goal(GOAL)
+
+                self.assertEqual(result.status, "completed", result.detail)
+                self.assertEqual(handler.arguments, ["q3", "q4"])
+                self.assertEqual([item.arguments["name"] for item in result.tool_results], ["q3", "q4"])
+
+    def test_a_recorded_delegation_is_not_run_again_by_a_new_kernel(self) -> None:
+        calls: list[str] = []
+
+        def researcher(question: str) -> dict:
+            calls.append(question)
+            return {"answer": question}
+
+        agent = {
+            **_tool("agent.research"),
+            "kind": "agent",
+            "ref": "agent://agent.research",
+            "agent_card": {
+                "delegation_interface": "tool_wrap",
+                "callable_name": "delegate_research",
+                "input_schema": {
+                    "type": "object",
+                    "required": ["question"],
+                    "properties": {"question": {"type": "string"}},
+                },
+                "output_schema": {"type": "object"},
+            },
+        }
+        del agent["input_schema"]
+
+        class _DelegateThenAnswer(LLMProvider):
+            def complete(self, messages, tools=()):
+                if any(message.role == "tool" for message in messages):
+                    return LLMResponse(content="research done")
+                return LLMResponse(
+                    content="",
+                    tool_calls=(ToolCall(id="call-1", name="delegate_research", arguments={"question": "why"}),),
+                    finish_reason="tool_calls",
+                )
+
+        def kernel_on(store) -> Kernel:
+            return Kernel(
+                _registry(agent),
+                _DelegateThenAnswer(),
+                agent_implementations={"agent.research": researcher},
+                state_store=store,
+            )
+
+        store = _CrashingStore()
+        store.crash_on = lambda s, task_id, kind, payload: kind == "frame" and s.has(task_id, "step")
+        first = kernel_on(store)
+        task_id = first.submit(GOAL)
+        with self.assertRaises(RuntimeError):
+            first.run(task_id)
+        self.assertEqual(calls, ["why"])
+
+        result = kernel_on(store).run(task_id)
+
+        self.assertEqual(result.status, "completed", result.detail)
+        self.assertEqual(calls, ["why"], "the recorded delegation must not run a second time")
+        self.assertEqual(len(result.agent_results), 1)
+
     def test_a_state_file_written_before_the_call_journal_still_loads(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             shutil.copyfile(FIXTURES / "state.jsonl", Path(directory) / "compat-task.jsonl")
@@ -332,6 +415,22 @@ class ConcurrentExecutionTests(unittest.TestCase):
             record.payload["status"] for record in kernel.audit_log.records if record.kind == "task"
         ]
         self.assertEqual(statuses, ["cancelled"])
+
+    def test_a_cancel_that_lands_after_the_last_check_still_stops_the_call(self) -> None:
+        handler = _Handler()
+        kernel = _kernel([_tool("tool.report")], {"tool.report": handler}, _ToolThenAnswer())
+        task_id = kernel.submit(GOAL)
+
+        def cancel_while_reserving(task, metadata):
+            # The last step before the call is handed to the runtime.
+            kernel.cancel(task)
+            return None
+
+        with mock.patch.object(kernel, "_reserve_resource", cancel_while_reserving):
+            result = kernel.run(task_id)
+
+        self.assertEqual(result.status, "cancelled")
+        self.assertEqual(handler.calls, 0)
 
     def test_no_call_starts_after_cancel_and_a_late_result_keeps_the_status(self) -> None:
         entered = threading.Event()
@@ -475,6 +574,39 @@ class PlanControlTests(unittest.TestCase):
         self.assertEqual(later.calls, 0)
 
 
+class ParallelUnknownOutcomeTests(unittest.TestCase):
+    def test_an_unknown_outcome_stops_replanning_even_when_a_sibling_failed_first(self) -> None:
+        release = threading.Event()
+        self.addCleanup(release.set)
+
+        def broken(name: str) -> dict:
+            raise ValueError("bad input data")
+
+        def stuck(name: str) -> dict:
+            release.wait(WAIT)
+            return {"report": name}
+
+        # Whichever of the two is first in plan order, the unknown outcome decides.
+        for handlers in ({"tool.a": broken, "tool.b": stuck}, {"tool.a": stuck, "tool.b": broken}):
+            with self.subTest(stuck=next(name for name, handler in handlers.items() if handler is stuck)):
+                planner = _CountingPlanner()
+                kernel = _kernel(
+                    # Different capabilities, so neither can stand in for the other.
+                    [_tool("tool.a", capabilities=["figures"]), _tool("tool.b", capabilities=["charts"])],
+                    handlers,
+                    MockLLMProvider(script=[LLMResponse(content="report ready")]),
+                    planner=planner,
+                    timeout_seconds=0.05,
+                    recovery=RecoveryManager(escalate_when_exhausted=False, sleep=lambda _: None),
+                )
+
+                result = kernel.run_goal(GOAL)
+
+                self.assertEqual(result.status, "failed")
+                self.assertIn("outcome of that step is unknown", result.detail)
+                self.assertEqual(planner.replans, 0)
+
+
 class _ReorderedPauseStore(InMemoryStateStore):
     """Write the first plan step's pause first, so the pause stored last is another step's."""
 
@@ -548,6 +680,23 @@ class PlanApprovalTests(unittest.TestCase):
         resumed = kernel.resume(paused.task_id, HitlResponse(kind="modify", arguments={"name": "ok"}))
         self.assertEqual(resumed.status, "completed", resumed.detail)
         self.assertEqual(handler.arguments, ["ok"])
+
+    def test_an_edit_on_a_pause_saved_without_its_step_is_refused(self) -> None:
+        handler = _Handler()
+        kernel = self._kernel([_tool("tool.publish")], {"tool.publish": handler}, ["tool.publish"])
+        paused = kernel.run_goal(GOAL)
+        # A pause written before plan steps recorded which step they stopped on.
+        state = kernel.state_store.load(paused.task_id)
+        frame = {key: value for key, value in state.frame.items() if key != "paused_call"}
+        kernel.state_store.append(paused.task_id, "frame", {"frame": frame})
+
+        with self.assertRaises(HitlError):
+            kernel.resume(paused.task_id, HitlResponse(kind="modify", arguments={"name": "reviewed"}))
+
+        self.assertEqual(handler.calls, 0)
+        resumed = kernel.resume(paused.task_id, HitlResponse(kind="approve"))
+        self.assertEqual(resumed.status, "completed", resumed.detail)
+        self.assertEqual(handler.arguments, ["q3"])
 
     def test_the_edit_survives_a_saved_state_and_a_new_kernel(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -692,6 +841,53 @@ class ModelResponseTests(unittest.TestCase):
                 )
 
 
+    def test_tool_arguments_that_are_not_an_object_are_handed_back_for_repair(self) -> None:
+        for raw in ("[1]", "null", "5", '"x"'):
+            with self.subTest(arguments=raw):
+                body = {
+                    "choices": [
+                        {
+                            "finish_reason": "tool_calls",
+                            "message": {
+                                "tool_calls": [
+                                    {"id": "call-1", "function": {"name": "tool.report", "arguments": raw}}
+                                ]
+                            },
+                        }
+                    ]
+                }
+                provider = OpenAICompatibleLLMProvider(
+                    model="test-model",
+                    api_key="test-key",
+                    base_url="https://llm.invalid/v1",
+                    transport=lambda url, payload, headers, timeout, body=body: body,
+                )
+                handler = _Handler()
+                kernel = _kernel([_tool("tool.report")], {"tool.report": handler}, provider)
+
+                result = kernel.run_goal(GOAL)
+
+                self.assertEqual(result.status, "failed", result.detail)
+                self.assertIn("max_input_repairs", result.detail)
+                self.assertEqual(handler.calls, 0)
+
+    def test_a_malformed_anthropic_body_is_a_provider_failure(self) -> None:
+        for body in (["not", "an", "object"], {"content": [{"type": "tool_use", "input": [1]}]}):
+            with self.subTest(body=body):
+                provider = AnthropicLLMProvider(
+                    model="m",
+                    api_key="k",
+                    max_tokens=64,
+                    transport=lambda url, payload, headers, timeout, body=body: body,
+                )
+                kernel = _kernel([_tool("tool.report")], {"tool.report": _Handler()}, provider)
+
+                result = kernel.run_goal(GOAL)
+
+                self.assertEqual(result.status, "failed")
+                self.assertIn("the model provider failed", result.detail)
+
+
 class CatalogCheckTests(unittest.TestCase):
     def test_has_enabled_follows_disable_and_enable(self) -> None:
         registry = ResourceRegistry()
@@ -705,15 +901,13 @@ class CatalogCheckTests(unittest.TestCase):
 
     def test_the_kernel_does_not_list_the_catalog_to_see_whether_it_is_empty(self) -> None:
         registry = _registry(_tool("tool.report"))
-        listed: list[int] = []
-        original = registry.list
-        registry.list = lambda **kwargs: (listed.append(1), original(**kwargs))[1]  # type: ignore[method-assign]
         kernel = Kernel(registry, _ToolThenAnswer(), tool_implementations={"tool.report": _Handler()})
 
-        result = kernel.run_goal("an unrelated request about gardening")
+        with mock.patch.object(registry, "list", wraps=registry.list) as listed:
+            result = kernel.run_goal("an unrelated request about gardening")
 
         self.assertEqual(result.status, "completed", result.detail)
-        self.assertEqual(listed, [])
+        listed.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -74,6 +74,10 @@ Marmo-Core は SemVer に従い、同一メジャー内で次の表面を壊さ�
 - Unreleased: リソース JSON の `extras` / `source`（`ResourceDefinition.to_dict()` の出力形）を
   読み込み時に展開する。入力スキーマの対応外の `type` は検証エラーになる（以前は無視）。
 - Unreleased: 依存参照の `id@version` はその版だけを指し、複数版が共有する裸 ID は曖昧として
-  解決しない（グラフ・各 Selector・ルールベース Planner・Connector のハンドラー登録で共通）。
+  解決しない（グラフ・各 Selector・ルールベース Planner で共通）。Connector のハンドラーは
+  `id@version` で登録する。`tool_implementations` に裸 ID で渡したハンドラーは、従来どおり
+  その ID のどの版にも使われる。
 - Unreleased: モデル応答が `finish_reason=length` で打ち切られたタスクは `completed` ではなく
-  `failed` で終わる（途中までの出力は `output` に残る）。Planner 経路も `max_tool_calls` に従う。
+  `failed` で終わる（途中までの出力は `output` に残る）。Planner 経路の最後の要約だけが打ち切られた
+  場合は、ステップは完了しているので `completed` のまま `detail` に注記する。Planner 経路も
+  `max_tool_calls` に従う。

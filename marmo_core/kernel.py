@@ -351,10 +351,12 @@ class Kernel:
                         f"Connector resource conflicts with registered definition: "
                         f"{binding.definition.identity}"
                     )
-            if binding.resource_id in merged_tool_implementations:
-                raise ValueError(
-                    f"Connector handler conflicts with tool_implementations: {binding.resource_id}"
-                )
+            for key in (binding.resource_id, binding.definition.identity):
+                supplied = merged_tool_implementations.get(key)
+                if supplied is not None and supplied is not binding.handler:
+                    raise ValueError(
+                        f"Connector handler conflicts with tool_implementations: {key}"
+                    )
             # Keyed by id@version: two versions of one Connector Tool each keep
             # their own handler instead of the later one replacing the earlier.
             merged_tool_implementations[binding.definition.identity] = binding.handler
@@ -696,9 +698,21 @@ class Kernel:
         modifies = (
             response.kind == "modify" and response.arguments is not None and request.stage == "execution"
         )
+        # The pause names the call it stopped on; a frame saved before that
+        # was recorded has the escalated call at the head of its queue.
+        call_id = str(
+            state.frame.get("paused_call") or (state.frame.get("calls") or [{}])[0].get("id", "")
+        )
+        plan = Plan.from_dict(state.plan) if state.plan else None
+        plan_step = plan.step(call_id) if plan is not None and call_id else None
         if modifies and not delegated:
             # Checked before anything is recorded, so an unusable edit leaves
             # the request pending for a corrected answer.
+            if plan is not None and plan_step is None:
+                raise HitlError(
+                    "this pause was saved before plan steps recorded which step they stopped on, "
+                    "so the edited arguments cannot be attached to it; approve or reject instead"
+                )
             self._check_modified_arguments(request, response.arguments or {})
         self.audit_log.append(
             "hitl",
@@ -729,15 +743,8 @@ class Kernel:
             if granted is None and request.arguments:
                 granted = request.arguments.get("missing_permissions")
             payload["granted_permissions"] = list(granted or ())
-        # The pause names the call it stopped on; a frame saved before that
-        # was recorded has the escalated call at the head of its queue.
-        call_id = str(
-            state.frame.get("paused_call") or (state.frame.get("calls") or [{}])[0].get("id", "")
-        )
         frame = dict(state.frame)
         touched = False
-        plan = Plan.from_dict(state.plan) if state.plan else None
-        plan_step = plan.step(call_id) if plan is not None and call_id else None
         if modifies and delegated:
             delegated_responses = dict(frame.get("delegated_responses") or {})
             delegated_responses[delegated_task_id] = HitlResponse(
@@ -1374,6 +1381,7 @@ class Kernel:
                         f"exceeded max_tool_calls={self.max_tool_calls}; raise the limit or simplify the task"
                     )
                 call = pending_calls[0]
+                call_key = _call_key(messages, pending_calls)
                 tool = tools_by_name.get(call.name)
                 called_agent = agents_by_name.get(call.name)
                 if tool is None and called_agent is None:
@@ -1386,7 +1394,7 @@ class Kernel:
                         return failed(unavailable)
                     input_repairs += 1
                     pending_calls.pop(0)
-                    run.consumed_calls.append(call.id)
+                    run.consumed_calls.append(call_key)
                     available = ", ".join(sorted({*tools_by_name, *agents_by_name})) or "(none)"
                     messages.append(
                         ChatMessage(
@@ -1402,7 +1410,7 @@ class Kernel:
                     audit("llm", {"event": "unknown_callable", "requested": call.name, "repair": input_repairs})
                     continue
                 arguments = dict(call.arguments)
-                if override is not None and override.get("call_id") == call.id:
+                if override is not None and override.get("call_id") == call_key:
                     arguments = dict(override["arguments"])
                     audit("hitl", {"event": "arguments_modified", "resource": call.name, "arguments": arguments})
                     override = None
@@ -1412,11 +1420,11 @@ class Kernel:
                     prompt_injection_findings=call_prompt_findings,
                 )
                 if tool is not None:
-                    outcome = self._run_tool_call(run, tool, arguments, call.id, label=call.name)
+                    outcome = self._run_tool_call(run, tool, arguments, call_key, label=call.name)
                 else:
                     assert called_agent is not None
                     outcome = self._run_agent_call(
-                        run, called_agent, arguments, call.id, label=call.name
+                        run, called_agent, arguments, call_key, label=call.name
                     )
                 if outcome.control is not None:
                     return outcome.control
@@ -1430,7 +1438,7 @@ class Kernel:
                         )
                     input_repairs += 1
                     pending_calls.pop(0)
-                    run.consumed_calls.append(call.id)
+                    run.consumed_calls.append(call_key)
                     messages.append(
                         ChatMessage(
                             role="tool",
@@ -1453,8 +1461,8 @@ class Kernel:
                 # replayed on resume and must not be charged to the budget twice.
                 run.executed_calls += 1
                 pending_calls.pop(0)
-                run.consumed_calls.append(call.id)
-                recovery_state.pop(call.id, None)
+                run.consumed_calls.append(call_key)
+                recovery_state.pop(call_key, None)
                 if outcome.tool is not None:
                     source = f"tool:{outcome.tool.metadata.identity}"
                 elif outcome.agent is not None:
@@ -1568,11 +1576,17 @@ class Kernel:
 
     def _journal_start(
         self, task_id: str, call_id: str, metadata: ResourceMetadata, reservation_id: str | None
-    ) -> None:
+    ) -> bool:
+        """Record that the call is being handed to the runtime; False if the task has ended.
+
+        Written through ``_transition``, so a cancellation that lands after
+        the last check still stops the call before its handler runs.
+        """
+
         payload: dict[str, Any] = {"call_id": call_id, "phase": "started", "resource": metadata.identity}
         if reservation_id is not None:
             payload["reservation_id"] = reservation_id
-        self.state_store.append(task_id, "call", payload)
+        return self._transition(task_id, "call", payload) is not None
 
     def _journal_release(self, task_id: str, call_id: str) -> None:
         """Record that a started call was stopped before its handler ran."""
@@ -1792,11 +1806,10 @@ class Kernel:
                     return outcome
                 tool = outcome
                 continue
-            ended = self._ended(run)
-            if ended is not None:
-                return _CallOutcome(control=ended)
             reservation_id = self._reserve_resource(run.task_id, tool.metadata)
-            self._journal_start(run.task_id, call_id, tool.metadata, reservation_id)
+            if not self._journal_start(run.task_id, call_id, tool.metadata, reservation_id):
+                self._settle_resource(run.task_id, reservation_id, 0.0)
+                return _CallOutcome(control=self._ended(run))
             try:
                 result = self.tool_runtime.execute(tool, arguments, run.context)
             except PolicyRejectedError as exc:
@@ -1821,7 +1834,7 @@ class Kernel:
                                 f"(side_effect={tool.metadata.side_effect})"
                             ),
                             frame=self._paused_frame(run, call_id),
-                    closed_calls=(*run.consumed_calls, call_id),
+                            closed_calls=(*run.consumed_calls, call_id),
                             tool_results=run.tool_results,
                             skipped=run.skipped,
                         )
@@ -2034,11 +2047,10 @@ class Kernel:
                 result, recovered = recovered, None
                 agent = run.agents_by_name.get(result.agent_id, agent)
             else:
-                ended = self._ended(run)
-                if ended is not None:
-                    return _CallOutcome(control=ended)
                 reservation_id = self._reserve_resource(run.task_id, agent.metadata)
-                self._journal_start(run.task_id, call_id, agent.metadata, reservation_id)
+                if not self._journal_start(run.task_id, call_id, agent.metadata, reservation_id):
+                    self._settle_resource(run.task_id, reservation_id, 0.0)
+                    return _CallOutcome(control=self._ended(run))
                 try:
                     result = self.agent_runtime.execute(
                         agent,
@@ -2091,7 +2103,7 @@ class Kernel:
                             request,
                             detail=f"delegated task {exc.child_task_id} is waiting for approval",
                             frame=self._paused_frame(run, call_id),
-                        closed_calls=(*run.consumed_calls, call_id),
+                            closed_calls=(*run.consumed_calls, call_id),
                             tool_results=run.tool_results,
                             agent_results=run.agent_results,
                             skipped=run.skipped,
@@ -2116,7 +2128,7 @@ class Kernel:
                                 ),
                                 detail=f"paused for human approval: delegate to {agent.metadata.identity}",
                                 frame=self._paused_frame(run, call_id),
-                        closed_calls=(*run.consumed_calls, call_id),
+                                closed_calls=(*run.consumed_calls, call_id),
                                 tool_results=run.tool_results,
                                 agent_results=run.agent_results,
                                 skipped=run.skipped,
@@ -2245,7 +2257,7 @@ class Kernel:
                             f"{failure.message}"
                         ),
                         frame=self._paused_frame(run, call_id),
-                    closed_calls=(*run.consumed_calls, call_id),
+                        closed_calls=(*run.consumed_calls, call_id),
                         tool_results=run.tool_results,
                         agent_results=run.agent_results,
                         skipped=run.skipped,
@@ -2629,7 +2641,9 @@ class Kernel:
             settled.append(step.id)
             if outcome.failure is not None:
                 plan = plan.with_status(step.id, "failed", {"error": outcome.failure.message})
-                if failure is None:
+                # An unknown outcome decides what happens next, whichever
+                # sibling failed first: the plan must not be revised past it.
+                if failure is None or (outcome.failure.kind == "timeout" and failure.kind != "timeout"):
                     failure = Failure(
                         kind=outcome.failure.kind,
                         message=outcome.failure.message,
@@ -3340,6 +3354,21 @@ class Kernel:
             trace_id=state.trace_id,
             hitl_request=dict(pending) if pending else None,
         )
+
+
+def _call_key(messages: Sequence[ChatMessage], pending: Sequence[ToolCall]) -> str:
+    """The id one pending call is journaled under, unique within its model round.
+
+    Providers normally give every call its own id. A reply whose ids are
+    missing or repeated would otherwise make the second call look like the
+    first one's recorded result, so such a call is keyed by its position too.
+    """
+
+    call = pending[0]
+    requested = next((message.tool_calls for message in reversed(messages) if message.tool_calls), ())
+    if call.id and sum(1 for item in requested if item.id == call.id) <= 1:
+        return call.id
+    return f"{call.id}#{len(requested) - len(pending)}"
 
 
 def _stored_agent_results(state: TaskState) -> tuple[AgentResult, ...]:
