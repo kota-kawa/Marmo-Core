@@ -16,6 +16,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   upstream support for Python 3.10.
   - Python 3.10 の upstream サポート終了に伴い、最低対応バージョンを 3.11 に引き上げました。
 
+- A second `Kernel.run` / `resume` of a task that is already executing now
+  raises `StateConflictError` before any side effect. `JsonFileStateStore` and
+  `SQLiteStateStore` exclude other instances and processes with OS file locks
+  (lock files under `locks/` in the state directory, or `<db>.locks/`); a custom
+  `StateStore` excludes within one instance unless it implements
+  `_execution_guard`. See ADR 0015.
+  - すでに実行中のタスクへの二つ目の `Kernel.run` / `resume` は、副作用の前に
+    `StateConflictError` になります。`JsonFileStateStore` と `SQLiteStateStore` は OS の
+    ファイルロック（状態ディレクトリの `locks/`、または `<db>.locks/`）で他のインスタンスと
+    プロセスも排他します。独自の `StateStore` は `_execution_guard` を実装しない限り、
+    同一インスタンス内だけを排他します。ADR 0015 を参照してください。
+- A model reply cut off at the output limit (`finish_reason=length`) ends the
+  task as `failed` instead of `completed`; the partial text stays in `output`.
+  - 出力上限で打ち切られたモデル応答（`finish_reason=length`）は、`completed` ではなく
+    `failed` で終わります。途中までの出力は `output` に残ります。
+- `marmo run --audit-log` appends to an existing audit log after verifying its
+  chain instead of replacing the file; a broken chain or a file another writer
+  changed is refused with exit code 2. `--tool-args` is parsed and counted by
+  `--strict` only with `--llm mock` or `--planner rule`. Non-object
+  `--tool-args` values, unloadable `--tool-impl` / `--agent-impl` modules, and
+  an empty `--modify` exit 2 with a diagnostic (previously a traceback with
+  exit 1, or a silent defer).
+  - `marmo run --audit-log` は既存の監査ログを置換せず、チェーンを検証して追記します。
+    壊れたチェーンや他の書き手が変更したファイルには書き込まず、終了コード 2 で終わります。
+    `--tool-args` は `--llm mock` または `--planner rule` のときだけ解析し、`--strict` の
+    判定に含めます。値が object でない `--tool-args`、読み込めない `--tool-impl` /
+    `--agent-impl`、空の `--modify` は診断付きの終了コード 2 になります（以前はトレース
+    バックと終了コード 1、または保留）。
+- A dependency written as `id@version` names that version only, and a bare id
+  shared by several versions is ambiguous and resolves to nothing, in graph
+  expansion, every set selector, the rule-based planner, and Connector handler
+  registration (`connector_implementations` / `install_connectors` key such
+  handlers by `id@version`).
+  - 依存参照の `id@version` はその版だけを指し、複数版が共有する裸 ID は曖昧として解決
+    しません。グラフ拡張、各集合選択、ルールベース Planner、Connector のハンドラー登録
+    （`connector_implementations` / `install_connectors` は該当ハンドラーを `id@version`
+    キーで返す）で共通です。
+- Resource JSON: `extras` and `source` as written by `ResourceDefinition.to_dict()`
+  are unwrapped on load, and an input schema `type` outside the supported set is
+  a validation error instead of being ignored. Embedding and chat providers
+  raise `ProviderError` for a 200 response that is not the expected JSON
+  (previously `JSONDecodeError`, `KeyError`, or `ValueError`).
+  - リソース JSON の `extras` と `source`（`ResourceDefinition.to_dict()` の出力形）を
+    読み込み時に展開します。入力スキーマの対応外の `type` は無視せず検証エラーにします。
+    埋め込み・チャットのプロバイダーは、期待した JSON でない 200 応答に `ProviderError` を
+    送出します（以前は `JSONDecodeError`、`KeyError`、`ValueError`）。
+- `ExecutionOutcome.resource_ids` read from an audit log carry `id@version`, and
+  `ExecutionEvaluator` credits outcomes to the selected version only.
+  The sdist no longer ships `tools/`. Releases to PyPI happen only on a pushed
+  `v*` tag after the full CI passes on that commit; manual runs publish to
+  TestPyPI only.
+  - 監査ログから読んだ `ExecutionOutcome.resource_ids` は `id@version` になり、
+    `ExecutionEvaluator` は実績を選ばれた版にだけ帰属させます。sdist は `tools/` を
+    含みません。PyPI への公開は `v*` タグの push で、そのコミットの CI 全体が成功した
+    場合に限ります。手動実行は TestPyPI のみです。
+
 ### Added
 
 - `benchmarks/run_toolret_sae.py` adds ToolRet-SAE, which scores select,
@@ -122,6 +178,116 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     JSON として読めなくなり、撤回した ID を含む本文中のすべての候補 ID を選んでいました。
     訂正後の `abstain` も `selected` になっていました。プロンプトとリクエストは変えて
     いないので、キャッシュ済みの応答は解釈だけが変わって再生されます。
+
+- A task interrupted between saving a Tool result and saving the continuation
+  no longer runs that Tool again when another Kernel resumes it: calls are
+  journaled by id, a recorded result is continued from, and a call with only a
+  start on record is reported as an unknown outcome and waits for a person
+  instead of being retried.
+  - Tool の結果を保存してから続きの位置を保存するまでの間に中断したタスクを別の Kernel が
+    再開しても、その Tool を再実行しなくなりました。呼び出しを ID ごとに記録し、結果が
+    残っていればそこから続けます。着手の記録しかない呼び出しは結果不明として扱い、
+    再試行せず人の判断を待ちます。
+- `cancel()` during a model or Tool call is no longer overwritten by the late
+  result, and no further call starts after it.
+  - モデルや Tool の呼び出し中の `cancel()` が、遅れて届いた結果で上書きされなくなりました。
+    キャンセル後は新しい呼び出しを始めません。
+- Plans obey `max_tool_calls` (also across parallel waves and pauses), and a
+  step whose outcome is unknown (timeout) is no longer re-planned around.
+  - Planner 経路も `max_tool_calls` に従います（並行実行と一時停止をまたいでも同じ）。
+    結果不明（timeout）のステップを避けて自動で再計画することはなくなりました。
+- Arguments a reviewer edits with `modify` on a planned step are validated,
+  stored on that step, and used when the task resumes; invalid edits raise
+  `HitlError` and leave the request pending. When parallel steps pause
+  together, the returned request is the one stored for resume (the first paused
+  step in plan order); the others ask again after it is answered.
+  - Planner のステップに対して `modify` で修正した引数を検証し、そのステップに保存して、
+    再開時に使うようにしました。不正な修正は `HitlError` になり、依頼は保留のまま残ります。
+    並行するステップが同時に一時停止した場合、返却する依頼と保存される依頼が一致します
+    （プラン順で最初のステップ）。残りは、その回答のあとに改めて依頼します。
+- Budget reservations made through two connections to the same store can no
+  longer both pass the balance check; `JsonFileStateStore` writes are atomic
+  across instances.
+  - 同じストアへの二つの接続からの予算予約が、両方とも残高確認を通ることはなくなりました。
+    `JsonFileStateStore` の書き込みはインスタンスをまたいで原子的です。
+- Projecting a log with many rollbacks is linear instead of replaying earlier
+  rollbacks recursively. The Kernel checks whether the catalog is empty without
+  listing it, and `HierarchicalRetriever` keeps sub-registries across stats
+  writes so a hybrid base does not re-embed documents after every task.
+  - rollback を多く含むログの投影を、過去の rollback を再帰的に再生しない線形の処理に
+    しました。Kernel はカタログを列挙せずに空かどうかを判定し、`HierarchicalRetriever` は
+    統計の書き戻し後も部分レジストリを保持するため、hybrid 基盤がタスクごとに文書を
+    再埋め込みしなくなりました。
+- Beam search merges routes that share a dependency and charges shared members
+  once. A replan that renames a colliding step also rewrites the `depends_on`
+  of later new steps. `GoalAwareSetSelector` searches `context.one_of`
+  alternatives against the final root relevance checks, and a TaskSpec node
+  declaring both `all_of` and `one_of` is reported as ambiguous.
+  - Beam Search は依存を共有するルートを併合し、共有メンバーを一度だけ数えます。ID 衝突で
+    ステップを改名する再計画は、後続の新ステップの `depends_on` も更新します。
+    `GoalAwareSetSelector` は `context.one_of` の代替を最終検証のルート条件で探索し、
+    `all_of` と `one_of` が同居する TaskSpec のノードを曖昧として診断します。
+- Retrieval slots are no longer used up by candidates under the score floor or
+  outside a kind filter (`KindBalancedCandidatePool`, `HybridRetriever`,
+  `HierarchicalRetriever`). `LLMRerankRetriever` drops duplicate ids before
+  truncating, `CrossEncoderRerankRetriever` applies the score floor and
+  per-kind limits to a lone candidate, and `CoverageSetSelector` treats results
+  ranked without decomposition as goal-facet matches.
+  - 下限未満の候補や種類フィルター対象外の候補が検索枠を使い切らなくなりました
+    （`KindBalancedCandidatePool`、`HybridRetriever`、`HierarchicalRetriever`）。
+    `LLMRerankRetriever` は件数を切る前に重複 ID を除き、`CrossEncoderRerankRetriever` は
+    候補一件でも下限と種類別上限を適用し、`CoverageSetSelector` は分解されなかった結果を
+    ゴール facet として扱います。
+- `CaseBasedRouter` re-checks the current query filters and set constraints on
+  a cache hit and falls back to the pipeline on a violation.
+  `ExecutionEvaluator` does not count a task paused for approval as a failure.
+  - `CaseBasedRouter` はキャッシュヒット時にも現行の検索フィルターと集合制約を検証し、
+    違反すれば通常のパイプラインに戻ります。`ExecutionEvaluator` は承認待ちのタスクを
+    失敗に数えません。
+- The MCP stdio client reads every complete message that arrives in one write
+  and applies one deadline to the whole request. Nullable type arrays such as
+  `["string", "null"]` work in default-argument generation and validation.
+  - MCP stdio クライアントは、同じ書き込みで届いた複数の完全なメッセージをすべて処理し、
+    リクエスト全体に一つの期限を適用します。`["string", "null"]` のような型配列を既定値
+    生成と引数検証で扱えるようにしました。
+- The resume command printed on a pause includes `--responder` when
+  `--approver` is set and keeps `--` before resource paths that start with `-`.
+  `marmo list` / `search` tables shorten and align by terminal display width,
+  so long Japanese descriptions keep their opening.
+  - 一時停止時に表示する再開コマンドは、`--approver` 指定時に `--responder` を含み、`-` で
+    始まるリソースパスの前の `--` を保ちます。`marmo list` / `search` の表は端末の表示幅で
+    短縮・整列するため、長い日本語の説明も冒頭が残ります。
+- Benchmarks: ToolRet paired differences and bootstrap intervals use the same
+  subset-equal (macro) weighting as the tables, with the query-equal difference
+  reported separately (published tables keep the earlier values, now annotated,
+  until re-measured). ToolRet-SAE `score` accepts the published labels
+  (`--labels-input`), matches cached replies by candidate ids and order, and
+  exits non-zero when inputs are missing. Results carry `metric_version`
+  (version 2 adds actionable-escalation scoring), and the overlap between the
+  SAE held-out split and the earlier full test split (431 of 852) is
+  documented. Results record the full commit, dataset revisions, input hashes,
+  models, and arguments; ToolRet downloads are pinned to dataset commits.
+  - ベンチマーク: ToolRet の対応差とブートストラップ区間を、表と同じサブセット等重み
+    （macro）で計算し、クエリ均等の差を別に併記します（公開表は再測定まで以前の値のままで、
+    その旨を注記）。ToolRet-SAE の `score` は公開ラベル（`--labels-input`）で採点でき、
+    キャッシュを候補 ID と順序で照合し、入力が欠けると非ゼロで終了します。結果に
+    `metric_version` を記録し（版 2 は実行可能な承認要求の採点を追加）、SAE の held-out と
+    過去の全件 test の重複（852 件中 431 件）を文書に記録しました。結果には完全なコミット、
+    データセット revision、入力ハッシュ、モデル、引数を記録し、ToolRet の取得先を
+    データセットの commit に固定しました。
+- Repository tooling: skill collection pins each source to a resolved commit
+  and records only verified, complete downloads into `resources/skills`; the
+  parallel-execution example no longer judges success by a wall-clock
+  threshold; the doc-link check covers root-level links and the environment
+  check parses Python instead of matching text; CI smoke-tests the built wheel
+  and runs the Exact/HNSW index tests without skips; `.env` files are excluded
+  from the Docker build context.
+  - リポジトリのツール: Skill 収集は各収集元を解決済みのコミットに固定し、検証できた完全な
+    取得だけを `resources/skills` に記録します。並行実行サンプルは成功を壁時計の閾値で判定
+    しません。文書リンク検査はルート直下のリンクも検証し、環境変数検査はテキスト照合では
+    なく Python を解析します。CI はビルドした wheel の smoke test と、スキップなしの
+    Exact/HNSW インデックスのテストを実行します。Docker のビルドコンテキストから `.env` を
+    除外しました。
 
 ## [0.7.0] - 2026-11-24
 
