@@ -60,6 +60,7 @@ class CliLanguageTests(unittest.TestCase):
             ((), "統合リソース CLI"),
             (("run",), "実行する目標を自然言語で記述する"),
             (("resume",), "確認待ちの操作を承認する"),
+            (("mcp-serve",), "副作用を事前に承認するリソース ID"),
             (("package", "verify"), "marmo-package.json があるディレクトリ"),
         ):
             with self.subTest(args=args):

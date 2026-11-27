@@ -77,6 +77,11 @@ Marmo-Core は SemVer に従い、同一メジャー内で次の表面を壊さ�
   解決しない（グラフ・各 Selector・ルールベース Planner で共通）。Connector のハンドラーは
   `id@version` で登録する。`tool_implementations` に裸 ID で渡したハンドラーは、従来どおり
   その ID のどの版にも使われる。
+- Unreleased: CLI にサブコマンド `mcp-serve`、公開 API に `MCPGatewayServer` と `FunctionToolkit` を追加
+  （追加のみ）。`mcp-serve` の stdout は MCP のメッセージ専用で、MCP の tool 名 `search_tools` / `call_tool` と
+  その入力スキーマ、`search_tools` の結果のキー（`status`、`reason`、`tools`、`withheld`、
+  `missing_permissions`）は MCP クライアントが依存する表面になる
+  （`docs/decisions/0016-mcp-gateway-outside-the-kernel.md`）。
 - Unreleased: モデル応答が `finish_reason=length` で打ち切られたタスクは `completed` ではなく
   `failed` で終わる（途中までの出力は `output` に残る）。Planner 経路の最後の要約だけが打ち切られた
   場合は、ステップは完了しているので `completed` のまま `detail` に注記する。Planner 経路も

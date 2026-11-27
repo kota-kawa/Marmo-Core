@@ -163,7 +163,8 @@ from .candidate_pool import (
 )
 from .fusion import RRFRetriever
 from .coverage import CoverageSetSelector
-from .function_tools import function_tool_resources
+from .function_tools import FunctionToolkit, function_tool_resources
+from .mcp_server import MCPGatewayServer
 from .decomposition import (
     ClauseQueryDecomposer,
     DecomposedRetriever,
@@ -362,6 +363,8 @@ __all__ = [
     "ClauseQueryDecomposer",
     "CoverageSetSelector",
     "function_tool_resources",
+    "FunctionToolkit",
+    "MCPGatewayServer",
     "DecomposedRetriever",
     "LLMQueryDecomposer",
     "QueryDecomposer",

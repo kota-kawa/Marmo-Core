@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from typing import Annotated, Any, Literal, Optional
 import unittest
 
 from marmo_core import (
+    FunctionToolkit,
+    Kernel,
     LexicalRetriever,
+    MockLLMProvider,
     PolicyContext,
     PolicyGateway,
     ResourceRegistry,
@@ -101,6 +105,135 @@ class FunctionToolResourcesTests(unittest.TestCase):
             function_tool_resources(["not an object"], namespace="app")  # type: ignore[list-item]
         with self.assertRaises(ValueError):
             function_tool_resources([{"name": "get weather"}, {"name": "get-weather"}], namespace="app")
+
+
+class FunctionToolkitTests(unittest.TestCase):
+    def test_signature_and_docstring_become_the_tool_definition(self) -> None:
+        crm = FunctionToolkit("CRM")
+
+        @crm.tool
+        def find_customer(
+            email: Annotated[str, "Customer email address"],
+            limit: int = 5,
+            tier: Literal["free", "paid"] = "free",
+            tags: list[str] | None = None,
+            filters: Optional[dict[str, Any]] = None,
+            score: float | int = 0,
+            exact: bool = False,
+            extra=None,
+        ) -> list[dict[str, Any]]:
+            """Look up customers
+            by email address.
+
+            Returns the newest first.
+            """
+
+            return []
+
+        (definition,) = crm.resources
+        self.assertEqual(definition.validate(), [])
+        self.assertEqual(definition.identity, "tool.crm.find-customer@0.1.0")
+        self.assertEqual(definition.metadata.description, "Look up customers by email address.")
+        self.assertEqual(
+            (definition.metadata.trust_level, definition.metadata.side_effect, definition.metadata.required_permissions),
+            ("community", "external", ("tools.crm",)),
+        )
+        self.assertEqual(
+            definition.extras["input_schema"],
+            {
+                "type": "object",
+                "properties": {
+                    "email": {"type": "string", "description": "Customer email address"},
+                    "limit": {"type": "integer"},
+                    "tier": {"type": "string", "enum": ["free", "paid"]},
+                    "tags": {"type": ["array", "null"]},
+                    "filters": {"type": ["object", "null"]},
+                    "score": {"type": ["number", "integer"]},
+                    "exact": {"type": "boolean"},
+                    "extra": {},
+                },
+                "additionalProperties": False,
+                "required": ["email"],
+            },
+        )
+        self.assertIn("email (required): Customer email address", definition.metadata.input_summary)
+        self.assertEqual(crm.implementations, {"tool.crm.find-customer@0.1.0": find_customer})
+        self.assertEqual(find_customer("a@example.com"), [])
+
+    def test_options_override_the_toolkit_defaults_for_one_function(self) -> None:
+        crm = FunctionToolkit("crm", side_effect="read", trust_level="verified", version="2.0.0")
+
+        @crm.tool(name="send-email", description="Send an email.", side_effect="external", required_permissions=["mail.send"])
+        def deliver(to: str) -> str:
+            return to
+
+        @crm.tool
+        def count_customers() -> int:
+            """Count the customers."""
+
+            return 0
+
+        sent, counted = crm.resources
+        self.assertEqual(sent.identity, "tool.crm.send-email@2.0.0")
+        self.assertEqual((sent.metadata.side_effect, sent.metadata.required_permissions), ("external", ("mail.send",)))
+        self.assertEqual((counted.metadata.side_effect, counted.metadata.trust_level), ("read", "verified"))
+        self.assertEqual(counted.extras["input_schema"], {"type": "object", "properties": {}, "additionalProperties": False})
+
+    def test_functions_that_cannot_be_described_or_called_by_keyword_are_refused(self) -> None:
+        crm = FunctionToolkit("crm")
+
+        def undocumented(email: str) -> None:
+            return None
+
+        def variadic(*emails: str) -> None:
+            """Look up customers."""
+
+        def keywords(**fields: str) -> None:
+            """Look up customers."""
+
+        def positional(email: str, /) -> None:
+            """Look up customers."""
+
+        def custom(when: complex) -> None:
+            """Look up customers."""
+
+        for function in (undocumented, variadic, keywords, positional, custom):
+            with self.subTest(function=function.__name__), self.assertRaises(ValueError):
+                crm.tool(function)
+        self.assertEqual(crm.resources, [])
+
+        @crm.tool
+        def lookup(email: str) -> None:
+            """Look up customers."""
+
+        with self.assertRaisesRegex(ValueError, "already registered"):
+            crm.tool(name="lookup", description="Again.")(undocumented)
+
+    def test_kernel_runs_a_decorated_function_through_the_gates(self) -> None:
+        crm = FunctionToolkit("crm", side_effect="read")
+        seen: list[str] = []
+
+        @crm.tool
+        def find_customer(email: str) -> dict[str, str]:
+            """Look up a customer by email address."""
+
+            seen.append(email)
+            return {"email": email, "name": "Ada"}
+
+        registry = ResourceRegistry()
+        registry.extend(crm.resources)
+
+        def run(context: PolicyContext):
+            llm = MockLLMProvider(tool_arguments={"tool.crm.find-customer": {"email": "ada@example.com"}})
+            kernel = Kernel(registry, llm, policy_context=context, tool_implementations=crm.implementations)
+            return kernel.run_goal("look up a customer by email address")
+
+        self.assertEqual(run(PolicyContext()).tool_results, ())
+        self.assertEqual(seen, [])
+        result = run(PolicyContext(granted_permissions=("tools.crm",)))
+        self.assertEqual(result.status, "completed")
+        self.assertEqual([r.output for r in result.tool_results], [{"email": "ada@example.com", "name": "Ada"}])
+        self.assertEqual(seen, ["ada@example.com"])
 
 
 if __name__ == "__main__":
