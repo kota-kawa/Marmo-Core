@@ -206,7 +206,9 @@ newline-delimited JSON-RPC until stdin closes. It uses no Kernel, model, or Stat
   session. An escalation is refused, since nobody can approve it. After a result is returned,
   its source is added to `untrusted_content_sources` for the execution gate of later calls.
 - Audit records use the Kernel's kinds (`policy` / `retrieve` / `execute` / `security`) and are
-  appended to `--audit-log` on exit. stdout carries protocol messages only.
+  appended to `--audit-log` after each tool call. While serving, `sys.stdout` points at
+  stderr, so stdout carries protocol messages only. An exception inside a request is returned
+  as a JSON-RPC error (-32603) and the session continues.
 
 ## 4. Contracts and boundaries
 

@@ -134,12 +134,14 @@ class FunctionToolkit:
     The input schema comes from the signature: ``str``, ``int``, ``float``,
     ``bool``, ``list`` / ``tuple`` / ``Sequence``, ``dict`` / ``Mapping``,
     ``None``, unions of those, and ``Literal`` values map to the schema types
-    argument validation checks; ``Annotated[T, "text"]`` adds a description;
+    argument validation checks; ``Annotated[T, "text"]`` on a parameter adds
+    a description;
     a parameter without an annotation, or annotated ``Any``, accepts any
     value. Parameters without a default are required and unknown arguments
     are rejected. Any other annotation, ``*args`` / ``**kwargs``, and
     positional-only parameters raise ``ValueError``: arguments arrive as
-    JSON and are passed by keyword.
+    JSON and are passed by keyword. ``async def`` functions are refused,
+    because handlers are called synchronously.
     """
 
     def __init__(
@@ -194,6 +196,8 @@ class FunctionToolkit:
 
         def register(target: _Function) -> _Function:
             tool_name = name if name is not None else str(getattr(target, "__name__", ""))
+            if inspect.iscoroutinefunction(target):
+                raise ValueError(f"function {tool_name!r} is async; tool handlers are called synchronously")
             text = description if description is not None else _first_paragraph(inspect.getdoc(target) or "")
             if not text.strip():
                 raise ValueError(f"function {tool_name!r} needs a docstring or description= to be found by retrieval")
@@ -235,7 +239,10 @@ def _first_paragraph(text: str) -> str:
 def _signature_schema(function: Callable[..., Any], name: str) -> dict[str, Any]:
     """Input schema for a function called with keyword arguments."""
 
-    hints = get_type_hints(function, include_extras=True)
+    try:
+        hints = get_type_hints(function, include_extras=True)
+    except NameError as error:
+        raise ValueError(f"function {name!r} has an annotation that cannot be resolved: {error}") from None
     properties: dict[str, Any] = {}
     required: list[str] = []
     for parameter in inspect.signature(function).parameters.values():
@@ -270,12 +277,16 @@ def _annotation_schema(annotation: Any) -> dict[str, Any]:
     if annotation is Any:
         return {}
     members = get_args(annotation) if get_origin(annotation) in (Union, UnionType) else (annotation,)
+    if Any in members:
+        return {}
     return {"type": _type_names(members)}
 
 
 def _type_names(annotations: Sequence[Any]) -> str | list[str]:
     names: list[str] = []
     for annotation in annotations:
+        if get_origin(annotation) is Annotated:
+            annotation = get_args(annotation)[0]
         name = _JSON_TYPES.get(get_origin(annotation) or annotation)
         if name is None:
             raise ValueError(

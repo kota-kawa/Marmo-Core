@@ -174,7 +174,8 @@ Agent 委譲を許し、その子からさらに Agent を呼ぶには明示的�
   escalate は承認者がいないので拒否する。結果を返した後は、その出所を
   `untrusted_content_sources` に積んで次の呼び出しの execution gate に渡す。
 - 監査レコードの kind は Kernel と同じ `policy` / `retrieve` / `execute` / `security` で、`--audit-log` には
-  終了時に追記する。stdout にはプロトコルのメッセージだけを書く。
+  tool の呼び出しごとに追記する。応答中は `sys.stdout` を stderr に向け、stdout にはプロトコルの
+  メッセージだけを書く。リクエスト内の例外は JSON-RPC のエラー（-32603）で返し、セッションは続ける。
 
 ## 4. 契約と境界
 

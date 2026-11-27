@@ -27,7 +27,9 @@ Agent is withheld, because the gateway cannot deliver that dependency.
 
 from __future__ import annotations
 
+from contextlib import redirect_stdout
 from dataclasses import replace
+from pathlib import Path
 from typing import Any, Callable, Mapping, TextIO
 import json
 import sys
@@ -44,12 +46,14 @@ from .models import SearchResult
 from .policy import PolicyContext, PolicyGateway, PolicyRejectedError
 from .registry import ResourceRegistry
 from .retriever import LexicalRetriever, Retriever
+from .secrets import redact_credentials
 from .security import PromptInjectionInspector, label_untrusted_content
 from .selector import (
     DEFAULT_SET_LIMITS,
     RuleBasedSetSelector,
     SelectionContext,
     SetSelector,
+    _conflicts,
     _enforce_set_constraints,
     _find_reference,
 )
@@ -81,7 +85,10 @@ _TOOL_SPECS = [
     },
     {
         "name": CALL_TOOL,
-        "description": f"Run one tool returned by {SEARCH_TOOL}, with arguments matching its input schema.",
+        "description": (
+            f"Run one tool returned by {SEARCH_TOOL}, with arguments matching its input schema. Once any "
+            "tool result has been returned in this session, tools that write or act externally are refused."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -98,6 +105,7 @@ _PARSE_ERROR = -32700
 _INVALID_REQUEST = -32600
 _METHOD_NOT_FOUND = -32601
 _INVALID_PARAMS = -32602
+_INTERNAL_ERROR = -32603
 
 
 class MCPGatewayServer:
@@ -108,6 +116,12 @@ class MCPGatewayServer:
     the selector's per-search limit on tools. ``gate_aware_selection`` hands
     the selector the policy context, as ``Kernel(gate_aware_selection=True)``
     does. ``max_tool_output_tokens`` caps one tool result (``None`` keeps all).
+    With ``audit_path``, the audit records are appended to that JSONL file
+    after every tool call, so they survive the process being stopped.
+
+    A selector that sets ``requires_contract_verification`` is refused: its
+    guarantee depends on TaskSpec extraction and the compiled-context check,
+    which only the Kernel runs.
     """
 
     def __init__(
@@ -120,9 +134,9 @@ class MCPGatewayServer:
         retriever: Retriever | None = None,
         selector: SetSelector | None = None,
         audit_log: AuditLog | None = None,
+        audit_path: str | Path | None = None,
         top_k: int = 8,
         max_tools: int | None = None,
-        min_relevance: float = 0.0,
         gate_aware_selection: bool = False,
         timeout_seconds: float = 30.0,
         max_tool_output_tokens: int | None = 8000,
@@ -131,6 +145,11 @@ class MCPGatewayServer:
             raise ValueError("max_tools must be positive or None")
         if max_tool_output_tokens is not None and max_tool_output_tokens <= 0:
             raise ValueError("max_tool_output_tokens must be positive or None")
+        if getattr(selector, "requires_contract_verification", False):
+            raise ValueError(
+                "this selector needs the Kernel's TaskSpec and compiled-context checks; "
+                "the MCP gateway cannot give its guarantee"
+            )
         self.registry = registry
         self.policy_context = policy_context or PolicyContext()
         self.gateway = gateway or PolicyGateway()
@@ -140,9 +159,9 @@ class MCPGatewayServer:
         self.activator = ResourceActivator(self.gateway, tool_implementations=tool_implementations)
         self.tool_runtime = ToolRuntime(self.gateway, timeout_seconds=timeout_seconds)
         self.audit_log = audit_log or AuditLog()
+        self.audit_path = audit_path
         self.top_k = top_k
         self.max_tools = max_tools
-        self.min_relevance = min_relevance
         self.gate_aware_selection = gate_aware_selection
         self.max_tool_output_tokens = max_tool_output_tokens
         self._inspector = PromptInjectionInspector()
@@ -154,22 +173,27 @@ class MCPGatewayServer:
     # -- transport ---------------------------------------------------------------
 
     def serve(self, reader: TextIO | None = None, writer: TextIO | None = None) -> None:
-        """Answer newline-delimited JSON-RPC messages until ``reader`` ends."""
+        """Answer newline-delimited JSON-RPC messages until ``reader`` ends.
+
+        While serving, ``sys.stdout`` points at stderr: a handler that prints
+        would otherwise put a non-protocol line on the client's stream.
+        """
 
         reader = reader or sys.stdin
         writer = writer or sys.stdout
-        for line in reader:
-            if not line.strip():
-                continue
-            try:
-                message = json.loads(line)
-            except json.JSONDecodeError:
-                response: dict[str, Any] | None = _error(None, _PARSE_ERROR, "message is not valid JSON")
-            else:
-                response = self.handle_message(message)
-            if response is not None:
-                writer.write(json.dumps(response, ensure_ascii=False) + "\n")
-                writer.flush()
+        with redirect_stdout(sys.stderr):
+            for line in reader:
+                if not line.strip():
+                    continue
+                try:
+                    message = json.loads(line)
+                except json.JSONDecodeError:
+                    response: dict[str, Any] | None = _error(None, _PARSE_ERROR, "message is not valid JSON")
+                else:
+                    response = self.handle_message(message)
+                if response is not None:
+                    writer.write(json.dumps(response, ensure_ascii=False) + "\n")
+                    writer.flush()
 
     def handle_message(self, message: Any) -> dict[str, Any] | None:
         """Answer one decoded JSON-RPC message; ``None`` for a notification."""
@@ -203,11 +227,18 @@ class MCPGatewayServer:
             name = params.get("name")
             arguments = params.get("arguments")
             arguments = arguments if isinstance(arguments, Mapping) else {}
-            if name == SEARCH_TOOL:
-                return _result(request_id, self._search(arguments))
-            if name == CALL_TOOL:
-                return _result(request_id, self._call(arguments))
-            return _error(request_id, _INVALID_PARAMS, f"unknown tool: {name!r}")
+            if name not in (SEARCH_TOOL, CALL_TOOL):
+                return _error(request_id, _INVALID_PARAMS, f"unknown tool: {name!r}")
+            # A retriever, selector, or audit write that fails ends this
+            # request, not the session; the client is told which request.
+            try:
+                result = self._search(arguments) if name == SEARCH_TOOL else self._call(arguments)
+                if self.audit_path is not None:
+                    self.audit_log.extend_jsonl(self.audit_path)
+            except Exception as exc:
+                detail = redact_credentials(f"{type(exc).__name__}: {exc}")
+                return _error(request_id, _INTERNAL_ERROR, f"{name} failed: {detail}")
+            return _result(request_id, result)
         return _error(request_id, _METHOD_NOT_FOUND, f"method not found: {method}")
 
     # -- the two tools -----------------------------------------------------------
@@ -240,7 +271,6 @@ class MCPGatewayServer:
                 is_denied=lambda result: not self.gateway.evaluate(
                     result.resource, context, gate="activation"
                 ).allowed,
-                min_relevance=self.min_relevance,
             )
         )
         candidates = [result for result in pool if result.resource.metadata.kind == "tool"]
@@ -250,7 +280,6 @@ class MCPGatewayServer:
                 task=goal,
                 granted_permissions=tuple(context.granted_permissions),
                 per_kind_limits={"tool": self.max_tools} if self.max_tools is not None else {},
-                min_relevance=self.min_relevance,
                 policy=context if self.gate_aware_selection else None,
             ),
         )
@@ -260,6 +289,19 @@ class MCPGatewayServer:
         if selection.status == "selected":
             for result in selection.results:
                 definition = result.resource
+                # The session's tools are one set: a tool that conflicts with
+                # one an earlier search disclosed is not added to it.
+                earlier = {
+                    identity: SearchResult(tool.definition, 0.0, (), {}) for identity, tool in self._disclosed.items()
+                }
+                if definition.identity not in earlier and _conflicts([result], earlier):
+                    withheld.append(
+                        {
+                            "resource": definition.identity,
+                            "reason": "conflicts with a tool already returned in this session",
+                        }
+                    )
+                    continue
                 activation = self.activator.activate(definition, context)
                 self._audit("policy", activation.decision.to_dict())
                 if isinstance(activation.activated, BoundTool) and activation.ok:

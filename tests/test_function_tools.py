@@ -173,7 +173,12 @@ class FunctionToolkitTests(unittest.TestCase):
 
             return 0
 
-        sent, counted = crm.resources
+        @crm.tool
+        def tag_customer(note: Optional[Annotated[str, "ignored inside a union"]] = None, value: Optional[Any] = None) -> None:
+            """Tag a customer."""
+
+        sent, counted, tagged = crm.resources
+        self.assertEqual(tagged.extras["input_schema"]["properties"], {"note": {"type": ["string", "null"]}, "value": {}})
         self.assertEqual(sent.identity, "tool.crm.send-email@2.0.0")
         self.assertEqual((sent.metadata.side_effect, sent.metadata.required_permissions), ("external", ("mail.send",)))
         self.assertEqual((counted.metadata.side_effect, counted.metadata.trust_level), ("read", "verified"))
@@ -197,7 +202,13 @@ class FunctionToolkitTests(unittest.TestCase):
         def custom(when: complex) -> None:
             """Look up customers."""
 
-        for function in (undocumented, variadic, keywords, positional, custom):
+        async def asynchronous(email: str) -> None:
+            """Look up customers."""
+
+        def unresolved(email: "NoSuchType") -> None:  # noqa: F821 - the unresolvable name is the case under test
+            """Look up customers."""
+
+        for function in (undocumented, variadic, keywords, positional, custom, asynchronous, unresolved):
             with self.subTest(function=function.__name__), self.assertRaises(ValueError):
                 crm.tool(function)
         self.assertEqual(crm.resources, [])

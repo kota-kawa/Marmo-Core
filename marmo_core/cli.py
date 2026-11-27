@@ -1061,16 +1061,13 @@ def _cmd_mcp_serve(args: argparse.Namespace) -> int:
         policy_context=context,
         tool_implementations=_parse_tool_impls(args.tool_impl),
         audit_log=_load_audit_log(args.audit_log),
+        audit_path=args.audit_log,
         top_k=args.top_k,
         max_tools=args.max_tools,
         timeout_seconds=args.timeout,
         max_tool_output_tokens=args.max_tool_output_tokens or None,
     )
-    try:
-        server.serve()
-    finally:
-        if args.audit_log and server.audit_log.records:
-            server.audit_log.extend_jsonl(args.audit_log)
+    server.serve()
     return 0
 
 

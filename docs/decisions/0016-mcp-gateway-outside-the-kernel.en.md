@@ -37,9 +37,13 @@ Kernel state.
 - A side-effecting Tool cannot be called once the session has returned any Tool result, even when
   it was approved in advance. The gateway suits read-mostly catalogs; work that writes belongs in
   the Kernel, which has HITL.
-- The gateway has no retry, fallback, compensation, task budget, saved state or resume,
-  Connectors, or `SecretResolver`. One call is one attempt, and its decision and result are in
-  the audit log.
+- The gateway has no retry, fallback, compensation, circuit breaker, task budget, call limit
+  (`max_tool_calls`), saved state or resume, Connectors, `SecretResolver`, or `HitlPolicy`
+  "always confirm". One call is one attempt, and its decision and result are in the audit log.
+- Dependency and conflict constraints apply to the set of one search. In addition, a Tool that
+  conflicts with one already returned in the session is not returned.
+- A selector with `requires_contract_verification` (`GoalAwareSetSelector`) is refused, because
+  only the Kernel runs TaskSpec extraction and the check of the compiled context.
 - The steps from selection to activation now exist in the Kernel and in `mcp_server.py`. Gate
   verdicts cannot diverge, because both use `PolicyGateway` and `ToolRuntime`; a change to the
   Kernel's steps (the candidate pool, constraint enforcement) needs a check of the gateway.

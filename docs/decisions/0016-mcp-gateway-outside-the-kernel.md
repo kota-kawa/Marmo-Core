@@ -34,8 +34,13 @@ Kernel に任せる必要があった。自分のモデルとエージェント�
 
 - 副作用のある Tool は、事前に承認されていても、同じセッションで Tool の結果を一度返した後は呼べない。
   ゲートウェイは読み取り中心のカタログに向く。書き込みを伴う作業は、HITL のある Kernel を使う。
-- 再試行、fallback、補償、タスク予算、状態の保存と再開、Connector、`SecretResolver` はゲートウェイに
-  無い。1 回の呼び出しは 1 回の試行で、判定と結果は監査ログに残る。
+- 再試行、fallback、補償、サーキットブレーカー、タスク予算、呼び出し回数の上限（`max_tool_calls`）、
+  状態の保存と再開、Connector、`SecretResolver`、`HitlPolicy` の「常に確認」はゲートウェイに無い。
+  1 回の呼び出しは 1 回の試行で、判定と結果は監査ログに残る。
+- 依存と競合の制約は 1 回の検索の集合にかける。加えて、セッションで既に返した Tool と競合する Tool は
+  返さない。
+- `requires_contract_verification` を持つ Selector（`GoalAwareSetSelector`）は受け付けない。TaskSpec の
+  抽出とコンパイル後の検査は Kernel だけが行うためである。
 - 選択から activation までの手順が、Kernel と `mcp_server.py` の 2 か所になる。ゲートの判定は
   `PolicyGateway` と `ToolRuntime` を共有するのでずれないが、Kernel 側の手順（候補プール、制約の適用）を
   変えるときはゲートウェイも確認する。

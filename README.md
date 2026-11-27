@@ -499,7 +499,7 @@ From the CLI, `mcp-serve` serves the Tool resources under the given paths. Put t
 marmo mcp-serve --granted-permission fs.read resources/tools
 ```
 
-`--approve-resource ID` approves a side effect in advance, `--tool-impl ID=MODULE:FUNC` binds a handler, and `--audit-log` appends the session's records when the client disconnects.
+`--approve-resource ID` approves a side effect in advance, `--tool-impl ID=MODULE:FUNC` binds a handler, and `--audit-log` appends the audit records after each tool call.
 
 ## Execution notes
 
@@ -1038,7 +1038,7 @@ CLI では、`mcp-serve` が指定したパスの Tool リソースを公開し�
 marmo mcp-serve --granted-permission fs.read resources/tools
 ```
 
-`--approve-resource ID` は副作用を事前に承認し、`--tool-impl ID=MODULE:FUNC` はハンドラーを結び付けます。`--audit-log` を指定すると、クライアントの切断時にセッションの記録を追記します。
+`--approve-resource ID` は副作用を事前に承認し、`--tool-impl ID=MODULE:FUNC` はハンドラーを結び付けます。`--audit-log` を指定すると、ツールの呼び出しごとに監査レコードを追記します。
 
 ### 実行時の注意
 
