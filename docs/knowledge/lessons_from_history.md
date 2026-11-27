@@ -41,6 +41,16 @@ git 履歴（52 コミット、PR #1〜#14、CHANGELOG 0.4.0〜0.6.0）から抽
 - 「順位は変わらない」という主張を実測で反証したら、主張ではなく数値を書く
   （3de214ca: hit@1 66.7% → 65.0%）。
 - 互換性は `tests/fixtures/compat/v0.3.0` の凍結物で守る（509d5f68）。
+- **手元の Python だけで通したテストが、最低対応バージョンの CI で落ちた（PR #93）。** 手元は 3.13、
+  落ちたのは 3.11 のジョブだけだった。原因は新しいテストが
+  `marmo inspect <id> --no-default-resources <path> --format json` のように位置引数の間へオプションを
+  挟んでいたことで、3.11 の argparse は後ろの位置引数を `unrecognized arguments` にする
+  （3.12 以降は `inspect` / `policy-check` では通る）。PR 前に、`pyproject.toml` の `requires-python`
+  の下限でも全テストを回す（手順は `development_conventions.md` の「コマンド」）。
+- `marmo` の位置引数（`paths`、`inspect` / `policy-check` / `search` の先頭引数）は、ひとまとまりに
+  書く。オプションはその前か後ろにまとめる。`list PATH --kind tool PATH2` のように位置引数を
+  オプションで分断する形は、どの対応バージョンでも拒否される。文書中の `marmo` コマンドは
+  `tests/test_repo_checks.py` の `DocumentedCommandTests` が全対応バージョンの CI で解釈を確認する。
 
 ## LLM プロバイダー連携
 
@@ -207,4 +217,6 @@ git 履歴（52 コミット、PR #1〜#14、CHANGELOG 0.4.0〜0.6.0）から抽
   CPU の長い計算（44k 件の埋め込みなど）は途中保存する。
 - 大きな修正 PR には「判断が要るところ / Notes for reviewers」の節があり、既定値・終了コード・
   スコアの変化を明示している（PR #12、#13）。この形を PR テンプレートにした。
+- PR 本文に `Closes #58, closes #59, …` と 33 件を並べたが、マージ直後に閉じていたのは先頭の 4 件
+  だけで、残りは手動で閉じた（PR #93。原因は未確認）。マージ後に、閉じるはずの issue の状態を確認する。
 - `research/` ブランチは規則として定義されているが、まだ一度も使われていない。

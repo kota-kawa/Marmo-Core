@@ -94,6 +94,7 @@ Marmo-Core は、Object Routing を実装する公開 Python ライブラリで�
   check-manifest
   ```
 
+- 手元の Python が `requires-python` の下限（現在 3.11）より新しい場合は、下限のインタープリタでも全テストを回す（`docs/knowledge/development_conventions.md` の「コマンド」）。無ければ PR 本文にその旨を書き、CI の下限のジョブを確認する。
 - `-W error::ResourceWarning` は省略しない。CI がこの形で走るため、閉じ忘れたファイルやソケットはアサーションが通っても落ちる。
 - 修正には回帰テストを付け、「修正を戻すとそのテストが落ちる」ことを確認する。モック LLM のテストだけでは実プロバイダとの不整合は検出できない（`docs/knowledge/lessons_from_history.md`）。
 - 追跡ファイルを追加したら `check-manifest` を回す。sdist に入れるなら `MANIFEST.in`、リポジトリ専用なら `pyproject.toml` の `[tool.check-manifest] ignore` に追加する。
