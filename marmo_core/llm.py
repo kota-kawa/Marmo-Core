@@ -8,6 +8,7 @@ import re
 from typing import Any, Mapping, Sequence
 
 from .errors import ProviderError
+from .models import schema_types
 from .secrets import sanitize_secret_inputs
 
 
@@ -200,26 +201,41 @@ def default_arguments(input_schema: Mapping[str, Any]) -> dict[str, Any]:
     properties = properties if isinstance(properties, Mapping) else {}
     required = input_schema.get("required") if isinstance(input_schema, Mapping) else None
     required = required if isinstance(required, list) else []
-    type_defaults: dict[str, Any] = {
-        "string": "",
-        "number": 0.0,
-        "integer": 0,
-        "boolean": False,
-        "array": [],
-        "object": {},
-    }
     arguments: dict[str, Any] = {}
     for name in required:
         prop = properties.get(name)
         prop = prop if isinstance(prop, Mapping) else {}
         if "default" in prop:
             arguments[name] = prop["default"]
+        elif "type" not in prop:
+            arguments[name] = ""
         else:
-            arguments[name] = type_defaults.get(prop.get("type", "string"), "")
+            # A property whose type is unsupported gets no value: validation
+            # then reports the property instead of a guessed default.
+            declared = schema_types(prop)
+            if declared:
+                arguments[name] = _TYPE_DEFAULTS[_preferred_type(declared)]()
     for name, prop in properties.items():
         if name not in arguments and isinstance(prop, Mapping) and "default" in prop:
             arguments[name] = prop["default"]
     return arguments
+
+
+_TYPE_DEFAULTS: dict[str, Any] = {
+    "string": str,
+    "number": float,
+    "integer": int,
+    "boolean": bool,
+    "array": list,
+    "object": dict,
+    "null": lambda: None,
+}
+
+
+def _preferred_type(declared: Sequence[str]) -> str:
+    """First non-null type, so ``["string", "null"]`` defaults to a string."""
+
+    return next((name for name in declared if name != "null"), "null")
 
 
 def _usage(messages: Sequence[ChatMessage], output: str) -> dict[str, int]:

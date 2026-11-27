@@ -24,6 +24,7 @@ import os
 
 from .activator import BoundTool
 from .errors import ToolInputError
+from .models import schema_types
 from .policy import PolicyContext, PolicyGateway, PolicyRejectedError
 from .process_execution import importable_handler, run_importable
 from .secrets import (
@@ -234,8 +235,10 @@ class ToolRuntime:
 def validate_arguments(schema: Mapping[str, Any], arguments: Mapping[str, Any]) -> list[str]:
     """Validate arguments against the lightweight JSON Schema subset (F-TOOL-02).
 
-    Supported keywords: type, required, properties, enum, minimum, maximum,
-    additionalProperties (boolean form).
+    Supported keywords: type (a name or a list of names such as
+    ``["string", "null"]``), required, properties, enum, minimum, maximum,
+    additionalProperties (boolean form). A property whose ``type`` is not one of
+    ``models.SCHEMA_TYPES`` is reported instead of being accepted unchecked.
     """
 
     issues: list[str] = []
@@ -260,10 +263,14 @@ def validate_arguments(schema: Mapping[str, Any], arguments: Mapping[str, Any]) 
         # Accepting it here lets Planner/Recovery reason about deferred values.
         if is_secret_ref(value):
             continue
-        expected = prop.get("type")
-        if isinstance(expected, str) and not _matches_type(value, expected):
-            issues.append(f"argument {name} must be of type {expected}")
-            continue
+        if "type" in prop:
+            expected = schema_types(prop)
+            if not expected:
+                issues.append(f"argument {name} has an unsupported schema type: {prop['type']!r}")
+                continue
+            if not any(_matches_type(value, candidate) for candidate in expected):
+                issues.append(f"argument {name} must be of type {' or '.join(expected)}")
+                continue
         enum = prop.get("enum")
         if isinstance(enum, list) and value not in enum:
             issues.append(f"argument {name} must be one of: {enum}")
@@ -290,6 +297,4 @@ def _matches_type(value: Any, expected: str) -> bool:
         return isinstance(value, list)
     if expected == "object":
         return isinstance(value, Mapping)
-    if expected == "null":
-        return value is None
-    return True
+    return expected == "null" and value is None

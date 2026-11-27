@@ -11,7 +11,9 @@ from marmo_core import (
     ResourceRegistry,
     SearchQuery,
     function_tool_resources,
+    validate_arguments,
 )
+from marmo_core.llm import default_arguments
 
 WEATHER = {
     "type": "function",
@@ -48,6 +50,22 @@ class FunctionToolResourcesTests(unittest.TestCase):
         self.assertEqual(weather.extras["input_schema"], WEATHER["function"]["parameters"])
         self.assertEqual(files.metadata.output_summary, "files: file names")
         self.assertIn("output_schema", files.extras)
+
+    def test_nullable_type_arrays_import_and_get_default_arguments(self) -> None:
+        nullable = {
+            "name": "find_user",
+            "description": "Find a user",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"email": {"type": ["string", "null"]}},
+                "required": ["email"],
+            },
+        }
+        (definition,) = function_tool_resources([nullable], namespace="crm")
+        self.assertEqual(definition.validate(), [])
+        arguments = default_arguments(definition.extras["input_schema"])
+        self.assertEqual(arguments, {"email": ""})
+        self.assertEqual(validate_arguments(definition.extras["input_schema"], arguments), [])
 
     def test_defaults_are_conservative_and_need_an_explicit_grant(self) -> None:
         (weather,) = function_tool_resources([WEATHER], namespace="app")

@@ -17,10 +17,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 import json
+import os
 import re
 import selectors
 import subprocess
 import threading
+import time
 
 from .errors import MarmoError
 from .models import ResourceDefinition
@@ -74,7 +76,8 @@ class MCPStdioClient:
         self.env = dict(env) if env is not None else None
         self.cwd = cwd
         self.timeout = timeout
-        self._process: subprocess.Popen[str] | None = None
+        self._process: subprocess.Popen[bytes] | None = None
+        self._buffer = bytearray()
         self._next_id = 0
         self._lock = threading.Lock()
         self.server_info: dict[str, Any] = {}
@@ -93,9 +96,8 @@ class MCPStdioClient:
             stderr=subprocess.DEVNULL,
             env=self.env,
             cwd=self.cwd,
-            text=True,
-            bufsize=1,
         )
+        self._buffer.clear()
         result = self._request(
             "initialize",
             {
@@ -111,6 +113,7 @@ class MCPStdioClient:
     def close(self) -> None:
         process = self._process
         self._process = None
+        self._buffer.clear()
         if process is None:
             return
         try:
@@ -176,11 +179,14 @@ class MCPStdioClient:
 
     def _request(self, method: str, params: Mapping[str, Any]) -> dict[str, Any]:
         with self._lock:
+            # One deadline covers the whole request, so notifications that
+            # arrive before the response cannot extend the wait.
+            deadline = time.monotonic() + self.timeout
             self._next_id += 1
             request_id = self._next_id
             self._send({"jsonrpc": "2.0", "id": request_id, "method": method, "params": dict(params)})
             while True:
-                message = self._read_message()
+                message = self._read_message(deadline)
                 if message.get("id") == request_id and ("result" in message or "error" in message):
                     if "error" in message:
                         error = message["error"]
@@ -201,36 +207,58 @@ class MCPStdioClient:
         process = self._require_process()
         assert process.stdin is not None
         try:
-            process.stdin.write(json.dumps(message, ensure_ascii=False) + "\n")
+            process.stdin.write((json.dumps(message, ensure_ascii=False) + "\n").encode("utf-8"))
             process.stdin.flush()
         except (BrokenPipeError, ValueError) as error:
             raise MCPError(f"MCP server closed its stdin: {error}") from error
 
-    def _read_message(self) -> dict[str, Any]:
+    def _read_message(self, deadline: float) -> dict[str, Any]:
+        """Return the next JSON object the server sent, waiting until ``deadline``.
+
+        stdout is read with ``os.read`` into one buffer owned by the client, so
+        several messages that arrive in a single write are handed out one at a
+        time. A buffered reader would hide the later ones from ``select``.
+        """
+
         process = self._require_process()
         assert process.stdout is not None
+        descriptor = process.stdout.fileno()
         selector = selectors.DefaultSelector()
-        selector.register(process.stdout, selectors.EVENT_READ)
+        selector.register(descriptor, selectors.EVENT_READ)
         try:
             while True:
-                if not selector.select(timeout=self.timeout):
-                    raise MCPError(f"MCP server did not respond within {self.timeout}s")
-                line = process.stdout.readline()
-                if not line:
-                    raise MCPError("MCP server closed the connection")
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    message = json.loads(line)
-                except json.JSONDecodeError:
-                    continue  # tolerate stray non-JSON output on stdout
-                if isinstance(message, dict):
+                message = self._take_buffered_message()
+                if message is not None:
                     return message
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or not selector.select(timeout=remaining):
+                    raise MCPError(f"MCP server did not respond within {self.timeout}s")
+                chunk = os.read(descriptor, 65536)
+                if not chunk:
+                    raise MCPError("MCP server closed the connection")
+                self._buffer.extend(chunk)
         finally:
             selector.close()
 
-    def _require_process(self) -> subprocess.Popen[str]:
+    def _take_buffered_message(self) -> dict[str, Any] | None:
+        """Pop complete lines from the buffer until one is a JSON object."""
+
+        while True:
+            end = self._buffer.find(b"\n")
+            if end < 0:
+                return None
+            line = bytes(self._buffer[:end]).decode("utf-8", errors="replace").strip()
+            del self._buffer[: end + 1]
+            if not line:
+                continue
+            try:
+                message = json.loads(line)
+            except json.JSONDecodeError:
+                continue  # tolerate stray non-JSON output on stdout
+            if isinstance(message, dict):
+                return message
+
+    def _require_process(self) -> subprocess.Popen[bytes]:
         if self._process is None:
             raise MCPError("client is not started; call start() first")
         return self._process

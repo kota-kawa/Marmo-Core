@@ -5,10 +5,15 @@ from __future__ import annotations
 from typing import Sequence
 import json
 import sys
-import textwrap
+import unicodedata
 
 from .models import ResourceDefinition, SearchResult, SelectedResourceSet
 from .policy import PolicyDecision
+
+
+_MAX_COLUMN_WIDTH = 80
+_MIN_SHORT_WIDTH = 8
+_PLACEHOLDER = "..."
 
 
 def print_json(data: object) -> None:
@@ -114,23 +119,63 @@ def render_policy_decision(decision: PolicyDecision) -> str:
 def _table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> str:
     if not rows:
         return "(no results)"
-    widths = [len(header) for header in headers]
+    widths = [_display_width(header) for header in headers]
     normalized_rows = [[str(cell) for cell in row] for row in rows]
     for row in normalized_rows:
         for index, cell in enumerate(row):
-            widths[index] = max(widths[index], min(len(cell), 80))
+            widths[index] = max(widths[index], min(_display_width(cell), _MAX_COLUMN_WIDTH))
     separator = "  "
-    header_line = separator.join(header.ljust(widths[index]) for index, header in enumerate(headers))
+    header_line = separator.join(_ljust(header, widths[index]) for index, header in enumerate(headers))
     rule = separator.join("-" * widths[index] for index in range(len(headers)))
     body = [separator.join(_wrap_cell(cell, widths[index]) for index, cell in enumerate(row)) for row in normalized_rows]
     return "\n".join([header_line, rule, *body])
 
 
 def _wrap_cell(value: str, width: int) -> str:
-    short = _short(value, width)
-    return short.ljust(width)
+    return _ljust(_short(value, width), width)
 
 
 def _short(value: str, width: int) -> str:
-    value = textwrap.shorten(value.replace("\n", " "), width=max(width, 8), placeholder="...")
-    return value
+    """Fit ``value`` into ``width`` terminal columns, ending in ``...`` when it is cut.
+
+    The cut falls on whitespace when it would otherwise split a Latin word.
+    Text without whitespace, such as Japanese, is cut at the last character
+    that fits, so the opening of the text survives.
+    """
+
+    text = " ".join(value.split())
+    width = max(width, _MIN_SHORT_WIDTH)
+    if _display_width(text) <= width:
+        return text
+    limit = width - len(_PLACEHOLDER)
+    cut = 0
+    used = 0
+    while cut < len(text) and used + _char_width(text[cut]) <= limit:
+        used += _char_width(text[cut])
+        cut += 1
+    splits_a_word = (
+        cut < len(text)
+        and " " in text[:cut]
+        and not text[cut].isspace()
+        and _char_width(text[cut - 1]) == 1
+        and _char_width(text[cut]) == 1
+    )
+    if splits_a_word:
+        cut = text.rindex(" ", 0, cut)
+    return text[:cut].rstrip() + _PLACEHOLDER
+
+
+def _ljust(value: str, width: int) -> str:
+    return value + " " * (width - _display_width(value))
+
+
+def _display_width(value: str) -> int:
+    return sum(_char_width(char) for char in value)
+
+
+def _char_width(char: str) -> int:
+    """Terminal columns one character occupies: 2 for East Asian wide, 0 for combining marks."""
+
+    if unicodedata.combining(char):
+        return 0
+    return 2 if unicodedata.east_asian_width(char) in ("W", "F") else 1

@@ -197,7 +197,7 @@ audit hash chain verified.
 | An approved task running something else | A paused task stores the identity and content fingerprint of its selected resources. Resume fails if those resources or the compiled context changed. |
 | Unbounded spend | With a `TaskBudget`, the kernel reserves cost before each model call and each Tool or Agent attempt, and stops further work when the ceiling is reached. |
 | A delegated Agent seeing everything | A `structured_task` Agent runs in a child Kernel that holds only its declared dependencies and permissions. It shares the parent's budget and human approvals. |
-| Tampered history | Audit records form a SHA-256 hash chain. `AuditLog.verify()` and `marmo resume` check the chain. |
+| Tampered history | Audit records form a SHA-256 hash chain. `AuditLog.verify()`, `marmo run`, and `marmo resume` check the chain; `--audit-log` appends to an existing file and refuses a broken one. |
 
 These are in-process controls and they have limits: Tool handlers are not sandboxed, resource packages are not signed yet, and the prompt-injection detectors are deliberately incomplete. The [threat model](docs/threat-model.md) states the residual risk next to each control.
 
@@ -391,7 +391,7 @@ marmo run resources/tools \
 
 Use `--llm bedrock` for Bedrock Chat Completions. `BedrockLLMProvider` reuses `OpenAICompatibleLLMProvider`; it defaults to `openai.gpt-oss-120b-1:0` at `https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1`. Set `BEDROCK_REGION` to the key’s region, `BEDROCK_MODEL` for another Chat Completions model, or `BEDROCK_BASE_URL` for another endpoint. `BEDROCK_REASONING_EFFORT` is optional. Claude is not supported by this API. See [AWS Chat Completions](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-chat-completions.html).
 
-Use `--llm anthropic` for Anthropic. With a real model, `--tool-args` is ignored: the model chooses the Tool and its arguments. The default lexical retriever matches resources against their English metadata. For a goal in another language, add `--retriever hyde`; it uses the selected real model to restate the goal in that vocabulary before retrieval.
+Use `--llm anthropic` for Anthropic. With a real model, `--tool-args` is ignored unless `--planner rule` is set: the model chooses the Tool and its arguments. The default lexical retriever matches resources against their English metadata. For a goal in another language, add `--retriever hyde`; it uses the selected real model to restate the goal in that vocabulary before retrieval.
 
 The equivalent Python setup is:
 
@@ -699,7 +699,7 @@ audit hash chain verified.
 | 承認した内容と違うものが実行される | 一時停止したタスクは、選択したリソースの識別子と内容のフィンガープリントを保存します。リソースまたはコンパイル済みの文脈が変わっていれば、再開は失敗します。 |
 | 際限のない費用 | `TaskBudget` を指定すると、モデル呼び出しと Tool・Agent の各試行の前に費用を予約し、上限に達したら以後の処理を止めます。 |
 | 委任先の Agent に全部が見える | `structured_task` の Agent は、宣言した依存先と権限だけを持つ子 Kernel で動きます。予算と人の承認は親と共有します。 |
-| 履歴の改ざん | 監査レコードは SHA-256 のハッシュチェーンになっています。`AuditLog.verify()` と `marmo resume` がチェーンを検証します。 |
+| 履歴の改ざん | 監査レコードは SHA-256 のハッシュチェーンになっています。`AuditLog.verify()`、`marmo run`、`marmo resume` がチェーンを検証します。`--audit-log` は既存ファイルに追記し、壊れたチェーンには書き込みません。 |
 
 これらはプロセス内の対策で、限界があります。Tool のハンドラはサンドボックス化されておらず、リソースパッケージの署名は未実装で、プロンプトインジェクションの検知は意図的に網羅していません。[脅威モデル](docs/threat-model.ja.md)に、対策ごとの残るリスクを書いています。
 
@@ -893,7 +893,7 @@ marmo run resources/tools \
 
 Bedrock では `--llm bedrock` を使います。`BedrockLLMProvider` は既存の `OpenAICompatibleLLMProvider` を再利用し、既定では `us-east-1` の `openai.gpt-oss-120b-1:0` を呼びます。キーを発行したリージョンを `BEDROCK_REGION`、モデルを `BEDROCK_MODEL`、接続先を `BEDROCK_BASE_URL`、推論設定を `BEDROCK_REASONING_EFFORT` で変更できます。Chat Completions 対応モデルを指定してください。Claude はこの API に対応していません。[AWS 公式仕様](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-chat-completions.html) を参照してください。
 
-Anthropic では `--llm anthropic` を使います。実モデルを選んだ場合、`--tool-args` は無視され、Tool と引数はモデルが選びます。既定の語彙検索はリソースの英語メタデータに照合します。日本語などで目標を書く場合は `--retriever hyde` を付けると、指定した実モデルが検索前に目標をその語彙へ言い換えます。
+Anthropic では `--llm anthropic` を使います。実モデルを選んだ場合、`--planner rule` を指定しない限り `--tool-args` は無視され、Tool と引数はモデルが選びます。既定の語彙検索はリソースの英語メタデータに照合します。日本語などで目標を書く場合は `--retriever hyde` を付けると、指定した実モデルが検索前に目標をその語彙へ言い換えます。
 
 Python で同等の検索設定を組み立てる例です。
 

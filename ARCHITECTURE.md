@@ -140,16 +140,17 @@ Agent 委譲を許し、その子からさらに Agent を呼ぶには明示的�
 
 ### 3.2 `marmo run` / `marmo resume`
 
-- `run`: `_build_kernel(continue_audit=False)` が `load_registry`（既定パスは
+- `run`: `_build_kernel` が `load_registry`（既定パスは
   `resources/`、`skills/`、`examples/resources/` の順。`--no-default-resources` で無効）、
   CLI 引数からの `PolicyContext` と `HitlPolicy`、`ConsoleHitlBroker`（`--confirm`）
   または `PendingHitlBroker`、`_build_llm`（mock / openai / anthropic / bedrock）、
   `_build_retriever`（lexical / hyde）、planner、connectors、
   `JsonFileStateStore(--state-dir)` を組み立て、`kernel.run_goal(--task)` を実行する。
-  `_report_task` が `--audit-log` の書き出しと `--strict` の検査を行う。終了コードは
+  既存の `--audit-log` があれば `AuditLog.from_jsonl` でチェーンを検証して続きに記録し、
+  `_report_task` が `AuditLog.extend_jsonl` による追記（置換しない）と `--strict` の検査を行う。
+  チェーンが壊れている、または他の書き手が変更していた場合は書き込まず終了コード 2 で終える。終了コードは
   completed=0、それ以外=1、例外=2。
-- `resume`: `_build_kernel(continue_audit=True)` が既存の `--audit-log` を
-  `AuditLog.from_jsonl`（チェーン検証あり）で読み、`--approve/--reject/--defer/--modify`
+- `resume`: `run` と同じく既存の `--audit-log` を検証して継続し、`--approve/--reject/--defer/--modify`
   から `HitlResponse` を作って `kernel.resume(task_id, response)` を呼ぶ。選択が確定したら
   resource identity と内容 fingerprint を state の `snapshot` event に保存し、再開時は
   検索・選択を繰り返さない。Resource 定義またはコンパイル済み context が変わっていれば
@@ -259,7 +260,8 @@ Agent 委譲を許し、その子からさらに Agent を呼ぶには明示的�
   コミットされた結果 JSON、`_provenance.py`（結果に commit SHA を刻む）。
 - `scripts/`: CI が呼ぶ検査（`release_check.py`、`check_doc_paths.py`、
   `check_env_documentation.py`）。sdist と Docker イメージに同梱される。
-- `tools/`: 開発者専用（skill コーパスの収集）。配布物には入れない。
+- `tools/`: 開発者専用（skill コーパスの収集）。sdist・wheel・Docker イメージに入れない
+  （sdist からは `MANIFEST.in` に含めず、`pyproject.toml` の `[tool.check-manifest] ignore` で除外する）。
 - `docs/`: 利用者向けマニュアル（`connectors.md`、`local-resource-packages.md`）、
   脅威モデル、`knowledge/`、`decisions/`。
 - `.github/`: CI / Release ワークフロー、Dependabot、ブランチ保護の記録、PR テンプレート。
