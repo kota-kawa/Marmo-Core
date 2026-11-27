@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
 import json
@@ -271,6 +271,68 @@ class InputDiagnosticTests(_Workspace):
 
         self.assertEqual(status, 2)
         self.assertIn("no_such_module_xyz:fn を読み込めません", stderr)
+
+
+
+class ArgumentOrderTests(unittest.TestCase):
+    """Resource paths are accepted wherever they are written, on every supported Python."""
+
+    def _parse(self, *argv: str):
+        return build_parser().parse_args(list(argv))
+
+    def test_a_path_after_an_option_that_follows_the_resource_id(self) -> None:
+        for command, option in (("inspect", ("--format", "json")), ("policy-check", ("--gate", "execution"))):
+            with self.subTest(command=command):
+                args = self._parse(command, "tool.x", *option, "resources")
+
+                self.assertEqual(args.resource, "tool.x")
+                self.assertEqual(args.paths, ["resources"])
+
+    def test_paths_split_by_options_keep_their_order(self) -> None:
+        args = self._parse("run", "one", "--task", "t", "two", "--strict", "three")
+
+        self.assertEqual(args.paths, ["one", "two", "three"])
+        self.assertEqual(args.task, "t")
+        self.assertTrue(args.strict)
+
+    def test_the_separator_still_marks_paths_that_start_with_a_dash(self) -> None:
+        self.assertEqual(self._parse("run", "--task", "t", "--", "-tool.json").paths, ["-tool.json"])
+        self.assertEqual(self._parse("run", "one", "--task", "t", "--", "-tool.json").paths, ["one", "-tool.json"])
+
+    def test_unknown_options_and_stray_words_are_still_errors(self) -> None:
+        for argv in (
+            ("list", "resources", "--bogus"),
+            ("list", "resources", "--kind", "tool", "--bogus", "more"),
+            ("package", "inspect", "directory", "extra"),
+        ):
+            with self.subTest(argv=argv):
+                stderr = StringIO()
+                with self.assertRaises(SystemExit) as raised, redirect_stderr(stderr):
+                    self._parse(*argv)
+
+                self.assertEqual(raised.exception.code, 2)
+                self.assertIn("unrecognized arguments", stderr.getvalue())
+
+    def test_the_japanese_parser_reports_the_same_error(self) -> None:
+        stderr = StringIO()
+        with self.assertRaises(SystemExit) as raised, redirect_stderr(stderr):
+            build_parser(language="ja").parse_args(["list", "resources", "--bogus"])
+
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn("認識できない引数", stderr.getvalue())
+
+    def test_an_interleaved_command_runs_end_to_end(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "tool.json"
+            source.write_text(json.dumps(_external_tool()), encoding="utf-8")
+            definition = json.loads(source.read_text(encoding="utf-8"))
+            stdout = StringIO()
+
+            with redirect_stdout(stdout):
+                code = main(["inspect", definition["id"], "--no-default-resources", str(source), "--format", "json"])
+
+            self.assertEqual(code, 0)
+            self.assertEqual(json.loads(stdout.getvalue())["id"], definition["id"])
 
 
 if __name__ == "__main__":

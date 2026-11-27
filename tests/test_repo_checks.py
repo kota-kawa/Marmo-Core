@@ -279,9 +279,9 @@ def _documented_commands(text: str) -> list[list[str]]:
 class DocumentedCommandTests(unittest.TestCase):
     """Commands shown to readers must parse on every supported Python.
 
-    argparse before 3.12 rejects a positional that follows an option placed
-    after an earlier positional, so a command written on a newer Python can
-    be one the oldest supported version refuses.
+    How argparse reads a command line has changed between Python versions,
+    so a command written on a newer one can be one the oldest supported
+    version refuses.
     """
 
     def _rejected(self, argv: list[str]) -> str:
@@ -301,8 +301,8 @@ class DocumentedCommandTests(unittest.TestCase):
 
         self.assertEqual(_documented_commands(text), [["run", "--task", "t", "resources/tools"]])
 
-    def test_positionals_split_by_an_option_are_rejected(self) -> None:
-        self.assertIn("unrecognized arguments", self._rejected(["list", "a", "--kind", "tool", "b"]))
+    def test_a_command_the_parser_refuses_is_reported(self) -> None:
+        self.assertIn("unrecognized arguments", self._rejected(["list", "a", "--no-such-option"]))
         self.assertEqual(self._rejected(["list", "--kind", "tool", "a", "b"]), "")
 
     @unittest.skipUnless(FULL_CHECKOUT, "requires the full repository checkout")

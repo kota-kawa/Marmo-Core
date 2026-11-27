@@ -47,9 +47,10 @@ git 履歴（52 コミット、PR #1〜#14、CHANGELOG 0.4.0〜0.6.0）から抽
   挟んでいたことで、3.11 の argparse は後ろの位置引数を `unrecognized arguments` にする
   （3.12 以降は `inspect` / `policy-check` では通る）。PR 前に、`pyproject.toml` の `requires-python`
   の下限でも全テストを回す（手順は `development_conventions.md` の「コマンド」）。
-- `marmo` の位置引数（`paths`、`inspect` / `policy-check` / `search` の先頭引数）は、ひとまとまりに
-  書く。オプションはその前か後ろにまとめる。`list PATH --kind tool PATH2` のように位置引数を
-  オプションで分断する形は、どの対応バージョンでも拒否される。文書中の `marmo` コマンドは
+- argparse は位置引数をひとまとまりでしか照合しないため、`list PATH --kind tool PATH2` のように
+  オプションで分断したパスは `unrecognized arguments` になっていた（3.11 では `inspect ID --format json PATH`
+  も同じ）。CLI 側で、オプションでない余りの語を `paths` に足して受け付けるようにした
+  （`_ArgumentParser.parse_args`）。未知のオプションは従来どおりエラーにする。文書中の `marmo` コマンドは
   `tests/test_repo_checks.py` の `DocumentedCommandTests` が全対応バージョンの CI で解釈を確認する。
 
 ## LLM プロバイダー連携

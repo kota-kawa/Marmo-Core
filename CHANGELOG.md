@@ -291,6 +291,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     なく Python を解析します。CI はビルドした wheel の smoke test と、スキップなしの
     Exact/HNSW インデックスのテストを実行します。Docker のビルドコンテキストから `.env` を
     除外しました。
+- `marmo` accepts resource paths written after an option, in any order
+  (`marmo inspect ID --format json PATH`, `marmo run PATH --task T PATH2`).
+  These were rejected as `unrecognized arguments`: on Python 3.11 for every
+  command, and on newer versions whenever an option split two paths. Unknown
+  options are still errors.
+  - `marmo` は、オプションの後ろに書いたリソースパスを順序によらず受け付けます
+    （`marmo inspect ID --format json PATH`、`marmo run PATH --task T PATH2`）。これまでは
+    `unrecognized arguments` になっていました（Python 3.11 ではすべてのコマンドで、それ以降の
+    版でもオプションがパスを分断する場合）。未知のオプションは従来どおりエラーです。
 
 ## [0.7.0] - 2026-11-24
 
