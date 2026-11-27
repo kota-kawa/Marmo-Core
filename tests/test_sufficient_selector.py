@@ -488,6 +488,47 @@ class GoalAwareSetSelectorTests(unittest.TestCase):
             {"tool.reader", "skill.small"},
         )
 
+    def test_context_one_of_search_backtracks_when_first_alternative_leaves_a_low_relevance_root(self) -> None:
+        spec = _task(_requirement("read"), _requirement("fetch"))
+        parent = _result(
+            _definition(
+                "tool.reader",
+                affordances=(_affordance("read"),),
+                contract=_contract(
+                    (_affordance("read"),),
+                    context_one_of=(("skill.a-primary", "skill.b-fallback"),),
+                ),
+            )
+        )
+        primary = _result(
+            _definition("skill.a-primary", kind="skill"), score=0.9, relevance=0.9
+        )
+        fallback = _result(
+            _definition(
+                "skill.b-fallback",
+                affordances=(_affordance("fetch"),),
+            ),
+            score=0.1,
+            relevance=0.1,
+        )
+        context = SelectionContext(task="read", min_relevance=0.5)
+
+        # Choosing skill.a-primary first would leave skill.b-fallback as an
+        # unreferenced, below-threshold root; choosing skill.b-fallback keeps
+        # the same three resources valid.
+        valid, reason = _selector(spec).validate_selection(
+            [parent, primary, fallback], context=context
+        )
+        self.assertTrue(valid, reason)
+
+        # When no alternative leaves eligible roots the reason names the roots.
+        valid, reason = _selector(spec).validate_selection(
+            [parent, fallback],
+            context=SelectionContext(task="read", min_relevance=0.95),
+        )
+        self.assertFalse(valid)
+        self.assertIn("below the active score or relevance threshold", reason)
+
     def test_context_one_of_can_choose_one_alternative_to_avoid_a_false_cycle(self) -> None:
         spec = _task(_requirement("read"), _requirement("send"))
         reader = _result(

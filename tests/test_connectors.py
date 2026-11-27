@@ -13,11 +13,13 @@ from unittest.mock import patch
 
 from marmo_core import (
     BoundTool,
+    Connector,
     ConnectorCircuitOpenError,
     ConnectorConfig,
     ConnectorError,
     ConnectorPathError,
     ConnectorRuntime,
+    ConnectorTool,
     FileSystemConnector,
     HitlResponse,
     HTTPConnector,
@@ -26,12 +28,15 @@ from marmo_core import (
     MockLLMProvider,
     PolicyContext,
     PolicyRejectedError,
+    ResourceDefinition,
     ResourceRegistry,
     SQLiteConnector,
     SecretRef,
     ShellConnector,
     ToolRuntime,
+    connector_implementations,
     connector_tools,
+    install_connectors,
 )
 from marmo_core.cli import build_parser
 
@@ -463,12 +468,101 @@ class SQLiteConnectorTests(unittest.TestCase):
             execute(sql="BEGIN")
 
 
+class _VersionedConnector(Connector):
+    """Contributes one Tool id in several versions; each handler returns its version."""
+
+    def __init__(self, versions: list[str]) -> None:
+        super().__init__("versioned")
+        self.versions = versions
+
+    def tools(self) -> tuple[ConnectorTool, ...]:
+        return tuple(
+            ConnectorTool(
+                connector_id=self.connector_id,
+                operation="echo",
+                definition=ResourceDefinition.from_mapping(
+                    {
+                        "id": "tool.demo.echo",
+                        "kind": "tool",
+                        "name": "echo",
+                        "version": version,
+                        "description": f"Echo, version {version}.",
+                        "capabilities": ["demo.echo"],
+                        "input_summary": "none",
+                        "output_summary": "the version",
+                        "required_permissions": [],
+                        "cost_estimate": 0.0,
+                        "latency_class": "fast",
+                        "side_effect": "none",
+                        "trust_level": "core",
+                        "ref": f"tool://demo/echo/{version}",
+                        "tags": [],
+                        "input_schema": {"type": "object", "properties": {}},
+                    }
+                ),
+                handler=lambda version=version: version,
+            )
+            for version in self.versions
+        )
+
+
 class ConnectorRegistrationTests(unittest.TestCase):
     def test_duplicate_connector_tools_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             connector = FileSystemConnector(root)
             with self.assertRaisesRegex(Exception, "duplicate"):
                 connector_tools((connector, connector))
+
+    def test_a_single_version_keeps_its_handler_under_the_bare_id(self) -> None:
+        connector = _VersionedConnector(["1.0.0"])
+
+        handlers = install_connectors(ResourceRegistry(), [connector])
+
+        self.assertEqual(set(handlers), {"tool.demo.echo"})
+        self.assertEqual(handlers["tool.demo.echo"](), "1.0.0")
+        self.assertEqual(set(connector_implementations([connector])), {"tool.demo.echo"})
+
+    def test_two_versions_of_one_tool_get_their_own_handlers(self) -> None:
+        connector = _VersionedConnector(["1.0.0", "2.0.0"])
+        registry = ResourceRegistry()
+
+        installed = install_connectors(registry, [connector])
+        listed = connector_implementations([connector])
+
+        for handlers in (installed, listed):
+            # A bare id that two versions share would bind the newer handler
+            # to the older definition, so it is not offered at all.
+            self.assertEqual(set(handlers), {"tool.demo.echo@1.0.0", "tool.demo.echo@2.0.0"})
+            self.assertEqual(handlers["tool.demo.echo@1.0.0"](), "1.0.0")
+            self.assertEqual(handlers["tool.demo.echo@2.0.0"](), "2.0.0")
+        self.assertEqual(
+            sorted(definition.identity for definition in registry.all()),
+            ["tool.demo.echo@1.0.0", "tool.demo.echo@2.0.0"],
+        )
+
+    def test_each_version_runs_its_own_handler_through_the_kernel(self) -> None:
+        for version in ("1.0.0", "2.0.0"):
+            with self.subTest(version=version):
+                kernel = Kernel(
+                    ResourceRegistry(),
+                    MockLLMProvider(),
+                    connectors=[_VersionedConnector(["1.0.0", "2.0.0"])],
+                )
+                definition = kernel.registry.get("tool.demo.echo", version)
+
+                activation = kernel.activator.activate(definition, kernel.policy_context)
+
+                self.assertTrue(activation.ok, activation.error)
+                self.assertEqual(activation.activated.handler(), version)
+
+    def test_a_version_registered_next_to_an_existing_one_is_keyed_by_version(self) -> None:
+        registry = ResourceRegistry()
+        install_connectors(registry, [_VersionedConnector(["1.0.0"])])
+
+        handlers = install_connectors(registry, [_VersionedConnector(["2.0.0"])])
+
+        self.assertEqual(set(handlers), {"tool.demo.echo@2.0.0"})
+        self.assertEqual(handlers["tool.demo.echo@2.0.0"](), "2.0.0")
 
     def test_cli_exposes_builtin_connector_configuration(self) -> None:
         parser = build_parser()

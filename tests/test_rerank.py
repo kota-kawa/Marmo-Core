@@ -136,6 +136,20 @@ class CrossEncoderRerankRetrieverTests(unittest.TestCase):
         )
         self.assertEqual(len(limited), 1)
 
+    def test_a_single_candidate_still_meets_the_score_floor_and_per_kind_limits(self) -> None:
+        retriever = CrossEncoderRerankRetriever(_ConstantCrossEncoder(), LexicalRetriever())
+        task = "dunning letters"  # only one resource mentions dunning
+        kept = retriever.search(self.registry, SearchQuery(task=task, top_k=3))
+        self.assertEqual([r.resource.metadata.id for r in kept], ["skill.billing.dunning"])
+
+        self.assertEqual(retriever.search(self.registry, SearchQuery(task=task, top_k=3, min_score=0.99)), [])
+        self.assertEqual(
+            retriever.search(self.registry, SearchQuery(task=task, top_k=3, per_kind_limits={"skill": 0})), []
+        )
+        self.assertEqual(
+            len(retriever.search(self.registry, SearchQuery(task=task, top_k=3, per_kind_limits={"skill": 1}))), 1
+        )
+
     def test_score_count_mismatch_is_rejected(self) -> None:
         retriever = CrossEncoderRerankRetriever(_BadCountCrossEncoder(), LexicalRetriever())
         with self.assertRaises(ValueError):

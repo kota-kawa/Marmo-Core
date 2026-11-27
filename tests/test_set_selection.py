@@ -6,6 +6,7 @@ import unittest
 
 from marmo_core import (
     BranchAndBoundSetSelector,
+    CoverageSetSelector,
     GreedyConstrainedSetSelector,
     BeamSearchSetSelector,
     RepairingSetSelector,
@@ -402,3 +403,133 @@ class PermissionEscalationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _identities(selection: SelectionResult) -> set[str]:
+    return {r.resource.identity for r in selection.results}
+
+
+class SharedDependencyTests(unittest.TestCase):
+    """Two routes share one dependency: it is counted once, not rejected."""
+
+    def _results(self) -> list[SearchResult]:
+        shared = _resource("skill.shared", kind="skill", cost_estimate=2.0)
+        route_a = _resource("tool.a", dependencies=["skill.shared"], cost_estimate=1.0)
+        route_b = _resource("tool.b", dependencies=["skill.shared"], cost_estimate=1.0)
+        return [_result(route_a, 0.9), _result(route_b, 0.8), _result(shared, 0.4)]
+
+    def test_beam_search_merges_routes_that_share_a_dependency(self) -> None:
+        ctx = SelectionContext(max_resources=3, budget_cost=4.0, per_kind_limits={"tool": 2, "skill": 1})
+        beam = BeamSearchSetSelector(beam_width=64).select(self._results(), context=ctx)
+        bnb = BranchAndBoundSetSelector().select(self._results(), context=ctx)
+        self.assertEqual(_ids(beam), {"tool.a", "tool.b", "skill.shared"})
+        self.assertEqual(len(beam.results), 3)
+        self.assertIn("utility=2.1", beam.reason)
+        self.assertEqual(_ids(beam), _ids(bnb))
+
+    def test_beam_search_charges_the_shared_dependency_once_against_the_budget(self) -> None:
+        # Counting the skill twice would cost 6.0 and drop the second route.
+        ctx = SelectionContext(max_resources=3, budget_cost=4.0, per_kind_limits={"tool": 2, "skill": 1})
+        beam = BeamSearchSetSelector(beam_width=64).select(self._results(), context=ctx)
+        self.assertIn("cost=4", beam.reason)
+        tight = SelectionContext(max_resources=3, budget_cost=3.5, per_kind_limits={"tool": 2, "skill": 1})
+        self.assertEqual(_ids(BeamSearchSetSelector(beam_width=64).select(self._results(), context=tight)), {"tool.a", "skill.shared"})
+
+    def test_beam_search_still_honours_resource_and_kind_limits(self) -> None:
+        by_count = SelectionContext(max_resources=2)
+        self.assertEqual(
+            _ids(BeamSearchSetSelector(beam_width=64).select(self._results(), context=by_count)),
+            {"tool.a", "skill.shared"},
+        )
+        by_kind = SelectionContext(per_kind_limits={"tool": 1})
+        self.assertEqual(
+            _ids(BeamSearchSetSelector(beam_width=64).select(self._results(), context=by_kind)),
+            {"tool.a", "skill.shared"},
+        )
+
+    def test_beam_search_still_keeps_conflicting_routes_apart(self) -> None:
+        shared = _resource("skill.shared", kind="skill")
+        route_a = _resource("tool.a", dependencies=["skill.shared"], conflicts_with=["tool.b"])
+        route_b = _resource("tool.b", dependencies=["skill.shared"])
+        results = [_result(route_a, 0.9), _result(route_b, 0.8), _result(shared, 0.4)]
+        beam = BeamSearchSetSelector(beam_width=64).select(results, context=SelectionContext())
+        self.assertEqual(_ids(beam), {"tool.a", "skill.shared"})
+
+    def test_a_root_that_is_another_units_dependency_is_not_selected_twice(self) -> None:
+        skill = _resource("skill.s", kind="skill")
+        tool = _resource("tool.t", dependencies=["skill.s"])
+        results = [_result(tool, 0.9), _result(skill, 0.8)]
+        beam = BeamSearchSetSelector(beam_width=64).select(results, context=SelectionContext())
+        self.assertEqual(len(beam.results), 2)
+
+
+class VersionedDependencyTests(unittest.TestCase):
+    """``id@version`` resolves in every solver; a bare id shared by versions is ambiguous."""
+
+    def _selectors(self) -> list[tuple[str, SetSelector]]:
+        selectors: list[tuple[str, SetSelector]] = [
+            ("greedy", GreedyConstrainedSetSelector()),
+            ("beam", BeamSearchSetSelector(beam_width=8)),
+            ("branch-and-bound", BranchAndBoundSetSelector()),
+            ("top-k expanded", TopKSetSelector(1, expand_dependencies=True)),
+            ("coverage", CoverageSetSelector()),
+        ]
+        return selectors
+
+    def test_a_versioned_dependency_is_found_in_the_pool(self) -> None:
+        skill = _resource("skill.a", kind="skill", version="2.0.0")
+        tool = _resource("tool.a", dependencies=["skill.a@2.0.0"])
+        results = [_result(tool, 0.9), _result(skill, 0.4)]
+        for name, selector in self._selectors():
+            with self.subTest(selector=name):
+                selection = selector.select(results, context=SelectionContext())
+                self.assertEqual(selection.status, "selected", selection.reason)
+                self.assertEqual(_identities(selection), {"tool.a@1.0.0", "skill.a@2.0.0"})
+
+    def test_a_dependency_on_another_version_is_missing(self) -> None:
+        skill = _resource("skill.a", kind="skill", version="1.0.0")
+        tool = _resource("tool.a", dependencies=["skill.a@2.0.0"])
+        results = [_result(tool, 0.9), _result(skill, 0.4)]
+        for name, selector in self._selectors():
+            with self.subTest(selector=name):
+                selection = selector.select(results, context=SelectionContext())
+                self.assertNotIn("tool.a", _ids(selection), selection.reason)
+        selection = GreedyConstrainedSetSelector().select(results, context=SelectionContext())
+        self.assertIn("skill.a@2.0.0", selection.reason)
+
+    def test_the_named_version_is_chosen_when_the_pool_holds_several(self) -> None:
+        old = _resource("skill.a", kind="skill", version="1.0.0")
+        new = _resource("skill.a", kind="skill", version="2.0.0")
+        tool = _resource("tool.a", dependencies=["skill.a@1.0.0"])
+        results = [_result(tool, 0.9), _result(new, 0.8), _result(old, 0.3)]
+        for name, selector in self._selectors():
+            with self.subTest(selector=name):
+                selection = selector.select(results, context=SelectionContext(max_resources=2))
+                self.assertIn("skill.a@1.0.0", _identities(selection), selection.reason)
+                self.assertIn("tool.a@1.0.0", _identities(selection))
+
+    def test_a_bare_id_shared_by_several_versions_is_ambiguous(self) -> None:
+        old = _resource("skill.a", kind="skill", version="1.0.0")
+        new = _resource("skill.a", kind="skill", version="2.0.0")
+        tool = _resource("tool.a", dependencies=["skill.a"])
+        results = [_result(tool, 0.9), _result(new, 0.8), _result(old, 0.3)]
+        for name, selector in self._selectors():
+            with self.subTest(selector=name):
+                selection = selector.select(results, context=SelectionContext())
+                self.assertNotIn("tool.a", _ids(selection), selection.reason)
+
+    def test_a_bare_id_names_its_only_version(self) -> None:
+        skill = _resource("skill.a", kind="skill", version="2.0.0")
+        tool = _resource("tool.a", dependencies=["skill.a"])
+        results = [_result(tool, 0.9), _result(skill, 0.4)]
+        for name, selector in self._selectors():
+            with self.subTest(selector=name):
+                selection = selector.select(results, context=SelectionContext())
+                self.assertEqual(_identities(selection), {"tool.a@1.0.0", "skill.a@2.0.0"}, selection.reason)
+
+    def test_two_versions_of_one_id_do_not_overwrite_each_other(self) -> None:
+        old = _resource("tool.a", version="1.0.0")
+        new = _resource("tool.a", version="2.0.0")
+        results = [_result(new, 0.9), _result(old, 0.8)]
+        selection = BranchAndBoundSetSelector().select(results, context=SelectionContext())
+        self.assertEqual(_identities(selection), {"tool.a@1.0.0", "tool.a@2.0.0"})

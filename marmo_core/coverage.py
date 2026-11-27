@@ -51,6 +51,7 @@ from .selector import (
     SelectionContext,
     SetSelector,
     _build_units,
+    _candidate_pool,
     _conflicts,
     _gate_admissible,
     _no_candidates,
@@ -110,7 +111,7 @@ class CoverageSetSelector(SetSelector):
     ) -> SelectionResult:
         ctx = context or self.default_context
         results, notes = _gate_admissible(results, ctx)
-        pool = {result.resource.metadata.id: result for result in results}
+        pool = _candidate_pool(results)
         candidates = [
             r
             for r in results
@@ -173,19 +174,21 @@ class CoverageSetSelector(SetSelector):
         if self.include_within is not None and picked and top_relevance > 0.0:
             floor = self.include_within * top_relevance
             by_root = {unit.root: unit for unit in units}
+            key_of = {member.resource.identity: key for key, member in pool.items()}
             for candidate in candidates:
-                near = by_root.get(candidate.resource.metadata.id)
+                near = by_root.get(key_of[candidate.resource.identity])
                 if near is None or float(candidate.components.get("relevance", 1.0)) < floor:
                     continue
-                members = [pool[uid] for uid in near.ids if uid not in picked]
+                added = [uid for uid in near.ids if uid not in picked]
+                members = [pool[uid] for uid in added]
                 if not members:
                     continue
                 misfit = self._misfit(members, picked, counts, total_cost, budget, ctx)
                 if misfit is not None:
                     unfit.setdefault(near.root, misfit)
                     continue
-                for member in members:
-                    picked[member.resource.metadata.id] = member
+                for uid, member in zip(added, members):
+                    picked[uid] = member
                     counts[member.resource.metadata.kind] += 1
                     total_cost += _total_cost([member])
                 unfit.pop(near.root, None)
@@ -263,4 +266,11 @@ def _facet_keys(results: list[SearchResult]) -> list[str]:
 
 
 def _facet_value(result: SearchResult, key: str) -> float:
-    return float(result.components.get(key, 0.0))
+    if key in result.components:
+        return float(result.components[key])
+    # A result with no ``facet.*`` at all was ranked for the goal alone (its
+    # search was not decomposed, e.g. the decomposer failed that time), so its
+    # relevance is its goal facet instead of zero next to decomposed results.
+    if key == f"{FACET_PREFIX}0" and not any(name.startswith(FACET_PREFIX) for name in result.components):
+        return float(result.components.get("relevance", 0.0))
+    return 0.0

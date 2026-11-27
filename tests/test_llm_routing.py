@@ -96,6 +96,19 @@ class LLMRerankRetrieverTests(unittest.TestCase):
             [result.resource.metadata.id for result in results], ["tool.beta", "tool.alpha"]
         )
 
+    def test_an_id_named_twice_takes_one_slot_of_the_final_ranking(self) -> None:
+        registry = ResourceRegistry()
+        for name in ("alpha", "beta", "gamma"):
+            registry.add(_tool(f"tool.{name}", f"Verify report quality for {name}."))
+        llm = MockLLMProvider(script=[LLMResponse(content='["tool.gamma", "tool.gamma", "tool.beta"]')])
+        retriever = LLMRerankRetriever(llm, LexicalRetriever(), rerank_pool=10)
+
+        results = retriever.search(registry, SearchQuery(task="verify report quality", top_k=3))
+
+        self.assertEqual(
+            [result.resource.metadata.id for result in results], ["tool.gamma", "tool.beta", "tool.alpha"]
+        )
+
     def test_inner_order_survives_llm_failure(self) -> None:
         class FailingLLM(MockLLMProvider):
             def complete(self, messages, tools=()):

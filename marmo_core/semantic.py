@@ -158,12 +158,27 @@ class OpenAICompatibleEmbeddingProvider(EmbeddingProvider):
                 response = self.transport(f"{self.base_url}/embeddings", payload, headers, self.timeout)
             except ProviderHTTPError as error:
                 raise with_missing_api_key_hint(error, self.api_key) from None
-            data = response.get("data")
-            if not isinstance(data, list) or len(data) != len(batch):
-                raise ValueError("embedding endpoint returned an unexpected payload shape")
-            ordered = sorted(data, key=lambda item: item.get("index", 0))
-            vectors.extend([list(map(float, item["embedding"])) for item in ordered])
+            vectors.extend(self._vectors_from(response, expected=len(batch)))
         return vectors
+
+    def _vectors_from(self, response: object, *, expected: int) -> list[list[float]]:
+        """The vectors of one ``/embeddings`` response, in request order.
+
+        A 200 reply is not necessarily the documented shape (a gateway's error
+        page, a missing key, a non-numeric entry), and every deviation is a
+        provider failure rather than whatever exception the parsing tripped on.
+        """
+
+        data = response.get("data") if isinstance(response, dict) else None
+        if not isinstance(data, list) or len(data) != expected:
+            raise ProviderError(message="embedding endpoint returned an unexpected payload shape")
+        try:
+            ordered = sorted(data, key=lambda item: item.get("index", 0))
+            return [list(map(float, item["embedding"])) for item in ordered]
+        except (AttributeError, KeyError, TypeError, ValueError):
+            raise ProviderError(
+                message="embedding endpoint returned an item without a numeric 'embedding' vector"
+            ) from None
 
 
 class HybridRetriever(Retriever):
@@ -230,26 +245,43 @@ class HybridRetriever(Retriever):
         # missed; they enter with zero lexical relevance and compete on the
         # blended score.
         pooled = {result.resource.identity for result in candidates}
+        extra: list[SearchResult] = []
         if self.vector_index is None:
             vectors = self._vectors_for(registry)
             semantic_scores = {
                 identity: _cosine_01(query_vector, vector) for identity, vector in vectors.items()
             }
-            nearest = sorted(
+            ranked = sorted(
                 (identity for identity in semantic_scores if identity not in pooled),
                 key=lambda identity: (semantic_scores[identity], identity),
                 reverse=True,
-            )[: self.candidate_pool]
+            )
+            # Documents the query's filters reject (another kind, say) must not
+            # use up the pool, so keep walking down the ranking until
+            # ``candidate_pool`` eligible ones are found or it runs out.
+            position = 0
+            while len(extra) < self.candidate_pool and position < len(ranked):
+                chunk = ranked[position : position + self.candidate_pool - len(extra)]
+                position += len(chunk)
+                extra += self.lexical.score_semantic_candidates(registry, widened, chunk)
         else:
             index = self._vector_index_for(registry)
-            found = index.nearest(query_vector, self.candidate_pool, exclude=pooled)
             semantic_scores = {
                 identity: _cosine_to_01(cosine)
                 for identity, cosine in index.similarity(query_vector, pooled).items()
             }
-            semantic_scores.update((identity, _cosine_to_01(cosine)) for identity, cosine in found)
-            nearest = [identity for identity, _ in found]
-        candidates += self.lexical.score_semantic_candidates(registry, widened, nearest)
+            skipped = set(pooled)
+            while len(extra) < self.candidate_pool:
+                found = index.nearest(query_vector, self.candidate_pool, exclude=skipped)
+                if not found:
+                    break
+                semantic_scores.update((identity, _cosine_to_01(cosine)) for identity, cosine in found)
+                skipped.update(identity for identity, _ in found)
+                eligible = self.lexical.score_semantic_candidates(
+                    registry, widened, [identity for identity, _ in found]
+                )
+                extra += eligible[: self.candidate_pool - len(extra)]
+        candidates += extra
         if not candidates:
             return []
         rescored: list[SearchResult] = []
@@ -351,7 +383,7 @@ def _post_json(url: str, payload: dict, headers: dict, timeout: float) -> dict:
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            return json.loads(response.read().decode("utf-8"))
+            raw = response.read()
     except urllib.error.HTTPError as exc:
         # Error bodies echo the rejected credential (OpenAI's 401 returns a
         # partially masked key) and the CLI prints them to stderr, so redact
@@ -367,6 +399,18 @@ def _post_json(url: str, payload: dict, headers: dict, timeout: float) -> dict:
         ) from None
     except urllib.error.URLError as exc:
         raise ProviderError(message=f"cannot reach {redact_credentials(url)}: {exc.reason}") from None
+    # A 200 whose body is not a JSON object (an HTML gateway page, an empty
+    # reply) is a provider failure, not a JSONDecodeError for the caller.
+    try:
+        parsed = json.loads(raw.decode("utf-8"))
+    except ValueError:
+        parsed = None
+    if not isinstance(parsed, dict):
+        snippet = redact_credentials(raw.decode("utf-8", errors="replace").strip()[:200])
+        raise ProviderError(
+            message=f"{redact_credentials(url)} returned a response that is not a JSON object: {snippet or '(empty)'}"
+        )
+    return parsed
 
 
 def with_missing_api_key_hint(

@@ -14,7 +14,7 @@ resource.
 Cold start means the cache is empty and every task misses, so a fallback
 pipeline is not optional — ``CaseBasedRouter`` always wraps one.
 
-Four guards decide whether a case may be replayed. Each exists because
+Five guards decide whether a case may be replayed. Each exists because
 skipping the pipeline also skips the safety and freshness properties the
 pipeline provided, and each is separately switchable so §15.4's ablations
 can measure it:
@@ -31,6 +31,13 @@ can measure it:
   ``escalate`` case is the mirror image: it may not be replayed once new
   permissions have been granted, because those grants are exactly what
   could make a set feasible.
+- **current constraints**: a cache hit skips retrieval and selection, so the
+  replayed set is checked against *today's* ``SearchQuery`` filters and
+  ``SelectionContext`` limits (kinds, tags, trust, side effects, per-kind
+  limits, ``max_resources``, ``budget_cost``, score and relevance floors,
+  gate denials). A case recorded under looser constraints is a miss, not a
+  way around them. Constraints the cache cannot verify (``task_spec``,
+  ``context_token_budget``) also miss.
 - **outcome admission** (``store_failures``): by default only cases whose
   execution succeeded are stored, so a wrong set cannot be locked in.
 - **outcome eviction**: a replayed case that then fails is dropped, so a
@@ -48,6 +55,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 import json
@@ -62,8 +70,9 @@ from .models import (
     SelectionResult,
     parse_resource_ref,
 )
+from .policy import static_denials
 from .registry import ResourceRegistry
-from .retriever import Retriever, _tokens
+from .retriever import Retriever, _normalize, _resource_search_text, _tokens
 from .selector import SelectionContext, SetSelector
 from .semantic import EmbeddingProvider, _cosine_01
 
@@ -377,6 +386,11 @@ class CaseBasedRouter:
         start = time.perf_counter()
         granted = set(context.granted_permissions)
         miss_reasons: list[str] = []
+        search_query = query or SearchQuery(
+            task=task,
+            granted_permissions=tuple(sorted(granted)),
+            top_k=self.top_k,
+        )
 
         for case, similarity in self.store.rank(task, limit=self.scan_depth):
             if similarity < self.threshold:
@@ -387,6 +401,10 @@ class CaseBasedRouter:
                 miss_reasons.append(reason)
                 continue
             selection = self._replay(case, registry, similarity)
+            violation = _constraint_violation(selection.results, context, search_query)
+            if violation:
+                miss_reasons.append(violation)
+                continue
             case.hits += 1
             return RoutingDecision(
                 selection=selection,
@@ -399,11 +417,6 @@ class CaseBasedRouter:
                 miss_reasons=tuple(miss_reasons),
             )
 
-        search_query = query or SearchQuery(
-            task=task,
-            granted_permissions=tuple(sorted(granted)),
-            top_k=self.top_k,
-        )
         candidates = self.retriever.search(registry, search_query)
         selection = self.selector.select(candidates, context=context)
         return RoutingDecision(
@@ -521,6 +534,69 @@ def resolve_case(
         except ResourceNotFoundError:
             return None
     return definitions
+
+
+def _constraint_violation(
+    results: Sequence[SearchResult], context: SelectionContext, query: SearchQuery
+) -> str:
+    """Return "" if a replayed set satisfies today's query and context, else why not.
+
+    The cached set was chosen under whatever constraints were active when it
+    was recorded; nothing guarantees they are the ones active now.
+    """
+
+    if context.task_spec is not None or context.context_token_budget is not None:
+        return "unverifiable-constraint"
+    if len(results) > min(query.top_k, context.max_resources):
+        return "set-size"
+    counts: Counter = Counter()
+    cost = Decimal(0)
+    for result in results:
+        metadata = result.resource.metadata
+        counts[metadata.kind] += 1
+        cost += Decimal(str(max(metadata.cost_estimate, 0.0)))
+        if (
+            (query.kinds and metadata.kind not in query.kinds)
+            or (query.trust_levels and metadata.trust_level not in query.trust_levels)
+            or (query.side_effects and metadata.side_effect not in query.side_effects)
+            or (query.tags and not set(query.tags) <= set(metadata.tags))
+            or not _matches_keywords(result.resource, query.keywords)
+        ):
+            return "query-filter"
+        if query.require_permissions and not set(metadata.required_permissions) <= set(
+            query.granted_permissions
+        ):
+            return "query-filter"
+        if result.score < max(query.min_score, context.min_score):
+            return "min-score"
+        if float(result.components.get("relevance", 0.0)) < context.min_relevance:
+            return "min-relevance"
+        if context.policy is not None and static_denials(result.resource, context.policy):
+            return "gate-denied"
+    for limits in (query.per_kind_limits, context.per_kind_limits):
+        if any(counts[kind] > limit for kind, limit in limits.items()):
+            return "per-kind-limit"
+    if context.budget_cost is not None and cost > Decimal(str(context.budget_cost)):
+        return "budget"
+    return ""
+
+
+def _matches_keywords(resource: ResourceDefinition, keywords: Sequence[str]) -> bool:
+    """The retriever's keyword filter, applied to one live definition."""
+
+    if not keywords:
+        return True
+    text = _resource_search_text(resource)
+    tokens = set(_tokens(text))
+    normalized = _normalize(text)
+    for keyword in keywords:
+        parts = _tokens(keyword)
+        if parts and all(part in tokens for part in parts):
+            continue
+        if _normalize(keyword) in normalized:
+            continue
+        return False
+    return True
 
 
 def _idf_cosine(left: Mapping[str, int], right: Mapping[str, int], idf: Mapping[str, float]) -> float:

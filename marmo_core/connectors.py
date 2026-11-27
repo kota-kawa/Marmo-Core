@@ -811,7 +811,15 @@ def connector_resources(connectors: Iterable[Connector]) -> tuple[ResourceDefini
 
 
 def connector_implementations(connectors: Iterable[Connector]) -> dict[str, Callable[..., Any]]:
-    return {tool.resource_id: tool.handler for tool in connector_tools(connectors)}
+    """Handlers by Tool id, or by ``id@version`` for an id with several versions.
+
+    Two versions of one Tool id must not share a handler, so such an id is
+    keyed by each version's identity and its bare id is left out: a bare id
+    that several versions carry names none of them, as in
+    ``ResourceRegistry.get``.
+    """
+
+    return _handlers(connector_tools(connectors))
 
 
 def install_connectors(
@@ -832,7 +840,32 @@ def install_connectors(
             )
     for tool in tools:
         registry.add(tool.definition)
-    return {tool.resource_id: tool.handler for tool in tools}
+    # Judge ambiguity against the whole registry: a Tool installed next to
+    # another version of its id, registered earlier or later, is keyed by version too.
+    return _handlers(
+        tools,
+        registered=(
+            (definition.metadata.id, definition.metadata.version)
+            for definition in registry.all(include_disabled=True)
+        ),
+    )
+
+
+def _handlers(
+    tools: Iterable[ConnectorTool],
+    *,
+    registered: Iterable[tuple[str, str]] = (),
+) -> dict[str, Callable[..., Any]]:
+    tools = tuple(tools)
+    versions: dict[str, set[str]] = {}
+    for resource_id, version in registered:
+        versions.setdefault(resource_id, set()).add(version)
+    for tool in tools:
+        versions.setdefault(tool.resource_id, set()).add(tool.definition.metadata.version)
+    return {
+        (tool.resource_id if len(versions[tool.resource_id]) == 1 else tool.definition.identity): tool.handler
+        for tool in tools
+    }
 
 
 def _deny_private_destination(hostname: str, port: int) -> None:

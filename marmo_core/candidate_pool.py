@@ -168,9 +168,11 @@ class KindBalancedCandidatePool(CandidatePool):
 
     Top-ups drop denied candidates too, and respect the selector's
     ``min_score`` floor: the point is to give the selector something it can
-    actually use. Filling the Tool slots does mean a goal can now be offered
-    a Tool that a crowded pool used to hide from it. That exposure is not
-    new -- the same Tool is selected in any registry small enough not to
+    actually use. For the same reason a candidate under that floor does not
+    count as filling its kind's share, so a kind whose only matches are weak
+    ones still gets the top-up. Filling the Tool slots does mean a goal can
+    now be offered a Tool that a crowded pool used to hide from it. That
+    exposure is not new -- the same Tool is selected in any registry small enough not to
     crowd -- but the crowding was masking it. The activation and execution
     gates, the HITL escalation for side-effecting resources, ``set_limits``,
     and a selector ``min_score`` remain the controls.
@@ -180,7 +182,11 @@ class KindBalancedCandidatePool(CandidatePool):
         query = _query(request)
         results = self._feasible(request.retriever.search(request.registry, query), request)
         limits = request.per_kind_limits
-        counts = Counter(result.resource.metadata.kind for result in results)
+        # A candidate under the selector's score floor is dropped right after
+        # this pool, so it must not fill the slot a top-up would fill.
+        counts = Counter(
+            result.resource.metadata.kind for result in results if result.score >= request.min_score
+        )
         seen = {result.resource.identity for result in results}
         shortfalls = {
             kind: limits[kind] - counts.get(kind, 0)

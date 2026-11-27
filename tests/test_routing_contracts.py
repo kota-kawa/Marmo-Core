@@ -140,6 +140,29 @@ class RoutingContractsTests(unittest.TestCase):
             TruthValue.UNKNOWN,
         )
 
+    def test_node_with_more_than_one_operator_is_ambiguous_and_never_drops_a_requirement(self) -> None:
+        read = {"action": "read", "entity_type": "document", "mode": "effect"}
+        send = {"action": "send", "entity_type": "document", "mode": "effect"}
+        nodes = (
+            {"all_of": [read], "one_of": [send]},
+            {"op": "one_of", "all_of": [read], "children": [send]},
+        )
+        for node in nodes:
+            with self.subTest(node=node):
+                spec = TaskSpec.from_mapping({"requirements": node})
+                self.assertTrue(any("ambiguous" in item for item in spec.unknown_items))
+                self.assertIsNone(spec.expression)
+
+        nested = TaskSpec.from_mapping(
+            {"requirements": {"all_of": [read, {"all_of": [read], "one_of": [send]}]}}
+        )
+        self.assertTrue(any("requirements[1] is ambiguous" in item for item in nested.unknown_items))
+
+        consistent = TaskSpec.from_mapping({"requirements": {"op": "one_of", "one_of": [read, send]}})
+        self.assertEqual(consistent.unknown_items, ())
+        self.assertIsInstance(consistent.expression, OneOf)
+
+
     def test_task_spec_round_trip_preserves_and_or_provenance_and_unknown_items(self) -> None:
         original = TaskSpec.from_mapping(
             {

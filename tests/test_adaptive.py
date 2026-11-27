@@ -13,9 +13,11 @@ from marmo_core import (
     LexicalRetriever,
     ResourceDefinition,
     ResourceRegistry,
+    PolicyContext,
     ResourceStats,
     RoutingCase,
     RoutingCaseStore,
+    SearchQuery,
     SelectionContext,
     outcomes_from_audit,
     resolve_case,
@@ -280,6 +282,134 @@ class RoutingCacheGuardTest(unittest.TestCase):
         self.assertEqual(decision.selection.status, "selected")
 
 
+class RoutingCacheConstraintTest(unittest.TestCase):
+    """A cache hit must satisfy the constraints of the current call."""
+
+    def _registry(self) -> ResourceRegistry:
+        return _registry(
+            _resource(
+                "tool.invoicing",
+                description="send monthly customer invoices for the billing run",
+                capabilities=["invoicing.execution"],
+                cost_estimate=7.0,
+                tags=["billing"],
+            ),
+            _resource(
+                "skill.invoicing",
+                kind="skill",
+                description="how to send monthly customer invoices for the billing run",
+            ),
+        )
+
+    def _warm(self, registry: ResourceRegistry) -> CaseBasedRouter:
+        router = _router(registry)
+        context = SelectionContext(task=INVOICE_TASK, min_relevance=0.0, min_score=0.0)
+        first = router.route(registry, INVOICE_TASK, context=context)
+        self.assertEqual(
+            {result.resource.metadata.id for result in first.selection.results},
+            {"tool.invoicing", "skill.invoicing"},
+        )
+        router.record(first, success=True)
+        return router
+
+    def test_a_cached_set_is_not_replayed_when_it_violates_the_current_constraints(self) -> None:
+        registry = self._registry()
+        router = self._warm(registry)
+        base = {"task": INVOICE_TASK, "min_relevance": 0.0, "min_score": 0.0}
+        cases = {
+            "budget": (SelectionContext(**base, budget_cost=1.0), None),
+            "set-size": (SelectionContext(**base, max_resources=1), None),
+            "per-kind-limit": (SelectionContext(**base, per_kind_limits={"tool": 0}), None),
+            "min-score": (SelectionContext(task=INVOICE_TASK, min_score=1.5), None),
+            "min-relevance": (SelectionContext(task=INVOICE_TASK, min_relevance=1.5), None),
+            "query-filter": (
+                SelectionContext(**base),
+                SearchQuery(task=INVOICE_TASK, kinds=("skill",)),
+            ),
+        }
+        for reason, (context, query) in cases.items():
+            with self.subTest(reason=reason):
+                decision = router.route(registry, INVOICE_TASK, context=context, query=query)
+                self.assertEqual(decision.source, "pipeline")
+                self.assertIn(reason, decision.miss_reasons)
+
+    def test_skill_only_query_never_returns_a_cached_tool(self) -> None:
+        registry = self._registry()
+        router = self._warm(registry)
+        decision = router.route(
+            registry,
+            INVOICE_TASK,
+            context=SelectionContext(task=INVOICE_TASK, min_relevance=0.0, min_score=0.0),
+            query=SearchQuery(task=INVOICE_TASK, kinds=("skill",), top_k=5),
+        )
+        self.assertEqual(decision.source, "pipeline")
+        self.assertEqual(
+            {result.resource.metadata.kind for result in decision.selection.results}, {"skill"}
+        )
+
+    def test_other_query_filters_and_gate_denials_are_enforced_on_a_hit(self) -> None:
+        registry = self._registry()
+        router = self._warm(registry)
+        context = SelectionContext(task=INVOICE_TASK, min_relevance=0.0, min_score=0.0)
+        for field, value in (
+            ("tags", ("missing-tag",)),
+            ("trust_levels", ("verified",)),
+            ("side_effects", ("irreversible",)),
+            ("keywords", ("orchestral",)),
+        ):
+            with self.subTest(field=field):
+                decision = router.route(
+                    registry,
+                    INVOICE_TASK,
+                    context=context,
+                    query=SearchQuery(task=INVOICE_TASK, top_k=5, **{field: value}),
+                )
+                self.assertEqual(decision.source, "pipeline")
+                self.assertIn("query-filter", decision.miss_reasons)
+
+        policy = PolicyContext(allowed_trust_levels=("verified",))
+        denied = router.route(
+            registry,
+            INVOICE_TASK,
+            context=SelectionContext(
+                task=INVOICE_TASK, min_relevance=0.0, min_score=0.0, policy=policy
+            ),
+        )
+        self.assertEqual(denied.source, "pipeline")
+        self.assertIn("gate-denied", denied.miss_reasons)
+
+    def test_a_hit_still_replays_when_every_constraint_holds(self) -> None:
+        registry = self._registry()
+        router = self._warm(registry)
+        decision = router.route(
+            registry,
+            INVOICE_TASK,
+            context=SelectionContext(
+                task=INVOICE_TASK,
+                min_relevance=0.0,
+                min_score=0.0,
+                budget_cost=7.0,
+                max_resources=2,
+                per_kind_limits={"tool": 1, "skill": 1},
+            ),
+            query=SearchQuery(task=INVOICE_TASK, tags=(), keywords=("invoices",), top_k=5),
+        )
+        self.assertEqual(decision.source, "cache")
+
+    def test_constraints_the_cache_cannot_verify_are_a_miss(self) -> None:
+        registry = self._registry()
+        router = self._warm(registry)
+        decision = router.route(
+            registry,
+            INVOICE_TASK,
+            context=SelectionContext(
+                task=INVOICE_TASK, min_relevance=0.0, min_score=0.0, context_token_budget=100
+            ),
+        )
+        self.assertEqual(decision.source, "pipeline")
+        self.assertIn("unverifiable-constraint", decision.miss_reasons)
+
+
 class RoutingCaseStoreTest(unittest.TestCase):
     def test_rank_orders_by_similarity(self) -> None:
         store = RoutingCaseStore(
@@ -414,7 +544,9 @@ class ExecutionEvaluatorTest(unittest.TestCase):
         outcomes = outcomes_from_audit(log)
         self.assertEqual(len(outcomes), 1)
         self.assertTrue(outcomes[0].success)
-        self.assertEqual(outcomes[0].resource_ids, ("tool.invoicing", "skill.invoicing"))
+        self.assertEqual(
+            outcomes[0].resource_ids, ("tool.invoicing@1.0.0", "skill.invoicing@1.0.0")
+        )
         self.assertAlmostEqual(outcomes[0].latency_ms, 8.0)
 
     def test_incomplete_traces_are_skipped(self) -> None:
@@ -433,6 +565,70 @@ class ExecutionEvaluatorTest(unittest.TestCase):
         evaluator = ExecutionEvaluator()
         evaluator.ingest_audit(log)
         self.assertLess(evaluator.stats_for("tool.a").success_rate, 0.5)
+
+    def test_a_task_waiting_for_approval_is_not_counted_as_a_failure(self) -> None:
+        log = AuditLog()
+        selected = {"task": "g", "selection_status": "selected", "selected": ["tool.a@1.0.0"]}
+        log.append("retrieve", selected, trace_id="paused")
+        log.append("task", {"goal": "g", "status": "escalated"}, trace_id="paused")
+        self.assertEqual(outcomes_from_audit(log), [])
+        evaluator = ExecutionEvaluator()
+        self.assertEqual(evaluator.ingest_audit(log), [])
+        self.assertIsNone(evaluator.stats_for("tool.a@1.0.0"))
+
+        # The same trace, once resumed and finished, counts by its final status.
+        log.append("retrieve", selected, trace_id="paused")
+        log.append("task", {"goal": "g", "status": "completed"}, trace_id="paused")
+        outcomes = outcomes_from_audit(log)
+        self.assertEqual([outcome.success for outcome in outcomes], [True])
+
+    def test_denied_and_cancelled_tasks_are_still_failures(self) -> None:
+        log = AuditLog()
+        for trace, status in (("d", "denied"), ("c", "cancelled")):
+            log.append(
+                "retrieve",
+                {"task": "g", "selection_status": "selected", "selected": ["tool.a@1.0.0"]},
+                trace_id=trace,
+            )
+            log.append("task", {"goal": "g", "status": status}, trace_id=trace)
+        self.assertEqual([o.success for o in outcomes_from_audit(log)], [False, False])
+
+    def test_audit_outcomes_are_credited_only_to_the_selected_version(self) -> None:
+        registry = _registry(
+            _resource("tool.a", version="1.0.0"),
+            _resource("tool.a", version="2.0.0"),
+            _resource("tool.b"),
+        )
+        log = AuditLog()
+        log.append(
+            "retrieve",
+            {"task": "g", "selection_status": "selected", "selected": ["tool.a@2.0.0", "tool.b@1.0.0"]},
+            trace_id="t",
+        )
+        log.append("task", {"goal": "g", "status": "completed"}, trace_id="t")
+
+        evaluator = ExecutionEvaluator()
+        evaluator.ingest_audit(log)
+        self.assertEqual(evaluator.apply(registry), 2)
+
+        self.assertIsNone(registry.get("tool.a", "1.0.0").metadata.stats.usage_count)
+        self.assertEqual(registry.get("tool.a", "2.0.0").metadata.stats.usage_count, 1)
+        self.assertEqual(registry.get("tool.b", "1.0.0").metadata.stats.usage_count, 1)
+        self.assertEqual(evaluator.attempts("tool.a@1.0.0"), 0)
+        self.assertEqual(evaluator.attempts("tool.a@2.0.0"), 1)
+        # The bare id is the id-level view across versions.
+        self.assertEqual(evaluator.attempts("tool.a"), 1)
+
+    def test_a_bare_id_observation_applies_to_every_version(self) -> None:
+        registry = _registry(
+            _resource("tool.a", version="1.0.0"), _resource("tool.a", version="2.0.0")
+        )
+        evaluator = ExecutionEvaluator()
+        evaluator.observe_task("t", ["tool.a"], success=True)
+        evaluator.observe_task("t", ["tool.a@2.0.0"], success=True)
+        self.assertEqual(evaluator.apply(registry), 2)
+        self.assertEqual(registry.get("tool.a", "1.0.0").metadata.stats.usage_count, 1)
+        self.assertEqual(registry.get("tool.a", "2.0.0").metadata.stats.usage_count, 2)
 
     def test_stats_feed_the_retrieval_score(self) -> None:
         """The loop is only closed if written stats change ranking (F-REG-05)."""

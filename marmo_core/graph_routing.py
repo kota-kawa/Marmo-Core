@@ -42,6 +42,13 @@ from .semantic import HybridRetriever
 class _MetadataGraph:
     """Edges over one registry snapshot: dependencies, dependents, siblings.
 
+    Nodes are ``id@version`` identities, so two versions of one resource stay
+    distinct. A dependency reference becomes an edge only when it names one
+    registered resource: ``id@version`` exactly, a bare ``id`` when a single
+    version carries it. A bare id that several versions share is ambiguous
+    (``ResourceRegistry.get`` refuses it the same way) and yields no edge,
+    like a reference to a resource that is not registered.
+
     ``max_namespace_size`` drops sibling edges for namespaces above the
     cap: a namespace shared by hundreds of resources (free-text capability
     boilerplate like "skill instructions" in imported catalogs) is a hub,
@@ -51,44 +58,68 @@ class _MetadataGraph:
 
     def __init__(self, registry: ResourceRegistry, *, max_namespace_size: int) -> None:
         definitions = registry.all()
-        self.identity_by_id: dict[str, str] = {}
+        identities_by_id: dict[str, list[str]] = defaultdict(list)
+        for definition in definitions:
+            identities_by_id[definition.metadata.id].append(definition.identity)
+        known = {definition.identity for definition in definitions}
+
+        def resolve(reference: str) -> str | None:
+            if "@" in reference:
+                return reference if reference in known else None
+            candidates = identities_by_id.get(reference, ())
+            return candidates[0] if len(candidates) == 1 else None
+
         self.dependencies: dict[str, tuple[str, ...]] = {}
         dependents: dict[str, set[str]] = defaultdict(set)
         members_by_namespace: dict[str, set[str]] = defaultdict(set)
-        namespaces_by_id: dict[str, tuple[str, ...]] = {}
+        namespaces: dict[str, tuple[str, ...]] = {}
         for definition in definitions:
             metadata = definition.metadata
-            self.identity_by_id[metadata.id] = definition.identity
-            self.dependencies[metadata.id] = metadata.dependencies
-            for dependency in metadata.dependencies:
-                dependents[dependency].add(metadata.id)
+            identity = definition.identity
+            resolved = tuple(
+                dict.fromkeys(
+                    target for target in map(resolve, metadata.dependencies) if target is not None
+                )
+            )
+            self.dependencies[identity] = resolved
+            for dependency in resolved:
+                dependents[dependency].add(identity)
             spaces = tuple(
                 dict.fromkeys(capability.split(".", 1)[0] for capability in metadata.capabilities)
             )
-            namespaces_by_id[metadata.id] = spaces
+            namespaces[identity] = spaces
             for space in spaces:
-                members_by_namespace[space].add(metadata.id)
-        self.dependents = {rid: tuple(sorted(ids)) for rid, ids in dependents.items()}
-        self.namespaces_by_id = namespaces_by_id
+                members_by_namespace[space].add(identity)
+        self.dependents = {
+            identity: tuple(sorted(found, key=_identity_order)) for identity, found in dependents.items()
+        }
+        self.namespaces = namespaces
         self.members_by_namespace = {
-            space: tuple(sorted(ids))
-            for space, ids in members_by_namespace.items()
-            if len(ids) <= max_namespace_size
+            space: tuple(sorted(found, key=_identity_order))
+            for space, found in members_by_namespace.items()
+            if len(found) <= max_namespace_size
         }
 
-    def neighbors(self, resource_id: str) -> list[tuple[str, str]]:
-        """(neighbor id, edge label) pairs one hop away from ``resource_id``."""
+    def neighbors(self, identity: str) -> list[tuple[str, str]]:
+        """(neighbor identity, edge label) pairs one hop away from ``identity``."""
 
         pairs: list[tuple[str, str]] = []
-        for dependency in self.dependencies.get(resource_id, ()):
+        for dependency in self.dependencies.get(identity, ()):
             pairs.append((dependency, "depends_on"))
-        for dependent in self.dependents.get(resource_id, ()):
+        for dependent in self.dependents.get(identity, ()):
             pairs.append((dependent, "dependent"))
-        for space in self.namespaces_by_id.get(resource_id, ()):
+        for space in self.namespaces.get(identity, ()):
             for member in self.members_by_namespace.get(space, ()):
-                if member != resource_id:
+                if member != identity:
                     pairs.append((member, f"capability:{space}"))
         return pairs
+
+
+def _identity_order(identity: str) -> tuple[str, str]:
+    """Sort key that orders ``id@version`` identities by id, then version."""
+
+    resource_id, _, version = identity.rpartition("@")
+    return resource_id, version
 
 
 class CapabilityGraphRetriever(Retriever):
@@ -183,7 +214,7 @@ class CapabilityGraphRetriever(Retriever):
             # metadata) cannot expand anything; letting them consume
             # top_seeds slots would stop the scan before it reaches the
             # first seed that actually carries structure.
-            if not graph.neighbors(seed.resource.metadata.id):
+            if not graph.neighbors(seed.resource.identity):
                 continue
             if self.min_seed_token_matches > 0:
                 seed_tokens = set(_tokens(_resource_search_text(seed.resource)))
@@ -203,10 +234,11 @@ class CapabilityGraphRetriever(Retriever):
         inherited: dict[str, float] = {}
         provenance: dict[str, tuple[str, str]] = {}
         for seed in qualified:
+            seed_node = seed.resource.identity
             seed_id = seed.resource.metadata.id
             seed_relevance = float(seed.components.get("relevance", 0.0))
-            frontier = [(seed_id, seed_relevance)]
-            visited = {seed_id}
+            frontier = [(seed_node, seed_relevance)]
+            visited = {seed_node}
             for _ in range(self.max_hops):
                 next_frontier: list[tuple[str, float]] = []
                 for current, current_relevance in frontier:
@@ -221,16 +253,12 @@ class CapabilityGraphRetriever(Retriever):
                         next_frontier.append((neighbor, passed))
                 frontier = next_frontier
 
-        pooled_ids = {seed.resource.metadata.id for seed in seeds}
+        pooled = {seed.resource.identity for seed in seeds}
         missing = sorted(
-            (rid for rid in inherited if rid not in pooled_ids),
-            key=lambda rid: (-inherited[rid], rid),
+            (node for node in inherited if node not in pooled),
+            key=lambda node: (-inherited[node], _identity_order(node)),
         )[: self.max_expanded]
-        expanded = self.lexical.score_semantic_candidates(
-            registry,
-            widened,
-            [graph.identity_by_id[rid] for rid in missing if rid in graph.identity_by_id],
-        )
+        expanded = self.lexical.score_semantic_candidates(registry, widened, missing)
         # Structural additions get reserved pool slots instead of competing
         # on composite score: a workbench tool reached over a declared
         # dependency/capability edge carries cost and community-trust
@@ -239,12 +267,12 @@ class CapabilityGraphRetriever(Retriever):
         # selector can never repair a closure whose members were truncated
         # out of the pool. Reserving |expanded| slots evicts the lowest-
         # scoring unstructured candidates instead.
-        reserved_ids = {result.resource.metadata.id for result in expanded}
+        reserved = {result.resource.identity for result in expanded}
 
         merged: list[SearchResult] = []
         for result in list(seeds) + expanded:
-            resource_id = result.resource.metadata.id
-            graph_relevance = inherited.get(resource_id, 0.0)
+            node = result.resource.identity
+            graph_relevance = inherited.get(node, 0.0)
             own_relevance = float(result.components.get("relevance", 0.0))
             if graph_relevance <= own_relevance:
                 merged.append(result)
@@ -255,19 +283,19 @@ class CapabilityGraphRetriever(Retriever):
             components = dict(result.components)
             components["relevance"] = graph_relevance
             components["graph"] = graph_relevance
-            seed_id, edge = provenance[resource_id]
+            seed_id, edge = provenance[node]
             reasons = result.reasons + (
                 f"graph expansion: inherited relevance {graph_relevance:.2f} from {seed_id} via {edge}",
             )
             merged.append(SearchResult(result.resource, score, reasons, components))
-        return self._finalize(merged, query, reserved_ids=reserved_ids)
+        return self._finalize(merged, query, reserved=reserved)
 
     def _finalize(
         self,
         results: list[SearchResult],
         query: SearchQuery,
         *,
-        reserved_ids: AbstractSet[str] = frozenset(),
+        reserved: AbstractSet[str] = frozenset(),
     ) -> list[SearchResult]:
         ordered = sorted(
             results,
@@ -279,16 +307,14 @@ class CapabilityGraphRetriever(Retriever):
             reverse=True,
         )
         filtered = [result for result in ordered if result.score >= query.min_score]
-        if reserved_ids and len(filtered) > query.top_k:
-            reserved = [
-                result for result in filtered if result.resource.metadata.id in reserved_ids
-            ][: query.top_k]
-            keep = query.top_k - len(reserved)
-            head = [
-                result for result in filtered if result.resource.metadata.id not in reserved_ids
-            ][:keep]
+        if reserved and len(filtered) > query.top_k:
+            pinned = [result for result in filtered if result.resource.identity in reserved][
+                : query.top_k
+            ]
+            keep = query.top_k - len(pinned)
+            head = [result for result in filtered if result.resource.identity not in reserved][:keep]
             filtered = sorted(
-                head + reserved,
+                head + pinned,
                 key=lambda item: (
                     item.score,
                     item.resource.metadata.trust_level != "untrusted",

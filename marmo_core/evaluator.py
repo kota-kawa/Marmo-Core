@@ -21,6 +21,11 @@ Two deliberate design points, both of which the §15.4 experiments depend on:
   smoothed toward ``prior_success_rate`` with ``prior_weight`` pseudo-counts
   (a Beta(α, β) posterior mean), which is also the exact quantity 案D's
   Thompson sampling will sample from rather than average.
+- **Credit goes to the version that was selected.** An audit log names the
+  selected ``id@version``; stats are tallied per identity and written back
+  only onto that version. A bare ``id`` (``observe_task`` with an unversioned
+  reference) is an explicit statement about the id, so it applies to every
+  version of it.
 - **Set-level credit assignment is unsolved here.** A task activates a set;
   the outcome is observed for the *set*. This evaluator attributes the task
   outcome, latency, and cost to every participating member. That is the
@@ -43,7 +48,11 @@ from .registry import ResourceRegistry
 
 @dataclass(frozen=True)
 class ExecutionOutcome:
-    """What one completed task tells us about the resources it used."""
+    """What one completed task tells us about the resources it used.
+
+    ``resource_ids`` hold ``id@version`` identities when the outcome came from
+    an audit log, and may be bare ids when supplied by hand.
+    """
 
     task: str
     resource_ids: tuple[str, ...]
@@ -143,11 +152,37 @@ class ExecutionEvaluator:
     # -- readout ---------------------------------------------------------------
 
     def attempts(self, resource_id: str) -> int:
-        tally = self._tallies.get(resource_id)
+        tally = self._tally_for(resource_id)
         return tally.attempts if tally else 0
 
+    def _tally_for(self, reference: str) -> _Tally | None:
+        """Observations for ``id@version`` (plus bare-id ones) or, for a bare id, every version."""
+
+        resource_id, version = parse_resource_ref(reference)
+        if version is None:
+            matching = [
+                tally
+                for key, tally in self._tallies.items()
+                if parse_resource_ref(key)[0] == resource_id
+            ]
+        else:
+            matching = [
+                tally
+                for key in (reference, resource_id)
+                if (tally := self._tallies.get(key)) is not None
+            ]
+        if not matching:
+            return None
+        return _Tally(
+            attempts=sum(tally.attempts for tally in matching),
+            successes=sum(tally.successes for tally in matching),
+            latency_total=sum(tally.latency_total for tally in matching),
+            cost_total=sum(tally.cost_total for tally in matching),
+            last_used_at=max(tally.last_used_at for tally in matching),
+        )
+
     def stats_for(self, resource_id: str) -> ResourceStats | None:
-        tally = self._tallies.get(resource_id)
+        tally = self._tally_for(resource_id)
         if tally is None or tally.attempts == 0:
             return None
         smoothed = (tally.successes + self.prior_weight * self.prior_success_rate) / (
@@ -184,7 +219,7 @@ class ExecutionEvaluator:
 
         updated = 0
         for definition in registry.all():
-            stats = self.stats_for(definition.metadata.id)
+            stats = self.stats_for(definition.identity)
             if stats is None or stats == definition.metadata.stats:
                 continue
             registry.replace(
@@ -212,9 +247,13 @@ def outcomes_from_audit(audit_log: AuditLog | Sequence[AuditRecord]) -> list[Exe
     """Reconstruct per-task outcomes from a hash-chained kernel audit log.
 
     The kernel writes one ``retrieve`` record (which set was selected) and
-    one terminal ``task`` record (how it ended) per trace id; ``execute``
-    records carry per-tool timings. Traces without both anchors are skipped
-    rather than guessed at — an incomplete trace is not evidence.
+    one ``task`` record (how it ended) per trace id; ``execute`` records carry
+    per-tool timings. Traces without both anchors are skipped rather than
+    guessed at — an incomplete trace is not evidence. So is a trace whose
+    last ``task`` record is ``escalated``: the task is paused awaiting a human
+    answer and has not run to an outcome yet (a resumed task appends a later
+    record under the same trace id). Resources keep their ``id@version``
+    identity so credit lands on the version that was selected.
     """
 
     records = audit_log.records if isinstance(audit_log, AuditLog) else list(audit_log)
@@ -226,9 +265,7 @@ def outcomes_from_audit(audit_log: AuditLog | Sequence[AuditRecord]) -> list[Exe
         payload = record.payload
         if record.kind == "retrieve":
             if payload.get("selection_status") == "selected":
-                bucket["selected"] = [
-                    parse_resource_ref(str(identity))[0] for identity in payload.get("selected", [])
-                ]
+                bucket["selected"] = [str(identity) for identity in payload.get("selected", [])]
             bucket["goal"] = str(payload.get("task", "")) or bucket["goal"]
         elif record.kind == "execute":
             elapsed = payload.get("elapsed_ms")
@@ -244,6 +281,8 @@ def outcomes_from_audit(audit_log: AuditLog | Sequence[AuditRecord]) -> list[Exe
         if bucket["selected"] is None or bucket["task"] is None:
             continue
         status = str(bucket["task"].get("status", ""))
+        if status == "escalated":
+            continue
         outcomes.append(
             ExecutionOutcome(
                 task=bucket["goal"],

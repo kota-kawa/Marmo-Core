@@ -22,8 +22,10 @@ resource whose group is not selected in stage 1 can never be recovered in
 stage 2. Benchmarks therefore measure Routed vs Oracle Cluster Recall via
 the public ``partition`` / ``route`` methods rather than treating the
 retriever as a black box. When the coarse stage has no signal at all
-(empty task, zero group scores) the retriever falls back to the flat base
-search instead of returning nothing.
+(empty task, zero group scores), or none of the scoring groups holds a
+resource the query's kind, trust, side-effect, tag, or permission filters
+accept, the retriever falls back to the flat base search instead of
+returning nothing; groups without such a resource never use up ``route_k``.
 """
 
 from __future__ import annotations
@@ -259,8 +261,15 @@ class HierarchicalRetriever(Retriever):
             # No coarse signal (empty task or zero overlap): degrade to the
             # flat base search rather than returning nothing.
             return self.base.search(registry, query)
-        selected = tuple(decision.group for decision in routed[: self.route_k])
         state = self._state_for(registry)
+        # Groups holding nothing the query's filters accept (no Tool in the
+        # group when only Tools are wanted) must not use up the route budget;
+        # when none of the scoring groups can serve the query, the routing
+        # signal says nothing about where the answer is, so search flat.
+        eligible = [decision for decision in routed if state.can_serve(decision.group, query)]
+        if not eligible:
+            return self.base.search(registry, query)
+        selected = tuple(decision.group for decision in eligible[: self.route_k])
         return self.base.search(state.union_registry(selected), query)
 
     # -- cached per-registry state ---------------------------------------------
@@ -321,8 +330,11 @@ class _HierarchyState:
 
         Called only when the registry's indexed text is unchanged, so every
         member keeps its identity and its group; the token statistics and the
-        centroids stay valid. The routed sub-registries are built from the old
-        objects, so they are dropped and rebuilt on demand.
+        centroids stay valid. The routed sub-registries are kept and have the
+        new objects swapped in: replacing a definition whose text is unchanged
+        moves their ``revision`` but not their ``content_revision``, so a hybrid
+        base retriever keeps the document embeddings it cached for them instead
+        of embedding the routed members again after every stats write.
         """
 
         by_identity = {definition.identity: definition for definition in definitions}
@@ -330,7 +342,11 @@ class _HierarchyState:
             group: [by_identity.get(member.identity, member) for member in members]
             for group, members in self.groups.items()
         }
-        self._unions.clear()
+        for union in self._unions.values():
+            for member in union.all():
+                current = by_identity.get(member.identity)
+                if current is not None and current is not member:
+                    union.replace(current)
 
     def bm25(self, query_tokens: Sequence[str]) -> dict[str, float]:
         scores: dict[str, float] = defaultdict(float)
@@ -367,6 +383,38 @@ class _HierarchyState:
             centroids[group] = [value / len(vectors) for value in centroid]
         self._centroids[key] = centroids
         return centroids
+
+    def can_serve(self, group: str, query: SearchQuery) -> bool:
+        """Does ``group`` hold a member the query's metadata filters accept?
+
+        Only the filters that read declared metadata are checked (kinds, trust
+        levels, side effects, tags, permissions); a keyword filter is left to
+        the base retriever.
+        """
+
+        if not (
+            query.kinds
+            or query.trust_levels
+            or query.side_effects
+            or query.tags
+            or query.require_permissions
+        ):
+            return True
+        granted = set(query.granted_permissions)
+        for definition in self.groups.get(group, ()):
+            metadata = definition.metadata
+            if query.kinds and metadata.kind not in query.kinds:
+                continue
+            if query.trust_levels and metadata.trust_level not in query.trust_levels:
+                continue
+            if query.side_effects and metadata.side_effect not in query.side_effects:
+                continue
+            if query.tags and not set(query.tags).issubset(metadata.tags):
+                continue
+            if query.require_permissions and not set(metadata.required_permissions).issubset(granted):
+                continue
+            return True
+        return False
 
     def union_registry(self, selected: tuple[str, ...]) -> ResourceRegistry:
         key = tuple(sorted(selected))

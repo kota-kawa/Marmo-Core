@@ -197,7 +197,7 @@ class GreedyConstrainedSetSelector(SetSelector):
     ) -> SelectionResult:
         ctx = context or self.default_context
         results, notes = _gate_admissible(results, ctx)
-        pool = {result.resource.metadata.id: result for result in results}
+        pool = _candidate_pool(results)
         # min_score gates on the composite score; min_relevance gates on the
         # text-relevance component alone. The composite mixes cost/trust/
         # latency, so with semantic retrievers even an off-topic resource
@@ -252,15 +252,15 @@ class GreedyConstrainedSetSelector(SetSelector):
                 continue
             for kind, extra in unit_kind_counts.items():
                 counts[kind] += extra
-            for member in unit:
-                picked[member.resource.metadata.id] = member
+            for uid in unit_entry.ids:
+                picked[uid] = pool[uid]
             total_cost += unit_cost
 
         escalation = _permission_escalation(set(picked), units, blocked, pool, ctx, notes)
         if escalation is not None:
             return escalation
         if picked:
-            ordered = tuple(sorted(picked.values(), key=lambda r: (-r.score, r.resource.metadata.id)))
+            ordered = tuple(sorted(picked.values(), key=_score_order))
             reason = (
                 f"greedy selected {len(ordered)} resource(s) with dependency closure, "
                 f"conflict and budget constraints (cost={total_cost:g})"
@@ -292,7 +292,7 @@ class BeamSearchSetSelector(SetSelector):
     ) -> SelectionResult:
         ctx = context or self.default_context
         results, notes = _gate_admissible(results, ctx)
-        pool = {result.resource.metadata.id: result for result in results}
+        pool = _candidate_pool(results)
 
         candidates = [
             r
@@ -314,25 +314,28 @@ class BeamSearchSetSelector(SetSelector):
         for unit_entry in units:
             unit_ids = unit_entry.ids
             next_beam = dict(beam)
-            unit_members = [pool[uid] for uid in unit_ids]
-            unit_cost = _total_cost(unit_members)
-
-            unit_counts: dict[str, int] = defaultdict(int)
-            for m in unit_members:
-                unit_counts[m.resource.metadata.kind] += 1
 
             for state_ids, (state_util, state_cost, state_counts) in beam.items():
-                if any(uid in state_ids for uid in unit_ids):
+                # Units may share dependencies (and a root may already be some
+                # other unit's dependency): only what the state does not hold
+                # yet adds cost, count and utility.
+                added_ids = [uid for uid in unit_ids if uid not in state_ids]
+                if not added_ids:
+                    continue
+                added = [pool[uid] for uid in added_ids]
+                added_cost = _total_cost(added)
+
+                if len(state_ids) + len(added_ids) > ctx.max_resources:
                     continue
 
-                if len(state_ids) + len(unit_ids) > ctx.max_resources:
+                if budget is not None and state_cost + added_cost > budget:
                     continue
 
-                if budget is not None and state_cost + unit_cost > budget:
-                    continue
-
+                added_counts: dict[str, int] = defaultdict(int)
+                for m in added:
+                    added_counts[m.resource.metadata.kind] += 1
                 limit_exceeded = False
-                for kind, extra in unit_counts.items():
+                for kind, extra in added_counts.items():
                     if ctx.per_kind_limits.get(kind) is not None:
                         if state_counts[kind] + extra > ctx.per_kind_limits[kind]:
                             limit_exceeded = True
@@ -341,14 +344,14 @@ class BeamSearchSetSelector(SetSelector):
                     continue
 
                 picked_results = {uid: pool[uid] for uid in state_ids}
-                if _conflicts(unit_members, picked_results):
+                if _conflicts(added, picked_results):
                     continue
 
-                new_ids = state_ids | frozenset(unit_ids)
-                new_util = state_util + sum(pool[uid].score for uid in unit_ids)
-                new_cost = state_cost + unit_cost
+                new_ids = state_ids | frozenset(added_ids)
+                new_util = state_util + sum(m.score for m in added)
+                new_cost = state_cost + added_cost
                 new_counts = state_counts.copy()
-                for kind, extra in unit_counts.items():
+                for kind, extra in added_counts.items():
                     new_counts[kind] += extra
 
                 if new_ids not in next_beam or new_util > next_beam[new_ids][0]:
@@ -373,7 +376,7 @@ class BeamSearchSetSelector(SetSelector):
             return escalation
         if best_state_ids:
             picked = [pool[uid] for uid in best_state_ids]
-            ordered = tuple(sorted(picked, key=lambda r: (-r.score, r.resource.metadata.id)))
+            ordered = tuple(sorted(picked, key=_score_order))
             reason = (
                 f"beam search (width={self.beam_width}) selected {len(ordered)} resource(s) with dependency closure, "
                 f"conflict and budget constraints (cost={best_cost:g}, utility={best_util:g})"
@@ -416,7 +419,7 @@ class BranchAndBoundSetSelector(SetSelector):
     ) -> SelectionResult:
         ctx = context or self.default_context
         results, notes = _gate_admissible(results, ctx)
-        pool = {result.resource.metadata.id: result for result in results}
+        pool = _candidate_pool(results)
 
         candidates = [
             r
@@ -481,13 +484,13 @@ class BranchAndBoundSetSelector(SetSelector):
                     and not _conflicts(new_members, picked)
                 )
                 if feasible:
-                    for member in new_members:
-                        picked[member.resource.metadata.id] = member
+                    for uid, member in zip(new_ids, new_members):
+                        picked[uid] = member
                     for kind, extra in new_counts.items():
                         counts[kind] += extra
                     dfs(index + 1, picked, counts, cost + new_cost, utility + sum(m.score for m in new_members))
-                    for member in new_members:
-                        del picked[member.resource.metadata.id]
+                    for uid in new_ids:
+                        del picked[uid]
                     for kind, extra in new_counts.items():
                         counts[kind] -= extra
             dfs(index + 1, picked, counts, cost, utility)
@@ -499,7 +502,7 @@ class BranchAndBoundSetSelector(SetSelector):
             return escalation
         if best_ids:
             picked_results = [pool[uid] for uid in best_ids]
-            ordered = tuple(sorted(picked_results, key=lambda r: (-r.score, r.resource.metadata.id)))
+            ordered = tuple(sorted(picked_results, key=_score_order))
             proof = "node budget reached, best found" if truncated else "proven optimal"
             reason = (
                 f"branch-and-bound selected {len(ordered)} resource(s) over {nodes} node(s), "
@@ -643,17 +646,17 @@ def _repair_selection(
     activation gate would deny; ``gate_notes`` names those for the reason.
     """
 
-    pool = {result.resource.metadata.id: result for result in pool_results}
-    for result in picked:
-        pool.setdefault(result.resource.metadata.id, result)
+    pool = _candidate_pool([*picked, *pool_results])
+    key_of = {member.resource.identity: key for key, member in pool.items()}
+    references = _reference_index(pool)
     notes = list(gate_notes)
     kept: dict[str, SearchResult] = {}
     for result in picked:
-        rid = result.resource.metadata.id
+        rid = key_of[result.resource.identity]
         if not expand_dependencies:
             kept.setdefault(rid, result)
             continue
-        unit_ids, missing = _closure(rid, pool)
+        unit_ids, missing = _closure(rid, pool, references)
         if missing is not None:
             notes.append(f"{rid}: dependency {missing} not in candidate pool")
             continue
@@ -662,18 +665,21 @@ def _repair_selection(
 
     if drop_conflicts:
         survivors: dict[str, SearchResult] = {}
-        for result in sorted(kept.values(), key=lambda r: (-r.score, r.resource.metadata.id)):
+        for key, result in sorted(kept.items(), key=lambda item: _score_order(item[1])):
             if _conflicts([result], survivors):
-                notes.append(f"{result.resource.metadata.id}: conflicts with a higher-ranked member")
+                notes.append(f"{key}: conflicts with a higher-ranked member")
                 continue
-            survivors[result.resource.metadata.id] = result
+            survivors[key] = result
         kept = survivors
         if expand_dependencies:
             changed = True
             while changed:
                 changed = False
                 for rid, result in list(kept.items()):
-                    if any(dependency not in kept for dependency in result.resource.metadata.dependencies):
+                    if any(
+                        references.get(dependency) not in kept
+                        for dependency in result.resource.metadata.dependencies
+                    ):
                         del kept[rid]
                         notes.append(f"{rid}: a dependency was dropped")
                         changed = True
@@ -703,7 +709,7 @@ def _repair_selection(
                 status="escalate",
             )
 
-    ordered = tuple(sorted(kept.values(), key=lambda r: (-r.score, r.resource.metadata.id)))
+    ordered = tuple(sorted(kept.values(), key=_score_order))
     reason = f"{label}: {len(ordered)} resource(s)"
     if notes:
         reason += "; post-processing: " + "; ".join(notes[:4])
@@ -762,11 +768,13 @@ def _build_units(
     """
 
     granted = set(ctx.granted_permissions)
+    key_of = {member.resource.identity: key for key, member in pool.items()}
+    references = _reference_index(pool)
     units: list[_Unit] = []
     blocked: list[_Unit] = []
     for candidate in candidates:
-        cid = candidate.resource.metadata.id
-        unit_ids, missing_dependency = _closure(cid, pool)
+        cid = key_of.get(candidate.resource.identity, candidate.resource.metadata.id)
+        unit_ids, missing_dependency = _closure(cid, pool, references)
         if missing_dependency is not None:
             notes.append(f"{cid}: dependency {missing_dependency} not in candidate pool")
             continue
@@ -881,7 +889,7 @@ def _enforce_set_constraints(
         if member.resource.identity in kept:
             continue
         unit, problem = _dependency_unit(member, kept, resolve)
-        if problem is None and _conflicts(unit, {r.resource.metadata.id: r for r in kept.values()}):
+        if problem is None and _conflicts(unit, kept):
             problem = "conflicts with a higher-ranked member of the set"
         if problem is not None:
             dropped.append({"resource": member.resource.identity, "reason": problem})
@@ -930,13 +938,66 @@ def _dependency_unit(
 
 
 def _find_reference(reference: str, results: Iterable[SearchResult]) -> SearchResult | None:
-    """The result a dependency reference names: ``id@version`` exactly, a bare ``id`` by id."""
+    """The result a dependency reference names, or None.
 
-    for result in results:
-        metadata = result.resource.metadata
-        if reference == (result.resource.identity if "@" in reference else metadata.id):
-            return result
-    return None
+    ``id@version`` names one version exactly. A bare ``id`` names its resource
+    only when one version of it is among ``results``; with several it is
+    ambiguous and resolves to nothing, as ``ResourceRegistry.get`` refuses it.
+    """
+
+    matches = {
+        result.resource.identity: result
+        for result in results
+        if reference == (result.resource.identity if "@" in reference else result.resource.metadata.id)
+    }
+    return next(iter(matches.values())) if len(matches) == 1 else None
+
+
+def _candidate_pool(results: Iterable[SearchResult]) -> dict[str, SearchResult]:
+    """Candidates by key: the resource id, or ``id@version`` when several versions share the id.
+
+    A pool holding one version per id keeps plain id keys, so reasons and
+    notes read as before; versions of one id must not overwrite each other,
+    and a reference such as ``id@version`` resolves through
+    ``_reference_index`` whatever the key.
+    """
+
+    ordered = list(results)
+    versions: dict[str, set[str]] = defaultdict(set)
+    for result in ordered:
+        versions[result.resource.metadata.id].add(result.resource.identity)
+    return {
+        (
+            result.resource.metadata.id
+            if len(versions[result.resource.metadata.id]) == 1
+            else result.resource.identity
+        ): result
+        for result in ordered
+    }
+
+
+def _reference_index(pool: Mapping[str, SearchResult]) -> dict[str, str | None]:
+    """Pool key per dependency reference; None for a bare id that several versions share.
+
+    ``id@version`` maps to the key of exactly that version, a bare ``id`` to
+    its key when the pool holds one version of it. The two spellings agree
+    with ``ResourceRegistry.get``: a bare id is ambiguous across versions.
+    """
+
+    keys_by_id: dict[str, list[str]] = defaultdict(list)
+    index: dict[str, str | None] = {}
+    for key, result in pool.items():
+        index[result.resource.identity] = key
+        keys_by_id[result.resource.metadata.id].append(key)
+    for resource_id, keys in keys_by_id.items():
+        index[resource_id] = keys[0] if len(keys) == 1 else None
+    return index
+
+
+def _score_order(result: SearchResult) -> tuple[float, str, str]:
+    """Descending score; ties by id, then version."""
+
+    return -result.score, result.resource.metadata.id, result.resource.metadata.version
 
 
 def _resource_cost(result: SearchResult) -> Decimal:
@@ -947,11 +1008,14 @@ def _total_cost(results: Iterable[SearchResult]) -> Decimal:
     return sum((_resource_cost(result) for result in results), Decimal(0))
 
 
-def _closure(resource_id: str, pool: Mapping[str, SearchResult]) -> tuple[list[str], str | None]:
-    """Dependency closure of ``resource_id`` inside the candidate pool.
+def _closure(
+    resource_id: str, pool: Mapping[str, SearchResult], references: Mapping[str, str | None]
+) -> tuple[list[str], str | None]:
+    """Dependency closure of pool key ``resource_id`` inside the candidate pool.
 
-    Returns (ordered ids, None) or ([], missing_id) when a dependency is not
-    in the pool (including transitively).
+    Returns (ordered keys, None) or ([], missing reference) when a dependency
+    is not in the pool or is an ambiguous bare id (including transitively).
+    ``references`` is ``_reference_index(pool)``.
     """
 
     ordered: list[str] = []
@@ -966,7 +1030,9 @@ def _closure(resource_id: str, pool: Mapping[str, SearchResult]) -> tuple[list[s
         if result is None:
             return [], current
         ordered.append(current)
-        stack.extend(result.resource.metadata.dependencies)
+        # A reference that resolves to no key stays as written and fails the
+        # pool lookup above, so it is the one reported missing.
+        stack.extend(references.get(reference) or reference for reference in result.resource.metadata.dependencies)
     return ordered, None
 
 
@@ -974,7 +1040,7 @@ def _conflicts(unit: list[SearchResult], picked: Mapping[str, SearchResult]) -> 
     """True when the unit conflicts internally or with the picked set."""
 
     unit_ids = {member.resource.metadata.id for member in unit}
-    all_ids = unit_ids | set(picked)
+    all_ids = unit_ids | {member.resource.metadata.id for member in picked.values()}
     for member in list(unit) + list(picked.values()):
         for conflict in member.resource.metadata.conflicts_with:
             if conflict in all_ids and conflict != member.resource.metadata.id:

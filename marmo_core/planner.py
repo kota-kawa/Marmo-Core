@@ -341,8 +341,20 @@ class RuleBasedPlanner(Planner):
         context: PolicyContext | None = None,
     ) -> Plan:
         callables = [item for item in resources if item.metadata.kind in ("tool", "agent")]
-        offered = {item.metadata.id for item in callables}
-        step_ids = {item.metadata.id: f"s{index + 1}" for index, item in enumerate(callables)}
+        step_ids = {item.identity: f"s{index + 1}" for index, item in enumerate(callables)}
+        identities_by_id: dict[str, list[str]] = {}
+        for item in callables:
+            identities_by_id.setdefault(item.metadata.id, []).append(item.identity)
+
+        def dependency_step(reference: str) -> str | None:
+            # ``id@version`` names one version; a bare id names its resource
+            # only while a single version of it is on offer, like
+            # ``ResourceRegistry.get`` (several versions make it ambiguous).
+            if "@" in reference:
+                return step_ids.get(reference)
+            identities = identities_by_id.get(reference, ())
+            return step_ids[identities[0]] if len(identities) == 1 else None
+
         steps: list[PlanStep] = []
         for definition in callables:
             metadata = definition.metadata
@@ -356,7 +368,7 @@ class RuleBasedPlanner(Planner):
                 arguments = default_arguments(schema) if isinstance(schema, Mapping) else {}
             steps.append(
                 PlanStep(
-                    id=step_ids[metadata.id],
+                    id=step_ids[definition.identity],
                     description=f"{metadata.name}: {metadata.description}",
                     resource_id=metadata.id,
                     kind=metadata.kind,
@@ -365,9 +377,11 @@ class RuleBasedPlanner(Planner):
                     # Only declared dependencies that are actually on offer;
                     # an edge to a step that does not exist fails validation.
                     depends_on=tuple(
-                        step_ids[dependency]
-                        for dependency in metadata.dependencies
-                        if dependency in offered and dependency != metadata.id
+                        dict.fromkeys(
+                            step_id
+                            for step_id in map(dependency_step, metadata.dependencies)
+                            if step_id is not None and step_id != step_ids[definition.identity]
+                        )
                     ),
                 )
             )
@@ -433,9 +447,26 @@ class LLMPlanner(Planner):
         revised = self.plan(remaining_goal, usable, context=context)
         if not revised.steps:
             return super().replan(plan, resources, context=context, failure=failure)
+        # A new step that reuses the id of a finished one is renamed. The same
+        # table rewrites the new steps' ``depends_on``: inside the revised
+        # plan an id means the new step, and left alone it would name the
+        # finished step and release its dependents without waiting.
         done_ids = {step.id for step in completed}
+        taken = done_ids | {step.id for step in revised.steps}
+        renames: dict[str, str] = {}
+        for step in revised.steps:
+            if step.id in done_ids and step.id not in renames:
+                candidate = f"{step.id}r{plan.revision}"
+                while candidate in taken:
+                    candidate += "r"
+                taken.add(candidate)
+                renames[step.id] = candidate
         renamed = tuple(
-            replace(step, id=step.id if step.id not in done_ids else f"{step.id}r{plan.revision}")
+            replace(
+                step,
+                id=renames.get(step.id, step.id),
+                depends_on=tuple(renames.get(dependency, dependency) for dependency in step.depends_on),
+            )
             for step in revised.steps
         )
         return Plan(goal=plan.goal, steps=completed + renamed, revision=plan.revision + 1)
