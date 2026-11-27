@@ -396,15 +396,24 @@ def method_selector(name: str, cache: MutableMapping[str, str], llm: LLMProvider
                                        extra_candidates=options["extra"], judge=options["judge"])
 
 
-def stage_methods(data: Data, queries: list, model: str, workers: int, methods: list[str], oracle: bool) -> None:
+def stage_methods(data: Data, queries: list, model: str, workers: int, methods: list[str], oracle: bool,
+                  labels: dict[str, dict[str, dict]]) -> None:
+    """Run the LLM methods' selections and cache their replies.
+
+    A variant the labels show to be no abstain / escalate case is not scored,
+    so it is not run either; a query without labels runs every variant.
+    """
+
     shared = {cache: load_locked(method_cache_path(cache, model))
               for cache in sorted({METHODS[name]["cache"] for name in methods})}
     caches = {name: shared[METHODS[name]["cache"]] for name in methods}
     llm = make_llm(model)
     # Query-major order: a run cut short (usage limits) leaves every method
     # with the same queries covered.
+    valid = {query.id: ground_truth(data, query, labels[query.id]) for query in queries if query.id in labels}
     jobs = [(name, query, variant) for query in queries for name in methods
-            for variant in (ORACLE_VARIANTS if oracle else VARIANTS)]
+            for variant in (ORACLE_VARIANTS if oracle else VARIANTS)
+            if query.id not in valid or valid[query.id][variant]]
     print(f"methods {methods} with {model}: {len(jobs)} selections (cached ones return at once)", flush=True)
 
     def work(job) -> None:
@@ -798,7 +807,8 @@ def stage_score(data: Data, args) -> dict:
 
             for split, group in groups.items():
                 covered = [query for query in group if all(
-                    _cached(make("S"), data, query, variant, options["width"]) for variant in VARIANTS)]
+                    _cached(make("S"), data, query, variant, options["width"])
+                    for variant in VARIANTS if gts[query.id][variant])]
                 if not covered:
                     continue
                 rows = evaluate(data, covered, substitutes_by_query, make, 0.0, gts, VARIANTS,
@@ -807,7 +817,8 @@ def stage_score(data: Data, args) -> dict:
                 entry[split] = summarize(rows)
                 entry[f"{split}_queries"] = len(covered)
                 oracle_covered = [query for query in covered if all(
-                    _cached(make("S"), data, query, variant, options["width"]) for variant in ORACLE_VARIANTS)]
+                    _cached(make("S"), data, query, variant, options["width"])
+                    for variant in ORACLE_VARIANTS if gts[query.id][variant])]
                 if oracle_covered:
                     oracle_rows = evaluate(data, oracle_covered, substitutes_by_query, make, 0.0, gts,
                                            ORACLE_VARIANTS, width=options["width"], llm_calls=1)
@@ -936,7 +947,7 @@ def main() -> None:
         stage_label(data, rng.sample(pool, min(args.agree_queries, len(pool))), args.agree_model, args.workers)
     if "methods" in args.stage:
         stage_methods(data, queries, args.method_model, args.workers, args.method or ["llm-set", "req-cover"],
-                      oracle=args.oracle)
+                      oracle=args.oracle, labels=parsed_labels(data, args.label_model))
     if "score" in args.stage:
         report = stamp(stage_score(data, args))
         output = Path(args.output)
