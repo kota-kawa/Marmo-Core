@@ -91,8 +91,13 @@ selector = GoalAwareSetSelector(provider, strategy="greedy")
 - `example_from_results` は状態が `success` の呼び出しだけを数える。実行全体が成功したかどうかは見ない。
   途中で止まった実行や、余分な資源を呼んだ実行も例示になる。
 - 一覧（メニュー）は見せないので、固定語彙（`vocabulary`）が要る。
-- Kernel は既定ではこの仕組みを使わない。有効性の評価は
-  [Marmo-Core #101](https://github.com/kota-kawa/Marmo-Core/issues/101) で行っている。
+- Kernel は既定ではこの仕組みを使わない。
+- **評価の結果、採用していない**（[Marmo-Core #101](https://github.com/kota-kawa/Marmo-Core/issues/101)、
+  Object-Routing-Research の ADR 0018）。別の作者が書いた新しい依頼では、要求を作らずに候補を
+  そのままモデルに渡す基準線を実タスク達成率で下回り、候補資源の宣言の一覧から選ばせる抽出も上回らなかった。
+  契約の語を依頼の内容から連想できない値に差し替えると、ほとんど完了しなくなった。成功した実行だけを
+  例示にすると達成数は増えたが、この条件は基準線との比較を事前に定めていない。数値と条件は ADR 0018 と
+  その結果ファイルにある。このコードは研究ブランチにだけ置き、`main` には入れない。
 
 ## 集合選択
 
