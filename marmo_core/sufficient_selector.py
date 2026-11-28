@@ -48,10 +48,16 @@ class GoalAwareSetSelector(SetSelector):
     """Choose a set that satisfies a TaskSpec and its resource contracts.
 
     ``greedy`` repeatedly adds the dependency-closed unit with the largest
-    requirement-progress per rendered-token increase. ``exact`` enumerates
+    requirement-progress per rendered-token increase. ``exact`` searches
     candidate subsets up to ``max_nodes`` and returns the best set under the
-    fixed lexicographic objective. A truncated exact search never labels an
-    unproven result optimal. The default token callback is a metadata proxy;
+    fixed lexicographic objective. It skips subsets that cannot satisfy the
+    TaskSpec. It also skips subsets that cannot beat the best set found and
+    never adds a candidate that neither satisfies a further requirement nor
+    takes part in a dependency relation; these two rely on
+    ``rendered_token_cost`` not shrinking when a resource is added. A
+    truncated exact search never labels an unproven result optimal, and
+    escalates when it has found a satisfying set only with additional
+    permissions. The default token callback is a metadata proxy;
     callers should supply the compiler's renderer for a meaningful context
     budget, and the Kernel still validates the actual compiled payload.
     """
@@ -269,7 +275,6 @@ class GoalAwareSetSelector(SetSelector):
         root_ids: set[str],
     ) -> SelectionResult:
         identities = tuple(sorted(pool, key=_identity_key))
-        effective = context
         greedy_seed = self._greedy(
             pool, spec, context, root_ids=root_ids, enforce_permissions=context.enforce_permissions
         )
@@ -281,52 +286,155 @@ class GoalAwareSetSelector(SetSelector):
             relaxed_best = self._greedy(pool, spec, context, root_ids=root_ids, enforce_permissions=False)
             relaxed_objective = _objective(relaxed_best, self.rendered_token_cost) if relaxed_best else None
         nodes = 0
-        truncated = False
-        unknown_seen = False
         unknown_reasons: set[str] = set()
 
-        def visit(index: int, chosen: tuple[SearchResult, ...]) -> None:
-            nonlocal best, best_objective, relaxed_best, relaxed_objective, nodes, truncated, unknown_seen
-            if truncated:
-                return
-            if nodes >= self.max_nodes:
-                truncated = True
-                return
-            nodes += 1
-
-            assessed = self._assess(chosen, spec, effective, reference_pool=pool)
-            if assessed.state == "valid" and assessed.objective is not None:
-                if best_objective is None or assessed.objective < best_objective:
-                    best, best_objective = chosen, assessed.objective
-            elif assessed.state == "unknown":
-                unknown_seen = True
-                unknown_reasons.add(assessed.reason)
-
-            if context.enforce_permissions:
-                relaxed_context = replace(context, enforce_permissions=False)
-                relaxed = self._assess(chosen, spec, relaxed_context, reference_pool=pool)
-                if relaxed.state == "valid" and relaxed.objective is not None:
-                    if relaxed_objective is None or relaxed.objective < relaxed_objective:
-                        relaxed_best, relaxed_objective = chosen, relaxed.objective
-                elif relaxed.state == "unknown":
-                    unknown_seen = True
-                    unknown_reasons.add(relaxed.reason)
-
-            if index >= len(identities):
-                return
-
-            identity = identities[index]
-            included = _ordered((*chosen, pool[identity]))
-            if _unknown_declaration(pool[identity], spec):
-                unknown_seen = True
+        leaves = _requirement_leaves(spec.expression)
+        leaf_index = {id(leaf): position for position, leaf in enumerate(leaves)}
+        true_leaves: dict[str, frozenset[int]] = {}
+        unknown_leaves: dict[str, frozenset[int]] = {}
+        undecidable: set[str] = set()
+        granted = set(context.granted_permissions)
+        ungranted: set[str] = set()
+        for identity in identities:
+            result = pool[identity]
+            contract = ResourceContract.from_resource(result.resource)
+            states = [
+                match_requirement(leaf, contract, result.resource.metadata.kind) for leaf in leaves
+            ]
+            true_leaves[identity] = frozenset(
+                position for position, state in enumerate(states) if state is TruthValue.TRUE
+            )
+            unknown_leaves[identity] = frozenset(
+                position for position, state in enumerate(states) if state is TruthValue.UNKNOWN
+            )
+            if _permission_union((result,)) - granted:
+                ungranted.add(identity)
+            if _unknown_declaration(result, spec):
+                # No set that contains this candidate can be verified, so it is
+                # recorded once here and never enters the search.
+                undecidable.add(identity)
                 unknown_reasons.add(
                     f"{identity}: contract is incomplete or requires runtime precondition evidence"
                 )
-            if not _partial_constraints(included, context, check_permissions=False):
-                visit(index + 1, included)
-            visit(index + 1, chosen)
+                alone = self._assess((result,), spec, context, reference_pool=pool)
+                if alone.state == "unknown":
+                    unknown_reasons.add(alone.reason)
+        linked = _linked_identities(pool)
 
-        visit(0, ())
+        def search(
+            enforce_permissions: bool,
+            incumbent: tuple[SearchResult, ...] | None,
+            incumbent_objective: tuple[object, ...] | None,
+        ) -> tuple[tuple[SearchResult, ...] | None, tuple[object, ...] | None, bool]:
+            nonlocal nodes
+            effective = (
+                context
+                if context.enforce_permissions == enforce_permissions
+                else replace(context, enforce_permissions=enforce_permissions)
+            )
+            truncated = False
+            usable = [
+                identity not in undecidable and not (enforce_permissions and identity in ungranted)
+                for identity in identities
+            ]
+            # Leaves that the usable candidates from each position onwards can still satisfy.
+            later_true: list[frozenset[int]] = [frozenset()] * (len(identities) + 1)
+            later_unknown: list[frozenset[int]] = [frozenset()] * (len(identities) + 1)
+            for position in range(len(identities) - 1, -1, -1):
+                later_true[position] = later_true[position + 1]
+                later_unknown[position] = later_unknown[position + 1]
+                if usable[position]:
+                    later_true[position] |= true_leaves[identities[position]]
+                    later_unknown[position] |= unknown_leaves[identities[position]]
+
+            def reachable(index: int, covered: frozenset[int]) -> TruthValue:
+                satisfied = covered | later_true[index]
+                possible = later_unknown[index]
+
+                def leaf_state(requirement: Requirement) -> TruthValue:
+                    position = leaf_index[id(requirement)]
+                    if position in satisfied:
+                        return TruthValue.TRUE
+                    if position in possible:
+                        return TruthValue.UNKNOWN
+                    return TruthValue.FALSE
+
+                return evaluate_expression(spec.expression, leaf_state)
+
+            def worse_than_incumbent(included: tuple[SearchResult, ...]) -> bool:
+                """Whether no superset of ``included`` can beat the incumbent.
+
+                Permissions, rendered cost and declared cost do not shrink when
+                a resource is added, so a prefix that is already worse stays worse.
+                """
+
+                if incumbent_objective is None:
+                    return False
+                permission_count = len(_permission_union(included))
+                if (permission_count,) != incumbent_objective[:1]:
+                    return (permission_count,) > incumbent_objective[:1]
+                rendered = _rendered_token_cost(self.rendered_token_cost, included)
+                if rendered is None:
+                    return False
+                cost = sum(
+                    (Decimal(str(item.resource.metadata.cost_estimate)) for item in included),
+                    Decimal(0),
+                )
+                return (permission_count, rendered, cost) > incumbent_objective[:3]
+
+            def visit(index: int, chosen: tuple[SearchResult, ...], covered: frozenset[int]) -> None:
+                nonlocal incumbent, incumbent_objective, nodes, truncated
+                if truncated:
+                    return
+                if nodes >= self.max_nodes:
+                    truncated = True
+                    return
+                nodes += 1
+
+                assessed = self._assess(chosen, spec, effective, reference_pool=pool)
+                if assessed.state == "valid" and assessed.objective is not None:
+                    if incumbent_objective is None or assessed.objective < incumbent_objective:
+                        incumbent, incumbent_objective = chosen, assessed.objective
+                elif assessed.state == "unknown":
+                    unknown_reasons.add(assessed.reason)
+
+                if index >= len(identities):
+                    return
+                still_satisfiable = reachable(index, covered)
+                if still_satisfiable is not TruthValue.TRUE:
+                    if still_satisfiable is TruthValue.UNKNOWN:
+                        unknown_reasons.add(
+                            "TaskSpec requirements are unknown against the candidate contracts"
+                        )
+                    return
+
+                identity = identities[index]
+                candidate = pool[identity]
+                include = usable[index]
+                if include and identity not in linked:
+                    # A candidate outside every dependency relation is a root:
+                    # it must be eligible, and it is only worth adding when it
+                    # satisfies a requirement that the chosen set does not.
+                    include = _is_eligible(candidate, context) and not (
+                        true_leaves[identity] <= covered
+                    )
+                if include:
+                    included = _ordered((*chosen, candidate))
+                    if not _partial_constraints(
+                        included, context, check_permissions=False
+                    ) and not worse_than_incumbent(included):
+                        visit(index + 1, included, covered | true_leaves[identity])
+                visit(index + 1, chosen, covered)
+
+            visit(0, (), frozenset())
+            return incumbent, incumbent_objective, truncated
+
+        best, best_objective, truncated = search(
+            context.enforce_permissions, best, best_objective
+        )
+        granted_search_truncated = truncated
+        if best is None and context.enforce_permissions and not truncated:
+            relaxed_best, relaxed_objective, truncated = search(False, relaxed_best, relaxed_objective)
 
         if best is not None:
             objective_scope = (
@@ -343,21 +451,34 @@ class GoalAwareSetSelector(SetSelector):
                 _ordered(best),
                 f"goal-aware exact selected {len(best)} resource(s) after {nodes} node(s); {status}",
             )
+        if context.enforce_permissions and relaxed_best is not None:
+            missing = _permission_union(relaxed_best) - granted
+            if missing:
+                if granted_search_truncated:
+                    reason = (
+                        f"exact search reached max_nodes={self.max_nodes} before it could rule out "
+                        "a set within the granted permissions; a satisfying set exists with "
+                        "additional permissions: "
+                    )
+                elif truncated:
+                    reason = (
+                        f"exact search reached max_nodes={self.max_nodes} before it could rule out "
+                        "a smaller permission request; a satisfying set exists only with "
+                        "additional permissions: "
+                    )
+                else:
+                    reason = "a satisfying set exists only with additional permissions: "
+                return SelectionResult(
+                    (),
+                    reason + ", ".join(sorted(missing)),
+                    "escalate",
+                    missing_permissions=tuple(sorted(missing)),
+                )
         if truncated:
             return _uncertain(
                 f"exact search reached max_nodes={self.max_nodes} without a feasible set; feasibility is uncertain"
             )
-        if context.enforce_permissions and relaxed_best is not None:
-            missing = _permission_union(relaxed_best) - set(context.granted_permissions)
-            if missing:
-                return SelectionResult(
-                    (),
-                    "a satisfying set exists only with additional permissions: "
-                    + ", ".join(sorted(missing)),
-                    "escalate",
-                    missing_permissions=tuple(sorted(missing)),
-                )
-        if unknown_seen:
+        if unknown_reasons:
             details = "; ".join(sorted(unknown_reasons)[:3])
             return _uncertain(
                 "no verified feasible set was found; an incomplete or unknown contract affected the decision"
@@ -611,6 +732,44 @@ def _expression_progress(
 
     achieved, total = progress(expression)
     return achieved / total if total else 0.0
+
+
+def _requirement_leaves(
+    expression: RequirementExpressionValue | None,
+) -> tuple[Requirement, ...]:
+    if isinstance(expression, Requirement):
+        return (expression,)
+    if isinstance(expression, (AllOf, OneOf)):
+        return tuple(leaf for child in expression.children for leaf in _requirement_leaves(child))
+    return ()
+
+
+def _linked_identities(pool: Mapping[str, SearchResult]) -> set[str]:
+    """Candidates that declare a reference or may be the target of one.
+
+    Unresolved and ambiguous references mark every version of the named
+    resource, so the result errs towards treating a candidate as linked.
+    """
+
+    versions = _versions_by_id(pool.values())
+    linked: set[str] = set()
+    for identity, result in pool.items():
+        contract = ResourceContract.from_resource(result.resource)
+        references = (
+            *result.resource.metadata.dependencies,
+            *contract.context_all_of,
+            *(reference for group in contract.context_one_of for reference in group),
+        )
+        if references:
+            linked.add(identity)
+        for reference in references:
+            if not isinstance(reference, str):
+                continue
+            name = reference.strip()
+            linked.update(versions.get(name, ()))
+            if "@" in name:
+                linked.update(versions.get(name.rsplit("@", 1)[0], ()))
+    return linked
 
 
 def _closure_options(
