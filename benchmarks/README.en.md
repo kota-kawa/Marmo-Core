@@ -646,7 +646,7 @@ The sample limits larger subsets to 60 cases. We decomposed the full test split 
 | `llm:hybrid-0.5` | `CoverageSetSelector(include_within=0.95)` | 0.202 | 0.167 | 0.081 | 3.97 | −0.003 [−0.009, 0.004] |
 | `llm:hybrid-0.5` | oracle top-k | 0.232 | 0.197 | 0.163 | 1.76 | +0.027 [0.023, 0.031] |
 
-- The Layer 1 improvement from decomposition (nDCG@10 +0.023) replicates on all queries. Macro nDCG@10 is nearly the same between the sampled test and full set (hybrid 0.243 / 0.245). The query-equal (micro) difference is +0.011 [0.007, 0.014], smaller than the macro one, because decomposition gains less on the subsets with many queries.
+- The Layer 1 improvement from decomposition (nDCG@10 +0.023) replicates on all queries. Macro nDCG@10 is nearly the same between the sampled test and full set (hybrid 0.243 / 0.245). The query-equal (micro) difference is +0.011 [0.007, 0.014], smaller than the macro one.
 - **The coverage selector shows no gain on the full set either** (−0.003 [−0.010, 0.003] vs. top-1), and neither does `include_within=0.95` (−0.003). Among rule-based sets, the relative threshold on hybrid without decomposition is best at 0.222, above the relative threshold on the decomposed ranking (0.213). An oracle that knows the gold set size reaches 0.232.
 - We also confirmed on the full set that the mean known-token rate across 2,787 decomposed queries is 0.93, so the discount has little effect on English goals.
 
