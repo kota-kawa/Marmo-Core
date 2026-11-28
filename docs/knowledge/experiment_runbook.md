@@ -29,7 +29,7 @@ python3 benchmarks/run_toolret_benchmark.py --download --retrievers lexical   # 
 3. **採点**: キャッシュを再生するだけでモデルを呼ばない。指標や集計を直したら、採点だけをやり直す。
 
 ```bash
-python3 benchmarks/run_toolret_llm_stages.py --stage decompose --workers 6   # LLM 分解のキャッシュ
+python3 benchmarks/run_toolret_llm_stages.py --stage decompose --model haiku --workers 6   # LLM 分解のキャッシュ
 python3 benchmarks/run_toolret_benchmark.py --per-subset 60 --retrievers hybrid-0.5,llm:hybrid-0.5
 python3 benchmarks/run_forgery_benchmark.py                                  # LLM なし、約 90 秒
 ```
@@ -62,16 +62,24 @@ python3 benchmarks/run_forgery_benchmark.py                                  # L
 | 計算資源 | CPU 4 コア、RAM 15GB、GPU なし |
 | LLM | `claude -p`（`benchmarks/_claude_cli.py` の `ClaudeCLIProvider`）。API キー不要 |
 | 並列度 | 6〜8 並列で約 1.4 呼び出し/秒（Sonnet。Haiku も同程度） |
-| 使えるモデル | Sonnet と Haiku だけ（`ClaudeCLIProvider` がそれ以外を実行前に拒否する） |
-| 利用上限 | 5 時間ごとの上限と週の上限がある。数千回で達し、`You've hit your 5-hour limit` などで失敗する |
+| ベンチマークで使えるモデル | **Haiku 5.5 だけ**（`--model haiku`。2026-11 時点で `claude-haiku-5-5` を指す）。Sonnet は使わない |
+| 利用上限 | 5 時間ごとの上限と週の上限がある。`You've hit your 5-hour limit` などで失敗する。Sonnet は約 1,100 回で 5 時間の上限に達した（2026-11） |
 | 外部ネットワーク | プロキシ経由で HuggingFace（データとモデル）と PyPI に届く |
 | 持続性 | ワーカーが再起動すると、裏で動くプロセスが止まる。リポジトリ内のファイル（`benchmarks/cache/` を含む）と scratchpad は残る |
 
 - **LLM の呼び方**: 評価対象と同じライブラリ部品（`LLMQueryDecomposer`、`LLMSetSelector` など）を、
-  `ClaudeCLIProvider` で動かす。モデルは `--model sonnet` / `haiku` で切り替える。
-  `claude-haiku-5-5` のような同じ系列の正式 ID も使える。利用上限の中に収めるため、Opus などそれ以外のモデルは使わない。
-  アノテータと評価対象は別のモデルにする（例: ラベルは Sonnet、手法は Haiku、またはその逆）。
-  この制限より前の ToolRet-SAE（研究ブランチ）のラベルは Opus で付けたものである。
+  `ClaudeCLIProvider` で動かす。
+- **ベンチマークの LLM 呼び出しは Haiku 5.5 だけを使う**: Sonnet は利用上限にすぐ達し、測定を 1 回の
+  セッションで終えられないためである。コードを書くサブエージェントとレビュー用サブエージェントは対象外で、
+  `development_conventions.md` の「サブエージェントの指定」どおり Sonnet を使う。
+  - スクリプトと `ClaudeCLIProvider` の既定は `sonnet` なので、`--model haiku` を必ず付ける
+    （`claude-haiku-5-5` のような正式 ID も使える）。`ClaudeCLIProvider` が実行前に拒否するのは
+    Sonnet と Haiku 以外だけで、Sonnet の指定は止めない。
+  - 1 つの結果ファイルの中でモデルを混ぜない。応答のキャッシュはモデルを区別しないので、別のモデルで
+    作ったキャッシュが残っていたら退避してから作り直す。
+  - アノテータと評価対象は別のモデルにする約束（上の「評価設計の約束」）は変わらない。Haiku 以外の
+    モデルが要るラベル付けや比較は、クラウドではなくローカルで行う。
+  - この規約より前の測定には Sonnet を使ったものがある。ToolRet-SAE（研究ブランチ）のラベルは Opus で付けた。
 - **呼び出し数の見積もり**: 1,689 クエリの分解で約 20 分、ラベル付けで約 30 分（並列 6〜8）だった。
   上限に達したら、リセット時刻の後に同じコマンドを再実行する（キャッシュ済みの分は呼ばれない）。
   優先順位を決め、大きな条件（オラクル候補など）は一部のクエリに絞る。
@@ -126,7 +134,8 @@ python3 benchmarks/run_forgery_benchmark.py                                  # L
 
 | やりたいこと | 向いている環境 |
 |---|---|
-| Claude を使う LLM 段（分解、判定、ラベル付け） | クラウド（API キー不要）。上限に達したらローカルの CLI か API |
+| Haiku で足りる LLM 段（分解、再ランク、集合選択、判定） | クラウド（API キー不要、Haiku 5.5 だけ）。上限に達したらローカルの CLI か API |
+| Sonnet など Haiku 以外の Claude を使う測定、評価対象と別のモデルによるラベル付け | ローカル（Claude Code CLI か API） |
 | Claude 以外のモデルとの比較、第 2 アノテータ | ローカル（OpenAI 互換 API か Bedrock） |
 | base 級以上の埋め込みモデル | ローカルの GPU か AWS の GPU インスタンス |
 | Docker イメージでの確認 | ローカル |

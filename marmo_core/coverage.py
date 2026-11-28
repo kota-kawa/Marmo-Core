@@ -24,13 +24,13 @@ submodular, so greedy selection by marginal gain is the standard
 (1 - 1/e)-approximate maximizer under a cardinality limit alone; the
 guarantee does not cover the conflict, budget, and stopping rules.
 
-Measured on ToolRet (``benchmarks/README.md``), most of the gain over the
-top result of a plain search comes from the decomposed ranking itself. Over
-the top result of the decomposed ranking, coverage selection added +0.012
-Set F1 on all 3,920 test queries (0.219 against 0.208; within noise on an
-856-query sample) and ``include_within=0.95`` +0.021 (0.229, an oracle that
-knows the gold set size reaches 0.234); ``LLMSetSelector`` chose better sets
-than any rule on the sample (0.243).
+Measured on ToolRet (``benchmarks/README.md``), the gain over the top result
+of a plain search comes from the decomposed ranking itself. Whether coverage
+selection adds to the top result of the decomposed ranking depends on the
+model that decomposes: on all 3,920 test queries it added +0.012 Set F1 with
+Claude Sonnet decompositions and nothing with Claude Haiku 5.5 ones (-0.003,
+within noise), which split more queries into sub-tasks. ``LLMSetSelector``
+chose better sets than any rule on the sample.
 
 Units, feasibility, and the abstain / escalate outcomes are the same as for
 the greedy constrained solver: a candidate is taken

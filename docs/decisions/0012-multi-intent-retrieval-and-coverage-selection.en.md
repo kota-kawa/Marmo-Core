@@ -35,6 +35,33 @@ Keep Kernel defaults unchanged and add the following as extension points:
 - The `facet.<i>` components are a contract between `DecomposedRetriever` and `CoverageSetSelector`. Without these components, coverage behaves as one goal facet (`relevance`) and selects the best unit per kind. In the mixed four-kind set-selection benchmark (28 scenarios, lexical, pool 63), coverage without kind separation scored Set F1 0.536 / Exact 0%, whereas kind-separated coverage matched greedy at 0.609 / 54% (closure 100%, abstain/escalate 100%).
 - The first-layer accuracy remains the limit on overall performance. ToolRet's top result has a Set F1 around 0.18, which bounds the gains possible from set selection. Adding LLM reranking improved nDCG@10 by +0.043.
 
+## Re-measurement (2026-11-28, Claude Haiku 5.5)
+
+The numbers under "Consequences" above were measured with Claude Sonnet for decomposition,
+re-ranking, and set selection, and the ranking differences are query-equal (micro) values
+(`benchmarks/README.en.md` and the result JSON at commit `451a9bf7`). The re-measurement that
+aligned the differences and intervals with the tables' macro weighting (#76) rebuilt the LLM
+stages with Claude Haiku 5.5. The current `benchmarks/README.en.md` and
+`benchmarks/results/toolret*.json` are this measurement.
+
+- The first-layer gain from decomposition held (test nDCG@10 +0.023 [0.014, 0.031] on the
+  sample and +0.023 [0.015, 0.032] on the full test split). LLM re-ranking
+  (+0.084 [0.070, 0.097]) and `LLMSetSelector` (F1 0.206, +0.038 [0.018, 0.057] over top-1)
+  also beat top-1 significantly.
+- The coverage selector's gain did not replicate. Against top-1 it was −0.015 [−0.028, −0.003]
+  on the sample and −0.003 [−0.010, 0.003] on the full test split; `include_within=0.95` was
+  −0.003 [−0.009, 0.004] on the full test split. Haiku decomposed 2,787 of the 3,920 test
+  queries (Sonnet: 1,900), and coverage sets averaged 2.00 items (1.57 with Sonnet). The
+  coverage selector picks one item per sub-task, so its set size follows the granularity of the
+  decomposition.
+- The decision stands. The coverage selector is kept because it is a set selector that preserves
+  the constraints and the abstain / escalate outcomes, as stated above, not for its Set F1 on
+  ToolRet. But "decomposition plus coverage raises Set F1" does not hold for every decomposing
+  model. When F1 is the goal, use the relative threshold on the ranking without decomposition
+  (0.222 on the full test split) or `LLMSetSelector`.
+- `min_gain`, `include_within`, and the sub-task weight keep the values chosen with Sonnet
+  decompositions; they were not re-tuned for Haiku decompositions.
+
 ## Alternatives
 
 - RRF fusion: weighting the goal's list still underperformed blend on dev. Retain it as an option.

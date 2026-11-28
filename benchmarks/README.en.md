@@ -539,8 +539,8 @@ The evaluations so far use a corpus and labels created in this repository. `run_
 ```bash
 python -m pip install -e '.[benchmark,benchmark-toolret]'                       # fastembed and pyarrow (benchmark-only)
 python3 benchmarks/run_toolret_benchmark.py --download --retrievers lexical     # download and lexical retrieval
-python3 benchmarks/run_toolret_llm_stages.py --stage decompose                   # build the LLM decomposition cache (Claude Code CLI)
-python3 benchmarks/run_toolret_llm_stages.py --stage select --stage rerank       # build caches for LLM set selection and reranking
+python3 benchmarks/run_toolret_llm_stages.py --stage decompose --model haiku                # build the LLM decomposition cache (Claude Code CLI)
+python3 benchmarks/run_toolret_llm_stages.py --stage select --stage rerank --model haiku    # build caches for LLM set selection and reranking
 python3 benchmarks/run_toolret_benchmark.py --per-subset 60 \
     --retrievers hybrid-0.5,lexical,dense,hybrid-0.9,rrf,clause:hybrid-0.5,llm-rrf:hybrid-0.5,llm!:hybrid-0.5,llm:hybrid-0.5,rerank:llm!:hybrid-0.5
 ```
@@ -553,31 +553,31 @@ python3 benchmarks/run_toolret_benchmark.py --per-subset 60 \
 - Metrics match ToolRet: nDCG@10, Recall@10, and Completeness@10 (the fraction of cases with all gold tools in the top 10). @100 is also reported to show the input limit for set selection. Macro averages (the mean of per-subset averages), following ToolRet convention, are the main values reported.
 - Tool documents are converted to Tool resources with `toolret.tool_resource`, and permissions, trust, side effects, and cost are identical for every item. Ranking is determined only by body relevance.
 - Embeddings use `sentence-transformers/all-MiniLM-L6-v2` (fastembed / ONNX / CPU, one of the models evaluated by ToolRet). Embedding text is limited to the first 512 characters. `bge-small-en-v1.5` is not used because it processes only 4 documents per second of 512 characters in this environment, taking hours for 44k items.
-- LLM stages (decomposition, reranking, set selection) use the library’s `LLMQueryDecomposer`, `LLMRerankRetriever`, and `LLMSetSelector` directly with Claude Sonnet (through the Claude Code CLI, `benchmarks/_claude_cli.py`). Responses are saved in `benchmarks/cache/` and replayed for scoring. Responses are not reproducible, so values change if the cache is deleted.
-- **Tune on dev, report on test**: Query IDs are split 50/50 by SHA-1; fusion weights, `min_gain`, semantic weight, and other parameters are chosen on dev, and test values are reported. Differences and their intervals use the same weighting as the macro columns: a paired bootstrap on the test split (2,000 resamples, 95%) that resamples queries within each subset and averages the per-subset mean differences with equal weight. The query-equal (micro) difference is stored separately under `micro` in the result JSON; it is a different quantity. Set F1 differences are query means, like the table, so they are micro. **The ranking differences and intervals printed in this section were measured before this definition was adopted (query-equal)** (#76). Re-measuring needs the LLM decomposition cache and has not been done; each table is annotated.
+- LLM stages (decomposition, reranking, set selection) use the library’s `LLMQueryDecomposer`, `LLMRerankRetriever`, and `LLMSetSelector` directly with Claude Haiku 5.5 (through the Claude Code CLI, `benchmarks/_claude_cli.py`, `--model haiku`). Responses are saved in `benchmarks/cache/` and replayed for scoring. Responses are not reproducible, so values change if the cache is deleted. Earlier measurements used Claude Sonnet (see "Differences from the earlier measurement").
+- **Tune on dev, report on test**: Query IDs are split 50/50 by SHA-1; fusion weights, `min_gain`, semantic weight, and other parameters are chosen on dev, and test values are reported. Differences and their intervals use the same weighting as the macro columns: a paired bootstrap on the test split (2,000 resamples, 95%) that resamples queries within each subset and averages the per-subset mean differences with equal weight. The query-equal (micro) difference is stored separately under `micro` in the result JSON; it is a different quantity. Set F1 differences are query means, like the table, so they are micro.
 
 ### Layer 1: Ranking (1,689 queries, macro)
 
-[`results/toolret.json`](results/toolret.json). `llm:` uses `LLMQueryDecomposer` decomposition and blend fusion (subtask weight 0.25, discounted by known-token rate); `llm!:` has no discount; `llm-rrf:` uses RRF fusion; `clause:` uses rule-based decomposition; and `rerank:` reranks the top 30 with `LLMRerankRetriever`. Differences are from hybrid-0.5 on the test split.
+[`results/toolret.json`](results/toolret.json). `llm:` uses `LLMQueryDecomposer` decomposition and blend fusion (subtask weight 0.25, discounted by known-token rate); `llm!:` has no discount; `llm-rrf:` uses RRF fusion; `clause:` uses rule-based decomposition; and `rerank:` reranks the top 30 with `LLMRerankRetriever`. Differences are from hybrid-0.5 on the test split (macro).
 
 | Configuration | nDCG@10 | Recall@10 | C@10 | C@100 | Multi-tool C@10 | Test nDCG@10 difference [95% CI] | Test C@10 difference [95% CI] | p50 / p95 ms |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| `lexical` (BM25F) | 0.211 | 0.276 | 0.205 | 0.328 | 0.065 | −0.038 [−0.053, −0.025] | −0.035 [−0.055, −0.015] | 16.9 / 71.5 |
-| `dense` (MiniLM-L6) | 0.205 | 0.271 | 0.199 | 0.374 | 0.077 | −0.045 [−0.059, −0.030] | −0.037 [−0.056, −0.018] | 35.9 / 120.9 |
-| `hybrid-0.9` | 0.220 | 0.286 | 0.212 | 0.388 | 0.080 | −0.031 [−0.043, −0.018] | −0.030 [−0.048, −0.012] | 25.3 / 89.5 |
-| `rrf` (BM25F + dense) | 0.242 | 0.326 | 0.243 | 0.412 | 0.095 | −0.013 [−0.021, −0.004] | −0.004 [−0.015, 0.008] | 41.5 / 145.3 |
-| **`hybrid-0.5` (baseline)** | 0.256 | 0.330 | 0.247 | 0.412 | 0.102 | — | — | 35.3 / 132.9 |
-| `clause:hybrid-0.5` | 0.254 | 0.328 | 0.239 | 0.413 | 0.099 | +0.005 [−0.000, 0.010] | −0.001 [−0.011, 0.008] | 75.6 / 275.0 |
-| `llm-rrf:hybrid-0.5` | 0.242 | 0.328 | 0.248 | **0.445** | 0.089 | −0.011 [−0.021, −0.001] | +0.000 [−0.014, 0.014] | 43.5 / 241.3 |
-| `llm!:hybrid-0.5` | 0.271 | 0.348 | 0.259 | 0.416 | 0.105 | +0.018 [0.011, 0.025] | +0.011 [0.000, 0.022] | 59.3 / 357.9 |
-| **`llm:hybrid-0.5`** | 0.271 | 0.348 | 0.259 | 0.419 | 0.105 | **+0.019 [0.012, 0.026]** | **+0.012 [0.001, 0.023]** | 35.2 / 183.9 |
-| `rerank:llm!:hybrid-0.5` | **0.292** | **0.366** | **0.275** | 0.416 | **0.118** | **+0.043 [0.031, 0.054]** | **+0.027 [0.013, 0.042]** | 36.6 / 227.7 |
+| `lexical` (BM25F) | 0.211 | 0.276 | 0.205 | 0.328 | 0.065 | −0.041 [−0.055, −0.029] | −0.037 [−0.057, −0.018] | 21.3 / 81.4 |
+| `dense` (MiniLM-L6) | 0.205 | 0.271 | 0.199 | 0.374 | 0.077 | −0.043 [−0.057, −0.030] | −0.040 [−0.059, −0.021] | 27.8 / 89.9 |
+| `hybrid-0.9` | 0.220 | 0.286 | 0.212 | 0.388 | 0.080 | −0.029 [−0.040, −0.018] | −0.033 [−0.051, −0.016] | 25.7 / 88.3 |
+| `rrf` (BM25F + dense) | 0.242 | 0.326 | 0.243 | 0.412 | 0.095 | −0.013 [−0.020, −0.005] | −0.004 [−0.017, 0.008] | 52.5 / 181.3 |
+| **`hybrid-0.5` (baseline)** | 0.256 | 0.330 | 0.247 | 0.412 | 0.102 | — | — | 25.4 / 86.2 |
+| `clause:hybrid-0.5` | 0.254 | 0.328 | 0.239 | 0.413 | 0.099 | +0.005 [−0.001, 0.010] | −0.003 [−0.013, 0.007] | 105.7 / 417.5 |
+| `llm-rrf:hybrid-0.5` | 0.224 | 0.308 | 0.234 | **0.439** | 0.076 | −0.022 [−0.036, −0.008] | −0.006 [−0.025, 0.014] | 77.4 / 251.2 |
+| `llm!:hybrid-0.5` | 0.268 | 0.345 | 0.259 | 0.415 | 0.102 | +0.022 [0.013, 0.030] | +0.014 [0.002, 0.027] | 78.7 / 257.6 |
+| **`llm:hybrid-0.5`** | 0.268 | 0.347 | 0.261 | 0.419 | 0.103 | **+0.023 [0.014, 0.031]** | **+0.017 [0.004, 0.031]** | 88.5 / 307.1 |
+| `rerank:llm!:hybrid-0.5` | **0.329** | **0.393** | **0.302** | 0.415 | **0.143** | **+0.084 [0.070, 0.097]** | **+0.070 [0.052, 0.087]** | 91.2 / 295.7 |
 
-Latency excludes LLM calls (responses are replayed from cache). In operation, one model call each for decomposition and reranking would be added.
+Latency excludes LLM calls (responses are replayed from cache). In operation, one model call each for decomposition and reranking would be added. 1,218 of the 1,689 queries were decomposed. One reranking response could not be replayed; that query was scored without reordering.
 
 ### Layer 2: Set selection (856 test-split queries)
 
-The candidate pool is the top 100 results from each Retriever; `llm-set` shows the top 20 to `LLMSetSelector` (Claude Sonnet). Differences are relative to top-1 for the same Retriever.
+The candidate pool is the top 100 results from each Retriever; `llm-set` shows the top 20 to `LLMSetSelector` (Claude Haiku 5.5). Differences are relative to top-1 for the same Retriever.
 
 | Retriever | Selection | Set F1 | Multi-tool F1 | Exact | Mean size | Difference from top-1 [95% CI] |
 |---|---|---:|---:|---:|---:|---:|
@@ -585,57 +585,70 @@ The candidate pool is the top 100 results from each Retriever; `llm-set` shows t
 | `hybrid-0.5` | `GreedyConstrainedSetSelector` (tool ≤ 3) | 0.142 | 0.163 | 0.002 | 3.00 | — |
 | `hybrid-0.5` | score ≥ 0.9 × first result (max 5) | 0.178 | 0.160 | 0.078 | 2.73 | +0.018 [0.008, 0.029] |
 | `hybrid-0.5` | oracle top-k (gold set size known) | 0.179 | 0.166 | 0.125 | 1.80 | +0.020 [0.013, 0.028] |
-| `llm:hybrid-0.5` | top-1 | 0.176 | 0.139 | 0.119 | 1.00 | — |
+| `llm:hybrid-0.5` | top-1 | 0.169 | 0.127 | 0.117 | 1.00 | — |
 | `llm:hybrid-0.5` | top-3 | 0.154 | 0.173 | 0.002 | 3.00 | — |
-| `llm:hybrid-0.5` | **`CoverageSetSelector` (min_gain 0.1)** | 0.181 | 0.158 | 0.101 | 1.64 | +0.004 [−0.005, 0.014] |
-| `llm:hybrid-0.5` | score ≥ 0.9 × first result (max 5) | 0.189 | 0.169 | 0.084 | 2.74 | +0.013 [0.002, 0.024] |
-| `llm:hybrid-0.5` | `CoverageSetSelector(include_within=0.95)` ※ | 0.189 | 0.171 | 0.082 | 3.21 | +0.013 [0.001, 0.024] |
-| `llm:hybrid-0.5` | oracle top-k | 0.194 | 0.181 | 0.134 | 1.80 | +0.017 [0.010, 0.024] |
-| `llm!:hybrid-0.5` | **`LLMSetSelector` (top 20)** | **0.243** | **0.258** | 0.085 | 4.05 | **+0.067 [0.049, 0.086]** |
+| `llm:hybrid-0.5` | `CoverageSetSelector` (min_gain 0.1) | 0.154 | 0.142 | 0.067 | 2.07 | −0.015 [−0.028, −0.003] |
+| `llm:hybrid-0.5` | score ≥ 0.9 × first result (max 5) | 0.171 | 0.156 | 0.063 | 2.88 | +0.002 [−0.010, 0.013] |
+| `llm:hybrid-0.5` | `CoverageSetSelector(include_within=0.95)` | 0.160 | 0.148 | 0.054 | 4.20 | −0.009 [−0.021, 0.004] |
+| `llm:hybrid-0.5` | oracle top-k | 0.186 | 0.168 | 0.131 | 1.80 | +0.017 [0.010, 0.024] |
+| `llm!:hybrid-0.5` | **`LLMSetSelector` (top 20)** | **0.206** | **0.211** | 0.053 | 4.57 | **+0.038 [0.018, 0.057]** |
 
-`min_gain` and the relative threshold were selected on dev (dev F1: the coverage selector tied at 0.174–0.175 for 0.02–0.1; score ≥0.9 × first was 0.182). ※ is a separate run with the same setting, [`results/toolret-near-ties.json`](results/toolret-near-ties.json); among `include_within` 0.85 / 0.9 / 0.95, 0.95 had the best dev F1 (0.187). `LLMSetSelector` failed to replay responses for 3 cases (one query was refused by the model’s safety mechanism); those three cases were scored as abstentions.
+`min_gain` stays at the default 0.1, the relative threshold at 0.9, and `include_within` at 0.95. Dev F1 in this measurement: the coverage selector 0.149–0.156 for `min_gain` 0.02–0.3; score ≥ 0.9 × first 0.173; `include_within` 0.85 / 0.9 / 0.95 gave 0.155 / 0.160 / 0.162. `LLMSetSelector` failed to replay one response; that case was scored as an abstention.
 
 ### Interpreting the results
 
 - **At large catalog scale, hybrid semantic weight 0.5 is best; 0.9 does not transfer.** The 0.9 setting that was best on the 120-scenario Skill corpus falls well below 0.5 on 44k tools: macro nDCG@10 is 0.220 vs. 0.256. The library default 0.5 is best on labels the authors did not create. RRF fusion also trails hybrid 0.5.
-- **LLM decomposition significantly improves Layer 1**, but by only 1–2 points (nDCG@10 +0.019, C@10 +0.012). Best candidates for each subtask move higher. Blend fusion is better than RRF (RRF raises C@100 while lowering nDCG@10), while rule-based clause decomposition has no significant difference (−0.008 on dev). Rule-based decomposition also splits a single request at sentence or conjunction boundaries, so the benefit of decomposition depends on its accuracy (ADR 0012).
-- **Adding LLM reranking gives the largest gain** (nDCG@10 +0.043). Comparing candidate descriptions is more accurate than the combined embedding and BM25 score.
-- **Most improvement in set selection comes from ranking**. Of the +0.022 from top-1 before decomposition (0.159) to coverage selection after decomposition (0.181), +0.017 is already gained by decomposed top-1; the coverage selector’s additional +0.004 is not significant in this sample (it is +0.012 and significant on the full test set below). The coverage selector makes smaller sets and has higher Exact (precision-oriented), while ToolRet gold sets often contain near-duplicate candidates such as multiple endpoints of the same API, so the relative threshold (recall-oriented) has higher F1. Coverage selection’s value is choosing one item per subtask or type while preserving dependency closure, conflicts, and permissions (on the four-type mixed set-selection benchmark it matches greedy at Set F1 0.609). To show near-ties to the model, `include_within=0.95` achieves the same F1 as the relative threshold (0.189).
+- **LLM decomposition significantly improves Layer 1**, by about 2 points (nDCG@10 +0.023, C@10 +0.017). Best candidates for each subtask move higher. Blend fusion is better than RRF (RRF raises C@100 while lowering nDCG@10), while rule-based clause decomposition has no significant difference (−0.008 on dev). Rule-based decomposition also splits a single request at sentence or conjunction boundaries, so the benefit of decomposition depends on its accuracy (ADR 0012).
+- **Adding LLM reranking gives the largest gain** (nDCG@10 +0.084). Comparing candidate descriptions is more accurate than the combined embedding and BM25 score.
+- **In this measurement, building a set by rule on the decomposed ranking does not beat top-1.** Decomposition raises top-1 Set F1 from 0.159 to 0.169, but the coverage selector on top of it falls to 0.154 (−0.015 against top-1, significant), and the relative threshold gains nothing (+0.002). Among rule-based sets, the relative threshold on hybrid without decomposition was best at 0.178. The coverage selector picks one item per subtask, so its set size follows the granularity of the decomposition. Haiku decomposed 1,218 of the 1,689 queries, and coverage sets averaged 2.07 items (gold sets average 1.8).
+- **The coverage selector's gain depends on the decomposing model.** In the earlier results, measured with Claude Sonnet decompositions, coverage was +0.004 over top-1 on the sample (not significant) and +0.012 on the full test set (significant); see "Differences from the earlier measurement" below. Coverage selection's value is choosing one item per subtask or type while preserving dependency closure, conflicts, and permissions (on the four-type mixed set-selection benchmark it matches greedy at Set F1 0.609). This measurement does not support it as a way to raise Set F1 on ToolRet.
 - **Fixed top-k and the default greedy (tool ≤ 3) are worse than top-1** (0.142–0.154). ToolRet gold sets average 1.8 items, and always selecting three reduces precision.
-- **If one additional model call is affordable, `LLMSetSelector` performs best** (F1 0.243, multi-tool F1 0.258, +0.067 over top-1). The solver beat the LLM on the repository’s 28 scenarios (a synthetic corpus with declared constraints), but ToolRet has no declared constraints, so semantic interpretation of descriptions helps. The Kernel applies dependency closure, conflict, and permission constraints to every Selector output, so this remains compatible with delegating relevance judgment to the LLM and constraints to the solver (ADR 0005). The resulting sets are relatively large (mean 4.05).
-- **Limitations**: this evaluation covers 1,689 sampled queries (at most 60 per subset) and only the small MiniLM-L6 embedding model. Larger embedding models, ToolRet’s instruction-based setting, and direct comparison with published paper values (the paper could not be retrieved in this environment) were not evaluated. LLM-stage outputs depend on cache and change when the model is updated.
+- **If one additional model call is affordable, `LLMSetSelector` performs best** (F1 0.206, multi-tool F1 0.211, +0.038 over top-1). The solver beat the LLM on the repository’s 28 scenarios (a synthetic corpus with declared constraints), but ToolRet has no declared constraints, so semantic interpretation of descriptions helps. The Kernel applies dependency closure, conflict, and permission constraints to every Selector output, so this remains compatible with delegating relevance judgment to the LLM and constraints to the solver (ADR 0005). The resulting sets are relatively large (mean 4.57).
+- **Limitations**: this evaluation covers 1,689 sampled queries (at most 60 per subset) and only the small MiniLM-L6 embedding model. The LLM stages use one model, Claude Haiku 5.5; other models were not compared under the same conditions. Larger embedding models, ToolRet’s instruction-based setting, and direct comparison with published paper values (the paper could not be retrieved in this environment) were not evaluated. LLM-stage outputs depend on cache and change when the model is updated.
+
+#### Differences from the earlier measurement
+
+The LLM stages in this section were previously measured with Claude Sonnet (`benchmarks/README.en.md` and the result JSON at commit `451a9bf7`). The re-measurement that aligned the differences and intervals with the macro weighting (#76) rebuilt the LLM stages with Claude Haiku 5.5. Responses are not reproducible, so values that depend on the LLM stages cannot be compared with the earlier ones. Metrics of the rows without an LLM (`lexical`, `dense`, `hybrid-*`, `rrf`, `clause:`) are unchanged (their differences and intervals follow the new definition, and latency was measured again).
+
+| Item | Earlier (Sonnet) | Now (Haiku 5.5) |
+|---|---:|---:|
+| Decomposition: test nDCG@10 difference (sample) | +0.019 (query-equal) | +0.023 (macro) |
+| Reranking: test nDCG@10 difference (sample) | +0.043 (query-equal) | +0.084 (macro) |
+| `LLMSetSelector`: Set F1 (difference from top-1) | 0.243 (+0.067) | 0.206 (+0.038) |
+| Coverage selector: difference from top-1 (sample / full test) | +0.004 / +0.012 | −0.015 / −0.003 |
+| Queries decomposed on the full test split | 1,900 / 3,920 | 2,787 / 3,920 |
+
+The earlier ranking differences were query-equal (micro) values, so their definition also differs from the macro values here. The micro differences of this measurement are under `micro` in the result JSON (decomposition: +0.016 on the sample, +0.011 on the full test split).
 
 #### Tried during exploration but not adopted
 
-None improved results in the dev split or offline analyses during development (values in ADR 0012): max fusion using the best score; fixed increases to subtask weight (the gain disappears in English); relevance normalization per facet; adding near-ties to coverage selection; calibrating candidate inclusion probabilities and choosing the set size that maximizes expected F1; and supplementing prerequisite tools based on matching input/output names (data-flow completion).
+None improved results in the dev split or offline analyses during development, which used Claude Sonnet decompositions (values in ADR 0012): max fusion using the best score; fixed increases to subtask weight (the gain disappears in English); relevance normalization per facet; adding near-ties to coverage selection; calibrating candidate inclusion probabilities and choosing the set size that maximizes expected F1; and supplementing prerequisite tools based on matching input/output names (data-flow completion).
 
 
 ### Full test-split confirmation (3,920 queries)
 
 The sample limits larger subsets to 60 cases. We decomposed the full test split (3,920 queries, including 1,729 multi-tool queries) and remeasured with the same settings ([`results/toolret-test-full.json`](results/toolret-test-full.json), `--per-subset 0 --split test`). LLM reranking and `LLMSetSelector` were excluded because of the number of calls.
 
-The difference columns of the first table are the earlier query-equal differences and intervals, so they do not correspond to the difference between the macro columns of the same table. Computed from `per_subset`, the macro differences are +0.0224 nDCG@10 and +0.0149 C@10 for `llm:hybrid-0.5`, and −0.0446 / −0.0425 for `lexical` (intervals will be updated after re-measurement).
-
 | Configuration | nDCG@10 | C@10 | C@100 | Multi-tool C@10 | nDCG@10 difference [95% CI] | C@10 difference [95% CI] |
 |---|---:|---:|---:|---:|---:|---:|
-| `lexical` | 0.200 | 0.192 | 0.321 | 0.113 | −0.061 [−0.069, −0.055] | −0.068 [−0.078, −0.058] |
+| `lexical` | 0.200 | 0.192 | 0.321 | 0.113 | −0.045 [−0.056, −0.033] | −0.043 [−0.061, −0.027] |
 | `hybrid-0.5` (baseline) | 0.245 | 0.234 | 0.397 | 0.161 | — | — |
-| `llm:hybrid-0.5` | **0.267** | **0.249** | **0.408** | **0.179** | **+0.014 [0.011, 0.018]** | **+0.013 [0.007, 0.018]** |
+| `llm:hybrid-0.5` | **0.268** | **0.255** | **0.403** | **0.178** | **+0.023 [0.015, 0.032]** | **+0.020 [0.008, 0.033]** |
 
 | Retriever | Selection | Set F1 | Multi-tool F1 | Exact | Mean size | Difference from top-1 [95% CI] |
 |---|---|---:|---:|---:|---:|---:|
 | `hybrid-0.5` | top-1 | 0.199 | 0.135 | 0.140 | 1.00 | — |
-| `hybrid-0.5` | score ≥ 0.9 × first result (max 5) | 0.222 | 0.182 | 0.100 | 2.71 | +0.023 [0.017, 0.029] |
-| `llm:hybrid-0.5` | top-1 | 0.208 | 0.144 | 0.144 | 1.00 | — |
-| `llm:hybrid-0.5` | top-3 / `GreedyConstrainedSetSelector` (tool ≤ 3) | 0.192 | 0.201 | 0.002 | 3.00 | — |
-| `llm:hybrid-0.5` | `CoverageSetSelector` | 0.219 | 0.178 | 0.139 | 1.57 | +0.012 [0.006, 0.017] |
-| `llm:hybrid-0.5` | score ≥ 0.9 × first result (max 5) | 0.226 | 0.189 | 0.098 | 2.74 | +0.018 [0.012, 0.024] |
-| `llm:hybrid-0.5` | **`CoverageSetSelector(include_within=0.95)`** | **0.229** | **0.192** | 0.112 | 3.14 | **+0.021 [0.015, 0.027]** |
-| `llm:hybrid-0.5` | oracle top-k | 0.234 | 0.204 | 0.163 | 1.76 | +0.026 [0.022, 0.030] |
+| `hybrid-0.5` | **score ≥ 0.9 × first result (max 5)** | **0.222** | 0.182 | 0.100 | 2.71 | **+0.023 [0.017, 0.029]** |
+| `llm:hybrid-0.5` | top-1 | 0.205 | 0.135 | 0.145 | 1.00 | — |
+| `llm:hybrid-0.5` | top-3 / `GreedyConstrainedSetSelector` (tool ≤ 3) | 0.191 | 0.199 | 0.001 | 3.00 | — |
+| `llm:hybrid-0.5` | `CoverageSetSelector` | 0.201 | 0.161 | 0.106 | 2.00 | −0.003 [−0.010, 0.003] |
+| `llm:hybrid-0.5` | score ≥ 0.9 × first result (max 5) | 0.213 | 0.174 | 0.082 | 2.81 | +0.009 [0.002, 0.015] |
+| `llm:hybrid-0.5` | `CoverageSetSelector(include_within=0.95)` | 0.202 | 0.167 | 0.081 | 3.97 | −0.003 [−0.009, 0.004] |
+| `llm:hybrid-0.5` | oracle top-k | 0.232 | 0.197 | 0.163 | 1.76 | +0.027 [0.023, 0.031] |
 
-- The Layer 1 improvement from decomposition (nDCG@10 +0.014) replicates on all queries, with a narrower interval. Macro nDCG@10 is nearly the same between the sampled test and full set (hybrid 0.243 / 0.245).
-- **The coverage selector’s gain is significant on the full set** (+0.012 vs. top-1). On the 856-query sample, it was +0.004 and the interval included 0, so the effect is small and requires more queries to detect. Adding `include_within=0.95` raises it to 0.229, above the relative threshold and 0.005 below the oracle (0.234).
-- We also confirmed on the full set that the mean known-token rate across 1,900 decomposed queries is 0.93, so the discount has little effect on English goals.
+- The Layer 1 improvement from decomposition (nDCG@10 +0.023) replicates on all queries. Macro nDCG@10 is nearly the same between the sampled test and full set (hybrid 0.243 / 0.245). The query-equal (micro) difference is +0.011 [0.007, 0.014], smaller than the macro one.
+- **The coverage selector shows no gain on the full set either** (−0.003 [−0.010, 0.003] vs. top-1), and neither does `include_within=0.95` (−0.003). Among rule-based sets, the relative threshold on hybrid without decomposition is best at 0.222, above the relative threshold on the decomposed ranking (0.213). An oracle that knows the gold set size reaches 0.232.
+- We also confirmed on the full set that the mean known-token rate across 2,787 decomposed queries is 0.93, so the discount has little effect on English goals.
 
 ### Embedding models and the query-side instruction
 
@@ -649,36 +662,36 @@ python3 benchmarks/run_toolret_benchmark.py --per-subset 60 --retrievers hybrid-
 python3 benchmarks/compare_toolret_records.py minilm=/tmp/minilm.json arctic-s=/tmp/arctic.json --output /tmp/cmp.json
 ```
 
-Results are in [`results/toolret-arctic-s.json`](results/toolret-arctic-s.json) and [`results/toolret-arctic-s-no-instruction.json`](results/toolret-arctic-s-no-instruction.json); paired differences are in [`results/toolret-embeddings.json`](results/toolret-embeddings.json) (against MiniLM) and [`results/toolret-query-instruction.json`](results/toolret-query-instruction.json) (with versus without the instruction). The MiniLM-L6 row has the same values as [`results/toolret.json`](results/toolret.json). Differences are micro-averaged over the 1,689 queries, with 95% bootstrap intervals. (This is the earlier definition; the current `compare_toolret_records.py` reports the macro difference first and the micro difference alongside it.)
+Results are in [`results/toolret-arctic-s.json`](results/toolret-arctic-s.json) and [`results/toolret-arctic-s-no-instruction.json`](results/toolret-arctic-s-no-instruction.json); paired differences are in [`results/toolret-embeddings.json`](results/toolret-embeddings.json) (against MiniLM) and [`results/toolret-query-instruction.json`](results/toolret-query-instruction.json) (with versus without the instruction). The MiniLM-L6 row has the same values as [`results/toolret.json`](results/toolret.json), and the pairing uses the `--records` file of that run. Differences use the same weighting as the macro columns, with 95% bootstrap intervals (1,689 queries, 35 subsets; the query-equal difference is under `micro` in each JSON).
 
 | Embedding | hybrid-0.5 macro nDCG@10 | hybrid-0.5 macro C@10 | dense macro nDCG@10 | dense macro C@10 | Difference from MiniLM (dense nDCG@10) |
 |---|---:|---:|---:|---:|---:|
 | **MiniLM-L6** (default) | **0.256** | **0.247** | **0.205** | **0.199** | — |
-| Arctic-Embed-S (with instruction) | 0.241 | 0.221 | 0.178 | 0.163 | −0.026 [−0.037, −0.016] |
-| Arctic-Embed-S (without instruction) | 0.229 | 0.214 | 0.110 | 0.107 | −0.091 [−0.103, −0.078] |
+| Arctic-Embed-S (with instruction) | 0.241 | 0.221 | 0.178 | 0.163 | −0.027 [−0.038, −0.016] |
+| Arctic-Embed-S (without instruction) | 0.229 | 0.214 | 0.110 | 0.107 | −0.095 [−0.107, −0.082] |
 
-- **A model that is stronger on MTEB is not necessarily stronger on ToolRet.** Arctic-Embed-S is significantly worse than MiniLM in both hybrid and dense retrieval (hybrid nDCG@10 −0.014 [−0.022, −0.007], C@100 −0.045 [−0.060, −0.031]). This points the same way as the ToolRet paper's conclusion that retrieval models are not tool-savvy; the default MiniLM-L6 is unchanged.
-- **Asymmetric models need their query-side instruction.** Without it, dense nDCG@10 drops by 0.065 [0.056, 0.074] and C@100 by 0.098 [0.082, 0.114]. With only `embed()`, the previous `EmbeddingProvider` could use such models only without the instruction.
+- **A model that is stronger on MTEB is not necessarily stronger on ToolRet.** Arctic-Embed-S is significantly worse than MiniLM in both hybrid and dense retrieval (hybrid nDCG@10 −0.015 [−0.023, −0.006], C@100 −0.045 [−0.061, −0.028]). This points the same way as the ToolRet paper's conclusion that retrieval models are not tool-savvy; the default MiniLM-L6 is unchanged.
+- **Asymmetric models need their query-side instruction.** Without it, dense nDCG@10 drops by 0.068 [0.059, 0.077] and C@100 by 0.096 [0.081, 0.112]. With only `embed()`, the previous `EmbeddingProvider` could use such models only without the instruction.
 - Embedding the 44,453 documents on four CPU cores took about 40 minutes with MiniLM-L6, about 90 minutes with Arctic-Embed-S, about 4 hours with bge-small-en-v1.5, and more than 10 hours with bge-base-en-v1.5 (estimates while sharing the CPU with other jobs). Larger models were not measured in this environment.
 
 ### Selecting from an English catalog with Japanese goals
 
-ToolRet tool descriptions are in English. We translated six test queries per subset (206 total) into natural Japanese with Claude Sonnet (`run_toolret_llm_stages.py --stage translate-ja`) and compared retrieval with the same 206 queries left in English ([`results/toolret-ja.json`](results/toolret-ja.json), [`results/toolret-ja-english-baseline.json`](results/toolret-ja-english-baseline.json)). `!` means no known-token-rate discount, and `@1` means subtask weight 1.
+ToolRet tool descriptions are in English. We translated six test queries per subset (206 total) into natural Japanese with Claude Haiku 5.5 (`run_toolret_llm_stages.py --stage translate-ja`) and compared retrieval with the same 206 queries left in English ([`results/toolret-ja.json`](results/toolret-ja.json), [`results/toolret-ja-english-baseline.json`](results/toolret-ja-english-baseline.json)). `!` means no known-token-rate discount, and `@1` means subtask weight 1.
 
 | Configuration | English nDCG@10 | English C@10 | Japanese nDCG@10 | Japanese C@10 | Japanese C@100 | Japanese top-1 F1 | Japanese coverage F1 |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| `lexical` | 0.217 | 0.219 | 0.013 | 0.019 | 0.071 | 0.010 | 0.010 |
-| `hybrid-0.5` | 0.252 | 0.252 | 0.029 | 0.029 | 0.057 | 0.024 | 0.024 |
-| `llm!:lexical` | 0.233 | 0.233 | 0.072 | 0.076 | 0.214 | 0.026 | 0.057 |
-| `llm:lexical` | 0.230 | 0.233 | 0.091 | 0.095 | 0.205 | 0.041 | 0.061 |
-| `llm!:hybrid-0.5` | 0.268 | 0.252 | 0.057 | 0.043 | 0.138 | 0.042 | 0.067 |
-| `llm@1!:hybrid-0.5` | 0.267 | 0.262 | 0.134 | 0.129 | 0.248 | 0.076 | 0.081 |
-| **`llm:hybrid-0.5` (default)** | **0.268** | 0.252 | **0.134** | 0.119 | 0.243 | **0.082** | 0.080 |
+| `lexical` | 0.217 | 0.219 | 0.011 | 0.019 | 0.071 | 0.005 | 0.005 |
+| `hybrid-0.5` | 0.252 | 0.252 | 0.028 | 0.029 | 0.062 | 0.022 | 0.022 |
+| `llm!:lexical` | 0.232 | 0.219 | 0.065 | 0.086 | 0.224 | 0.022 | 0.062 |
+| `llm:lexical` | 0.228 | 0.214 | 0.084 | 0.086 | 0.224 | 0.041 | 0.070 |
+| `llm!:hybrid-0.5` | 0.271 | 0.248 | 0.046 | 0.043 | 0.119 | 0.028 | 0.065 |
+| `llm@1!:hybrid-0.5` | 0.254 | 0.248 | **0.118** | **0.133** | 0.290 | **0.057** | **0.085** |
+| **`llm:hybrid-0.5` (default)** | **0.271** | 0.248 | 0.115 | 0.124 | 0.290 | 0.053 | 0.082 |
 
-- **Neither lexical retrieval nor English-only embeddings work well on Japanese goals** (nDCG@10 0.013 / 0.029). Japanese CJK bigrams do not occur in the English catalog, so the few remaining known tokens (names, numbers, proper nouns) dominate the relevance signal.
-- **LLM decomposition also serves as translation.** `LLMQueryDecomposer` returns English subtasks, so retrieval for subtasks behaves like English retrieval. However, with the default 0.25 weight, the noisy list from the Japanese goal itself dominates the ranking, leaving results at 0.057.
-- **The known-token-rate discount** (weighting the goal based on the fraction of its words present in the catalog index) automatically reaches 0.134, the same value as manually setting the weight to 1 (hybrid difference +0.106, 95% CI [0.076, 0.136]). Among 108 decomposed queries, mean known-token rate was 0.93 for English and 0.31 for Japanese (`goal_weight_mean` in each JSON), and results for English are unchanged (0.268 → 0.268).
-- Results remain well below English queries (0.268); subtasks alone cannot recover the context in the English goal itself (the combination of proper nouns and descriptive words). A multilingual embedding configuration has not been measured.
+- **Neither lexical retrieval nor English-only embeddings work well on Japanese goals** (nDCG@10 0.011 / 0.028). Japanese CJK bigrams do not occur in the English catalog, so the few remaining known tokens (names, numbers, proper nouns) dominate the relevance signal.
+- **LLM decomposition also serves as translation.** `LLMQueryDecomposer` returns English subtasks, so retrieval for subtasks behaves like English retrieval. However, with the default 0.25 weight, the noisy list from the Japanese goal itself dominates the ranking, leaving results at 0.046.
+- **The known-token-rate discount** (weighting the goal based on the fraction of its words present in the catalog index) automatically reaches 0.115, close to the 0.118 from manually setting the weight to 1 (hybrid difference +0.087, 95% CI [0.062, 0.114]). Among the decomposed queries (156 Japanese, 152 English), mean known-token rate was 0.92 for English and 0.32 for Japanese (`goal_weight_mean` in each JSON), and results for English are unchanged (0.271 → 0.271). Fixing the weight at 1 lowers English to 0.254.
+- Results remain well below English queries (0.271); subtasks alone cannot recover the context in the English goal itself (the combination of proper nouns and descriptive words). A multilingual embedding configuration has not been measured.
 
 ## Notes
 
