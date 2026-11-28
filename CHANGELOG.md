@@ -200,6 +200,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `GoalAwareSetSelector(strategy="exact")` no longer spends its node budget on
+  subsets that cannot satisfy the TaskSpec. With 22 candidates, six
+  requirements and `max_resources=8` it proves the optimum in 317 nodes
+  (about 0.1 s) where it used to stop at `max_nodes=100000` after about 43 s.
+  When no set exists within the granted permissions but one exists with more,
+  it returns `escalate` with the missing permissions even if the node budget
+  ran out, instead of `abstain`. A resource that satisfies no further
+  requirement and has no dependency relation is no longer added to the set,
+  including when it would tie on permissions, rendered cost and cost. The
+  pruning assumes `rendered_token_cost` does not shrink when a resource is
+  added. (#103)
+  - `GoalAwareSetSelector(strategy="exact")` が、TaskSpec を満たせない部分集合に
+    ノード上限を使い切らなくなりました。候補 22 件・要求 6 個・`max_resources=8` の例で、
+    317 ノード（約 0.1 秒）で最適性を証明します（以前は約 43 秒かけて
+    `max_nodes=100000` で打ち切り）。付与済みの権限では集合が無く、権限を足せば
+    充足する場合は、ノード上限に達していても `abstain` ではなく、不足権限つきの
+    `escalate` を返します。新しい要求を満たさず依存関係にも関わらない資源は、権限数・
+    描画量・費用が同点になる場合も含めて集合に足しません。枝刈りは、資源を足しても
+    `rendered_token_cost` が減らないことを前提にします。(#103)
 - `LLMSetSelector` reads the last JSON object in a reply instead of everything
   between the first `{` and the last `}`. A model that follows its answer with a
   corrected object used to make the reply unparseable, and the selector then

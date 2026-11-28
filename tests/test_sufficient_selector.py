@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from itertools import combinations
+import random
 import unittest
 
 from marmo_core.compiler import CompiledContext
@@ -910,6 +912,243 @@ class GoalAwareSetSelectorTests(unittest.TestCase):
         self.assertEqual(together_objective[:3], split_objective[:3])
         self.assertEqual(together_objective[3], split_objective[3])
 
+
+    def _six_requirement_pool(self, protected_action: str | None = None) -> tuple[TaskSpec, list[SearchResult]]:
+        """Six requirements, three alternatives each, and four distractors: 22 candidates."""
+
+        actions = ("read", "create", "send", "archive", "update", "delete")
+        candidates = []
+        for action_index, action in enumerate(actions):
+            for variant in range(3):
+                needs_permission = action == protected_action or (
+                    protected_action is None and variant == 0
+                )
+                candidates.append(
+                    _result(
+                        _definition(
+                            f"tool.{action}-{variant}",
+                            affordances=(_affordance(action),),
+                            required_permissions=(f"perm.{action}",) if needs_permission else (),
+                            rendered_tokens=10 + 3 * variant + action_index,
+                            cost_estimate=0.01 * (variant + 1),
+                        ),
+                        score=0.9 - 0.05 * variant,
+                        relevance=0.9 - 0.05 * variant,
+                    )
+                )
+        for index in range(4):
+            candidates.append(
+                _result(
+                    _definition(
+                        f"tool.distractor-{index}",
+                        affordances=(_affordance("summarize"),),
+                        rendered_tokens=8,
+                    ),
+                    score=0.6,
+                    relevance=0.6,
+                )
+            )
+        return _task(*(_requirement(action) for action in actions)), candidates
+
+    def test_exact_proves_the_optimum_for_six_requirements_within_a_small_node_budget(self) -> None:
+        spec, candidates = self._six_requirement_pool()
+        selection = _selector(spec, max_nodes=2_000).select(
+            candidates, context=SelectionContext(task="six steps", max_resources=8)
+        )
+        self.assertEqual(selection.status, "selected")
+        self.assertIn("optimum proven", selection.reason)
+        self.assertEqual(
+            [item.resource.metadata.id for item in selection.results],
+            [
+                "tool.archive-1",
+                "tool.create-1",
+                "tool.delete-1",
+                "tool.read-1",
+                "tool.send-1",
+                "tool.update-1",
+            ],
+        )
+
+    def test_exact_escalates_when_only_permissions_are_missing_for_six_requirements(self) -> None:
+        spec, candidates = self._six_requirement_pool(protected_action="send")
+        selection = _selector(spec, max_nodes=2_000).select(
+            candidates, context=SelectionContext(task="six steps", max_resources=8)
+        )
+        self.assertEqual(selection.status, "escalate")
+        self.assertEqual(selection.missing_permissions, ("perm.send",))
+        self.assertIn("only with additional permissions", selection.reason)
+
+    def test_truncated_exact_search_escalates_without_claiming_permissions_are_the_only_gap(self) -> None:
+        # The granted sender is over budget, so no set within the granted
+        # permissions exists; the shared dependency keeps the search from
+        # ruling that out inside the node budget.
+        spec = _task(_requirement("read"), _requirement("send", "message"))
+        candidates = [
+            _result(_definition("tool.base")),
+            *(
+                _result(
+                    _definition(
+                        f"tool.read-{index}",
+                        affordances=(_affordance("read"),),
+                        dependencies=("tool.base",),
+                    )
+                )
+                for index in range(8)
+            ),
+            _result(
+                _definition(
+                    "tool.send-open", affordances=(_affordance("send", "message"),), cost_estimate=5
+                )
+            ),
+            _result(
+                _definition(
+                    "tool.send-protected",
+                    affordances=(_affordance("send", "message"),),
+                    required_permissions=("perm.send",),
+                    cost_estimate=0.1,
+                )
+            ),
+        ]
+        context = SelectionContext(task="read and send", max_resources=12, budget_cost=1)
+
+        truncated = _selector(spec, max_nodes=150).select(candidates, context=context)
+        self.assertEqual(truncated.status, "escalate")
+        self.assertEqual(truncated.missing_permissions, ("perm.send",))
+        self.assertIn("max_nodes=150", truncated.reason)
+        self.assertNotIn("only with additional permissions", truncated.reason)
+
+        complete = _selector(spec).select(candidates, context=context)
+        self.assertEqual(complete.status, "escalate")
+        self.assertEqual(complete.missing_permissions, ("perm.send",))
+        self.assertIn("only with additional permissions", complete.reason)
+
+    def test_exact_reason_says_when_a_smaller_permission_request_was_not_ruled_out(self) -> None:
+        spec = _task(_requirement("read"), _requirement("send", "message"))
+        candidates = [
+            _result(_definition("tool.0base")),
+            *(
+                _result(_definition(f"tool.0x{index}", dependencies=("tool.0base",)))
+                for index in range(7)
+            ),
+            _result(_definition("tool.a-cheap", affordances=(_affordance("read"),), rendered_tokens=9)),
+            _result(
+                _definition(
+                    "tool.a-exp",
+                    affordances=(_affordance("read"),),
+                    required_permissions=("p1",),
+                    rendered_tokens=1,
+                )
+            ),
+            _result(
+                _definition(
+                    "tool.b",
+                    affordances=(_affordance("send", "message"),),
+                    required_permissions=("p2",),
+                )
+            ),
+        ]
+        context = SelectionContext(task="read and send", max_resources=12)
+
+        truncated = _selector(spec, max_nodes=40).select(candidates, context=context)
+        self.assertEqual(truncated.status, "escalate")
+        self.assertEqual(truncated.missing_permissions, ("p2",))
+        self.assertIn("before it could rule out a smaller permission request", truncated.reason)
+
+        complete = _selector(spec).select(candidates, context=context)
+        self.assertEqual(complete.status, "escalate")
+        self.assertEqual(complete.missing_permissions, ("p2",))
+        self.assertTrue(complete.reason.startswith("a satisfying set exists only with"))
+
+    def test_exact_does_not_pad_the_set_with_a_free_resource_that_satisfies_nothing_new(self) -> None:
+        spec = _task(_requirement("read"))
+        needed = _result(
+            _definition("tool.b-read", affordances=(_affordance("read"),), rendered_tokens=2),
+            relevance=0.5,
+        )
+        free_extra = _result(
+            _definition("tool.a-free", affordances=(_affordance("summarize"),), rendered_tokens=0),
+            relevance=1.0,
+        )
+        selection = _selector(spec).select(
+            [needed, free_extra], context=SelectionContext(task="read", max_resources=2)
+        )
+        self.assertEqual(selection.status, "selected")
+        self.assertEqual([item.resource.metadata.id for item in selection.results], ["tool.b-read"])
+
+    def test_exact_pruning_matches_exhaustive_enumeration_on_random_pools_with_dependencies(self) -> None:
+        def token_cost(selected):
+            return sum(int(item.resource.extras["rendered_tokens"]) for item in selected)
+
+        rng = random.Random(103)
+        actions = ("read", "create", "send", "archive")
+        outcomes: dict[str, int] = {}
+        for _case in range(150):
+            ids = [f"tool.r{index}" for index in range(rng.randint(1, 7))]
+            candidates = []
+            for resource_id in ids:
+                others = [item for item in ids if item != resource_id]
+                dependencies = tuple(rng.sample(others, min(len(others), rng.choice((0, 0, 0, 1, 2)))))
+                context_all_of = tuple(rng.sample(others, min(len(others), rng.choice((0, 0, 0, 1)))))
+                context_one_of = (
+                    (tuple(rng.sample(others, 2)),) if len(others) >= 2 and rng.random() < 0.2 else ()
+                )
+                conflicts = tuple(rng.sample(others, min(len(others), rng.choice((0, 0, 0, 1)))))
+                score = rng.choice((0.9, 0.7, 0.2))
+                candidates.append(
+                    _result(
+                        _definition(
+                            resource_id,
+                            dependencies=dependencies,
+                            conflicts_with=conflicts,
+                            required_permissions=tuple(rng.sample(("p1", "p2"), rng.choice((0, 0, 1)))),
+                            cost_estimate=rng.choice((0.1, 0.2, 0.5)),
+                            rendered_tokens=rng.randint(1, 6),
+                            contract=_contract(
+                                tuple(
+                                    _affordance(action)
+                                    for action in rng.sample((*actions, "noop"), rng.randint(0, 2))
+                                ),
+                                context_all_of=context_all_of,
+                                context_one_of=context_one_of,
+                            ),
+                        ),
+                        score=score,
+                        relevance=score,
+                    )
+                )
+            spec = _task(*(_requirement(action) for action in rng.sample(actions, rng.randint(1, 2))))
+            context = SelectionContext(
+                task="random",
+                granted_permissions=tuple(rng.sample(("p1", "p2"), rng.randint(0, 2))),
+                max_resources=rng.randint(1, 5),
+                budget_cost=rng.choice((None, 0.8)),
+                min_score=rng.choice((0.0, 0.5)),
+            )
+            selector = _selector(spec, token_cost=token_cost)
+
+            relaxed_context = replace(context, enforce_permissions=False)
+            valid_objectives = []
+            satisfiable_with_more_permissions = False
+            for size in range(len(candidates) + 1):
+                for subset in combinations(candidates, size):
+                    if selector.validate_selection(subset, context=context)[0]:
+                        valid_objectives.append(_objective(subset, token_cost)[:3])
+                    elif selector.validate_selection(subset, context=relaxed_context)[0]:
+                        satisfiable_with_more_permissions = True
+
+            selection = selector.select(candidates, context=context)
+            outcomes[selection.status] = outcomes.get(selection.status, 0) + 1
+            if valid_objectives:
+                self.assertEqual(selection.status, "selected")
+                self.assertIn("optimum proven", selection.reason)
+                self.assertEqual(_objective(selection.results, token_cost)[:3], min(valid_objectives))
+            elif satisfiable_with_more_permissions:
+                self.assertEqual(selection.status, "escalate")
+                self.assertTrue(selection.missing_permissions)
+            else:
+                self.assertEqual(selection.status, "abstain")
+        self.assertGreaterEqual(outcomes.get("selected", 0), 20)
+        self.assertGreaterEqual(outcomes.get("escalate", 0), 5)
 
 if __name__ == "__main__":
     unittest.main()
