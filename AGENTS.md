@@ -32,6 +32,7 @@ Marmo-Core は、Object Routing を実装する公開 Python ライブラリで�
 - `ARCHITECTURE.md`／レイヤー構成、`Kernel.run_goal` と CLI のリクエスト経路、契約と境界、拡張ポイントをまとめた内部設計の正本／複数モジュールにまたがる変更で、必要な章を読む。
 - `docs/knowledge/development_conventions.md`／プロジェクト構成、ビルド・テストコマンド、実装規約、命名、責務分割、テスト方針、サブエージェントの指定、AI 出力の品質確認／コードを変更する作業の規約の正本。該当する節を着手前に確認する。
 - `docs/knowledge/README.md`／再利用可能な知見の索引／調べ物の出発点。作業ログや一時的な状態は追加しない。
+- `ideas.md`／Issue 化前の改善案・研究案／検討中の案を参照・追記するとき。
 - `docs/knowledge/debugging.md`／実モデル・検索・CLI・パッケージングの不具合の切り分け手順／動作がおかしいときの最初の手がかり。
 - `docs/knowledge/contracts-and-compatibility.md`／公開 API、リソース定義、状態ファイル、監査ログ、CLI 終了コードの互換性契約と変更手順／これらの表面に触る変更の前に読む。
 - `docs/knowledge/parallel_work.md`／サブエージェントと git worktree で作業を分ける判断基準と、分けた後の運用手順／並行作業をするときに読む。
