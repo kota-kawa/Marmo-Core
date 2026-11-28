@@ -1,6 +1,6 @@
 # 開発規約
 
-コードを変更する前に読む。全体像は `ARCHITECTURE.md`、契約の変更は
+コードを変更する作業の規約の正本。該当する節を着手前に確認する。全体像は `ARCHITECTURE.md`、契約の変更は
 `contracts-and-compatibility.md`、過去の失敗は `lessons_from_history.md`。
 
 ## プロジェクト構成
@@ -119,13 +119,16 @@ CI（`.github/workflows/ci.yml`）は Python 3.11〜3.14 でテストを回し�
 - **LLM 代替サブエージェント（AI 出力の品質確認）**: `general-purpose`。変更前後の
   プロンプトやツール定義に同じ入力を与え、出力の差を比較させる。本番モデルの挙動を再現する
   ものではないので、結論ではなく差分の観察として PR に書く。
-- 役割ごとに担当を分け、同じファイルを同時に編集させない。最終判定はユーザー。
+- 役割ごとに担当を分け、同じファイルを同時に編集させない。最終判定はユーザー。分けるかどうかの
+  判断基準と、担当間の受け渡しの決め方は `parallel_work.md` の「分けるかどうか」。
 
 ## AI 出力の品質確認
 
 対象: プロンプト文言（`kernel.py` のシステムプロンプト、`llm_routing.py` の HyDE / 再ランク /
 集合選択プロンプト、`planner.py`）、ツール定義の組み立て（`compiler.py`、`providers.py`）、
-会話フレームの構築、プロバイダのリクエスト形、検索・選択のスコアと既定値。
+会話フレームの構築、プロバイダのリクエスト形、検索・選択・ルーティングのスコアと既定値
+（`retriever.py`、`semantic.py`、`selector.py`、`graph_routing.py`、`hierarchy.py`、`rerank.py`、
+`adaptive.py`）。
 
 手順:
 
@@ -135,8 +138,10 @@ CI（`.github/workflows/ci.yml`）は Python 3.11〜3.14 でテストを回し�
 2. **ベンチマーク前後比較**（検索・選択・ルーティングに触る場合）: `benchmarks/` の該当
    スイートを `main` と作業ブランチで同じ環境・同じ引数で実行し、hit@k / MRR / recall@k /
    Set F1 / abstain・escalate 精度 / レイテンシを表にして PR 本文に書く。結果 JSON を更新
-   するなら `benchmarks/README.md` の数値も揃える。関連度の尺度を変えた場合は第2層の
-   Coverage まで見る。
+   するなら `benchmarks/README.md` の数値も揃える。第1層の関連度成分を変えた場合は、第2層
+   （集合選択）の Coverage と abstain/escalate 精度まで見る
+   （`docs/decisions/0003-absolute-relevance-and-bm25f.md`）。スコアの尺度を変えたら、
+   ベンチマークスクリプトの既定しきい値も同じ PR で更新する。
 3. **実モデル確認**（プロンプトやリクエスト形に触る場合）: OpenAI 互換または Anthropic の
    実モデルで、README に載っているコマンドと `examples/*.py` を変更前後で実行し、
    完走の有無、選ばれたリソース、終了コード、監査ログの kind 列を PR 本文に書く。
