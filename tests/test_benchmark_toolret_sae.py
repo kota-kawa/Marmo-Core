@@ -110,6 +110,15 @@ class ScoreFromPublishedLabelsTests(TemporaryCache):
         self.assertEqual(report["valid_variants"]["heldout"]["S"], 3)
         self.assertIn("actionable_escalation", report["methods"]["greedy"]["heldout"])
 
+    def test_labels_of_a_split_that_is_not_scored_need_no_pool(self) -> None:
+        data = _world()
+        labels = self.write_labels(_labels_payload(data))
+        for query in data.queries:
+            if data.split(query) == "test":
+                del data.pools[query.id]
+        report = sae.stage_score(data, _args(labels))
+        self.assertEqual(report["queries"], {"labelled": 10, "dev": 4, "heldout": 3})
+
     def test_missing_dev_pools_fail_and_name_the_commands(self) -> None:
         data = _world()
         for query in data.queries:

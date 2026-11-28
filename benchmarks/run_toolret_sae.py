@@ -1002,7 +1002,10 @@ def stage_score(data: Data, args) -> dict:
         substitutes_by_query = parsed_labels(data, args.label_model)
     require_scoring_inputs(data, substitutes_by_query, published, evaluation)
     labelled = [query for query in data.queries if query.id in substitutes_by_query]
-    gts = {query.id: ground_truth(data, query, substitutes_by_query[query.id]) for query in labelled}
+    # Published labels also cover splits this run does not score (the test split when the evaluation
+    # split is the held-out one); those need no stored pool, so no ground truth is built for them.
+    gts = {query.id: ground_truth(data, query, substitutes_by_query[query.id])
+           for query in labelled if query.id in data.pools}
     groups = {split: [query for query in labelled if data.split(query) == split] for split in ("dev", evaluation)}
     dev, held = groups["dev"], groups[evaluation]
     mismatch = label_pool_mismatch(data, substitutes_by_query, dev + held) if published else 0
@@ -1039,7 +1042,7 @@ def stage_score(data: Data, args) -> dict:
         pairs: list[tuple[bool, bool]] = []
         necessity: list[tuple[bool, bool]] = []
         validity: list[tuple[bool, bool]] = []
-        agreed = [query for query in labelled if query.id in secondary]
+        agreed = [query for query in labelled if query.id in secondary and query.id in gts]
         for query in agreed:
             first, other = substitutes_by_query[query.id], secondary[query.id]
             for gold in query.labels:
