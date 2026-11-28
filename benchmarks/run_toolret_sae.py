@@ -103,7 +103,13 @@ from marmo_core import (  # noqa: E402
 from marmo_core.llm import ChatMessage, LLMProvider  # noqa: E402
 
 import toolret  # noqa: E402
-from _claude_cli import ClaudeCLIProvider, ModelRefusalError  # noqa: E402
+from _claude_cli import (  # noqa: E402
+    ClaudeCLIProvider,
+    ModelRefusalError,
+    SpendLedger,
+    add_spend_arguments,
+    ledger_from_arguments,
+)
 from _provenance import stamp  # noqa: E402
 from run_toolret_benchmark import DECOMPOSITION_CACHE, ReplayOnly, build_retriever, load_cache, split_of  # noqa: E402
 
@@ -261,12 +267,23 @@ def uses_cached_decompositions(retriever: str) -> bool:
     return any(part.removesuffix("!").partition("@")[0].partition("-")[0] == "llm" for part in retriever.split(":")[:-1])
 
 
+def missing_decompositions(queries: list, pools: dict, decompositions: dict) -> list:
+    """Queries that still need a pool and whose decomposition has not been cached.
+
+    A query without text is never decomposed (``LLMQueryDecomposer`` returns no
+    sub-task for it and calls no model), so it is not missing one.
+    """
+
+    return [query for query in queries
+            if query.id not in pools and query.query.strip() and query.query.strip() not in decompositions]
+
+
 def stage_pools(data: Data, queries: list, args) -> None:
     decompositions = load_cache(DECOMPOSITION_CACHE)
     if uses_cached_decompositions(data.retriever):
         # A retriever without the cached decomposition falls back to the goal alone,
         # which would store a different pool without saying so.
-        absent = [query for query in queries if query.id not in data.pools and query.query.strip() not in decompositions]
+        absent = missing_decompositions(queries, data.pools, decompositions)
         if absent:
             raise SystemExit(
                 f"{len(absent)} of {len(queries)} queries have no cached decomposition for {data.retriever} "
@@ -434,8 +451,11 @@ def run_jobs(jobs: list, work: Callable, caches: dict[Path, LockedCache], worker
         save_cache(path, cache)
 
 
+SPEND_LEDGER: SpendLedger | None = None  # set by main() from --spend-cap-usd / --spend-ledger
+
+
 def make_llm(model: str) -> LLMProvider:
-    return ClaudeCLIProvider(model)
+    return ClaudeCLIProvider(model, ledger=SPEND_LEDGER)
 
 
 def stage_label(data: Data, queries: list, model: str, workers: int) -> None:
@@ -982,7 +1002,10 @@ def stage_score(data: Data, args) -> dict:
         substitutes_by_query = parsed_labels(data, args.label_model)
     require_scoring_inputs(data, substitutes_by_query, published, evaluation)
     labelled = [query for query in data.queries if query.id in substitutes_by_query]
-    gts = {query.id: ground_truth(data, query, substitutes_by_query[query.id]) for query in labelled}
+    # Published labels also cover splits this run does not score (the test split when the evaluation
+    # split is the held-out one); those need no stored pool, so no ground truth is built for them.
+    gts = {query.id: ground_truth(data, query, substitutes_by_query[query.id])
+           for query in labelled if query.id in data.pools}
     groups = {split: [query for query in labelled if data.split(query) == split] for split in ("dev", evaluation)}
     dev, held = groups["dev"], groups[evaluation]
     mismatch = label_pool_mismatch(data, substitutes_by_query, dev + held) if published else 0
@@ -1019,7 +1042,7 @@ def stage_score(data: Data, args) -> dict:
         pairs: list[tuple[bool, bool]] = []
         necessity: list[tuple[bool, bool]] = []
         validity: list[tuple[bool, bool]] = []
-        agreed = [query for query in labelled if query.id in secondary]
+        agreed = [query for query in labelled if query.id in secondary and query.id in gts]
         for query in agreed:
             first, other = substitutes_by_query[query.id], secondary[query.id]
             for gold in query.labels:
@@ -1330,7 +1353,10 @@ def main() -> None:
                              "reproduces the published values, matched does not depend on the gold tools' order")
     parser.add_argument("--substitutes-output",
                         default=str(Path(__file__).parent / "results" / "toolret-substitutes.json"))
+    add_spend_arguments(parser)
     args = parser.parse_args()
+    global SPEND_LEDGER
+    SPEND_LEDGER = ledger_from_arguments(parser, args)
 
     if not (toolret.DATA_DIR / "tools" / "web.parquet").exists():
         raise SystemExit("ToolRet is not downloaded: python3 benchmarks/run_toolret_benchmark.py --download")

@@ -7,14 +7,33 @@ Each call is one non-interactive ``claude -p`` invocation with tools
 disabled and no saved session; the system message becomes the system prompt
 and the remaining messages are sent as the prompt text. Benchmark-only: it
 spawns a process per call and is not part of the library.
+
+The CLI is started with the user's customizations off (``--safe-mode``,
+``--strict-mcp-config``, ``--disable-slash-commands``). Without these it adds
+the machine's own MCP servers, skills and memory to every request: on one
+workstation that was 117,154 input tokens for a two-word prompt, against 637
+with them off. Besides the cost, that text would differ between machines and
+enter every benchmark prompt.
+
+Each call reports its list-price cost (``total_cost_usd`` of the CLI's JSON
+output). A ``SpendLedger`` adds those up in a file and refuses a call whose
+worst case would pass the cap. Use one ledger file for everything that counts
+against one cap; the file lock is POSIX-only (``fcntl``).
 """
 
 from __future__ import annotations
 
+import fcntl
+import json
+import math
+import os
 import subprocess
+import tempfile
 import time
+from pathlib import Path
 from typing import Sequence
 
+from marmo_core.budget import BudgetExceededError
 from marmo_core.errors import ProviderError
 from marmo_core.llm import ChatMessage, LLMProvider, LLMResponse, LLMToolSpec
 
@@ -23,10 +42,36 @@ class ModelRefusalError(ProviderError):
     """The model's safety system declined the request: retrying returns the same."""
 
 
+class SpendLimitError(BudgetExceededError):
+    """The call was not sent: its worst-case cost would pass the ledger's cap.
+
+    A ``BudgetExceededError``, so the library's LLM components re-raise it
+    instead of recording the call as a failed reply.
+    """
+
+
+class SpendLedgerError(RuntimeError):
+    """The ledger file exists but cannot be read: its total is unknown, so no call is admitted."""
+
+
 # Benchmarks may call only these model families through the CLI, to keep
 # their usage within the subscription's limits. A family alias ("sonnet",
 # "haiku") or a full model id of that family is accepted.
 ALLOWED_MODEL_FAMILIES = ("sonnet", "haiku")
+
+# List prices in USD per million tokens (input, output), checked 2026-11-28.
+# They are used only for the worst case reserved before a call; what a call
+# is charged afterwards is the cost the CLI reports.
+LIST_PRICES = {"haiku": (0.10, 0.50), "sonnet": (2.00, 10.00)}
+MAX_OUTPUT_TOKENS = 4096
+# The CLI writes the whole prompt to the one-hour cache (twice the input
+# price), and a prompt above 100,000 tokens is billed at a higher tier (five
+# times, for Haiku). The CLI's own preamble is well under 2,000 tokens.
+CACHE_WRITE_MULTIPLIER = 2.0
+LONG_PROMPT_TOKENS = 100_000
+LONG_PROMPT_MULTIPLIER = 5.0
+PREAMBLE_TOKENS = 2_000
+ISOLATION_FLAGS = ("--safe-mode", "--strict-mcp-config", "--disable-slash-commands")
 
 
 def check_model(model: str) -> str:
@@ -44,9 +89,116 @@ def check_model(model: str) -> str:
     )
 
 
+def worst_case_usd(model: str, system: str, prompt: str) -> float:
+    """An upper bound on one attempt's list-price cost.
+
+    A token is at least one byte, so the byte length bounds the input tokens.
+    """
+
+    family = next(family for family in ALLOWED_MODEL_FAMILIES if family in check_model(model).lower().split("-"))
+    input_price, output_price = LIST_PRICES[family]
+    input_tokens = len(system.encode("utf-8")) + len(prompt.encode("utf-8")) + PREAMBLE_TOKENS
+    tier = LONG_PROMPT_MULTIPLIER if input_tokens > LONG_PROMPT_TOKENS else 1.0
+    return tier * (input_tokens * input_price * CACHE_WRITE_MULTIPLIER + MAX_OUTPUT_TOKENS * output_price) / 1e6
+
+
+class SpendLedger:
+    """A dollar cap on CLI calls, kept in a JSON file that processes share.
+
+    ``reserve`` admits a call only if what is already charged, what other
+    calls have reserved and this call's worst case stay within the cap.
+    ``settle`` replaces the reservation by the reported cost; a call whose
+    cost is unknown (it failed or timed out) is charged its reservation.
+    """
+
+    def __init__(self, path: str | Path, cap_usd: float) -> None:
+        if cap_usd <= 0:
+            raise ValueError("the spend cap must be positive")
+        self.path = Path(path)
+        self.cap_usd = float(cap_usd)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+
+    def _update(self, change) -> dict:
+        """Apply ``change`` to the stored state under an exclusive lock and replace the file atomically."""
+
+        with open(self.path.with_name(self.path.name + ".lock"), "a", encoding="utf-8") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            if self.path.exists():
+                try:
+                    state = json.loads(self.path.read_text(encoding="utf-8"))
+                    for key in _STATE:
+                        if isinstance(state[key], bool) or not math.isfinite(state[key]) or state[key] < 0:
+                            raise ValueError(key)
+                except (ValueError, KeyError, TypeError) as error:
+                    # An empty or damaged file must not read as "nothing spent yet".
+                    raise SpendLedgerError(f"spend ledger {self.path} is unreadable ({error}); "
+                                           "restore it or move it away before calling a model") from error
+            else:
+                state = dict(_STATE)
+            outcome = change(state)
+            handle = tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=self.path.parent,
+                                                 prefix=self.path.name + ".", delete=False)
+            try:
+                with handle:
+                    handle.write(json.dumps(state, indent=1, sort_keys=True) + "\n")
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(handle.name, self.path)
+            except BaseException:
+                Path(handle.name).unlink(missing_ok=True)
+                raise
+            return {**state, "outcome": outcome}
+
+    def snapshot(self) -> dict:
+        state = self._update(lambda state: None)
+        del state["outcome"]
+        return state
+
+    def reserve(self, amount: float) -> None:
+        def change(state: dict) -> bool:
+            if state["charged_usd"] + state["reserved_usd"] + amount > self.cap_usd + 1e-12:
+                state["refused_calls"] += 1
+                return False
+            state["reserved_usd"] += amount
+            return True
+
+        state = self._update(change)
+        if not state["outcome"]:
+            raise SpendLimitError(
+                f"CLI spend cap reached: ${state['charged_usd']:.4f} charged and ${state['reserved_usd']:.4f} "
+                f"reserved of ${self.cap_usd:.2f}; a further ${amount:.4f} was refused"
+            )
+
+    def settle(self, reserved: float, reported: float | None) -> None:
+        """Replace a reservation by the reported cost, or charge the reservation when the cost is unknown.
+
+        A reported cost above the reservation means the worst case was not
+        one; it is charged as reported and counted in ``underestimated_calls``.
+        """
+
+        def change(state: dict) -> None:
+            state["reserved_usd"] = max(0.0, state["reserved_usd"] - reserved)
+            state["charged_usd"] += reserved if reported is None else reported
+            state["calls"] += 1
+            state["unknown_cost_calls"] += reported is None
+            state["underestimated_calls"] += reported is not None and reported > reserved + 1e-12
+
+        self._update(change)
+
+
+_STATE = {"charged_usd": 0.0, "reserved_usd": 0.0, "calls": 0, "unknown_cost_calls": 0, "refused_calls": 0,
+          "underestimated_calls": 0}
+
+
 class ClaudeCLIProvider(LLMProvider):
     def __init__(
-        self, model: str = "sonnet", *, timeout: float = 180.0, executable: str = "claude", attempts: int = 4
+        self,
+        model: str = "sonnet",
+        *,
+        timeout: float = 180.0,
+        executable: str = "claude",
+        attempts: int = 4,
+        ledger: SpendLedger | None = None,
     ) -> None:
         self.model = check_model(model)
         self.timeout = timeout
@@ -54,31 +206,79 @@ class ClaudeCLIProvider(LLMProvider):
         # The CLI fails transiently under rate limits; a failed call would be
         # cached as a failure by the LLM components, so retry with backoff.
         self.attempts = max(1, attempts)
+        self.ledger = ledger
 
     def complete(self, messages: Sequence[ChatMessage], tools: Sequence[LLMToolSpec] = ()) -> LLMResponse:
         if tools:
             raise ProviderError("ClaudeCLIProvider does not support tool definitions")
         system = "\n\n".join(message.content for message in messages if message.role == "system")
         prompt = "\n\n".join(message.content for message in messages if message.role != "system")
-        command = [self.executable, "-p", "--model", self.model, "--no-session-persistence", "--tools", ""]
+        command = [self.executable, "-p", "--model", self.model, "--no-session-persistence", *ISOLATION_FLAGS,
+                   "--output-format", "json", "--tools", ""]
         if system:
             command += ["--system-prompt", system]
         # ``--tools`` takes a variadic value list, so a bare prompt after it is
         # read as a tool name; ``--`` ends option parsing (also for prompts that
         # start with a dash).
         command += ["--", prompt]
+        environment = {**os.environ, "CLAUDE_CODE_MAX_OUTPUT_TOKENS": str(MAX_OUTPUT_TOKENS)}
+        worst = worst_case_usd(self.model, system, prompt)
         problem = ""
         for attempt in range(self.attempts):
             if attempt:
                 time.sleep(10 * 2 ** (attempt - 1))
+            if self.ledger is not None:
+                self.ledger.reserve(worst)
+            reported: float | None = None
             try:
-                completed = subprocess.run(command, capture_output=True, text=True, timeout=self.timeout)
-            except (OSError, subprocess.SubprocessError) as error:
-                problem = f"claude CLI failed: {error}"
-                continue
-            if completed.returncode == 0 and completed.stdout.strip():
-                return LLMResponse(content=completed.stdout.strip())
-            problem = f"claude CLI exited {completed.returncode}: {(completed.stderr or completed.stdout).strip()[:300]}"
-            if "safeguards flagged" in problem:
-                raise ModelRefusalError(problem)
+                try:
+                    completed = subprocess.run(
+                        command, capture_output=True, text=True, timeout=self.timeout, env=environment
+                    )
+                except (OSError, subprocess.SubprocessError) as error:
+                    problem = f"claude CLI failed: {error}"
+                    continue
+                reply = _parse(completed.stdout)
+                reported = _reported_cost(reply)
+                text = str(reply.get("result") or "").strip() if reply is not None else ""
+                if completed.returncode == 0 and reply is not None and not reply.get("is_error") and text:
+                    return LLMResponse(content=text)
+                detail = text or (completed.stderr or completed.stdout).strip()
+                problem = f"claude CLI exited {completed.returncode}: {detail[:300]}"
+                if "safeguards flagged" in problem:
+                    raise ModelRefusalError(problem)
+            finally:
+                if self.ledger is not None:
+                    self.ledger.settle(worst, reported)
         raise ProviderError(problem)
+
+
+def add_spend_arguments(parser) -> None:
+    """Add the two options that put a script's CLI calls under a ``SpendLedger``."""
+
+    parser.add_argument("--spend-cap-usd", type=float,
+                        help="refuse a model call whose worst-case list-price cost would pass this total")
+    parser.add_argument("--spend-ledger", help="file that adds up the cost of the calls (required with the cap)")
+
+
+def ledger_from_arguments(parser, args) -> SpendLedger | None:
+    if (args.spend_cap_usd is None) != (args.spend_ledger is None):
+        parser.error("--spend-cap-usd and --spend-ledger are given together")
+    return None if args.spend_cap_usd is None else SpendLedger(args.spend_ledger, args.spend_cap_usd)
+
+
+def _reported_cost(reply: dict | None) -> float | None:
+    """The cost the CLI reports, or ``None`` when it is absent or not a finite, non-negative number."""
+
+    cost = reply.get("total_cost_usd") if reply is not None else None
+    if isinstance(cost, bool) or not isinstance(cost, (int, float)) or not math.isfinite(cost) or cost < 0:
+        return None
+    return float(cost)
+
+
+def _parse(output: str) -> dict | None:
+    try:
+        reply = json.loads(output)
+    except ValueError:
+        return None
+    return reply if isinstance(reply, dict) else None

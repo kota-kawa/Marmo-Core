@@ -12,6 +12,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Benchmarks: `benchmarks/_claude_cli.py` starts the Claude CLI with the user's
+  customizations off (`--safe-mode --strict-mcp-config --disable-slash-commands`),
+  bounds the output, and reads the list-price cost of each call. The ToolRet
+  stage scripts accept `--spend-cap-usd` and `--spend-ledger`: calls whose worst
+  case would pass the cap are refused before they are sent. Replies cached
+  before this change were produced with the machine's MCP servers, skills and
+  memory in the prompt. The ToolRet-SAE held-out table and
+  `benchmarks/results/toolret-sae-heldout.json` are re-measured from an empty
+  cache with the published labels and now report the version 2 metrics; the
+  candidate pools were rebuilt, so rows are not comparable with the earlier
+  table. The pools stage accepts a query without text and scoring from the
+  published labels no longer needs pools for the split that is not scored.
+  - ベンチマーク: `benchmarks/_claude_cli.py` は、利用者の設定を外して Claude CLI を起動し
+    （`--safe-mode --strict-mcp-config --disable-slash-commands`）、出力の上限を設定して、
+    呼び出しごとの公表価格での費用を読みます。ToolRet の段のスクリプトは `--spend-cap-usd` と
+    `--spend-ledger` を受け取り、最悪の場合に上限を超える呼び出しを送る前に拒否します。
+    この変更より前に保存した応答は、その環境の MCP サーバー・スキル・メモリが入力に加わった状態で
+    作られたものです。ToolRet-SAE の held-out の表と `benchmarks/results/toolret-sae-heldout.json` は、
+    空のキャッシュから公開ラベルで測り直し、版 2 の指標も載せました。候補プールを作り直したので、
+    以前の表とは行ごとに比べられません。候補プールの段は本文が空のクエリを受け付け、公開ラベルからの
+    採点は、採点しない分割のプールを要求しなくなりました。
+
 - Raise the minimum supported Python version to 3.11 following the end of
   upstream support for Python 3.10.
   - Python 3.10 の upstream サポート終了に伴い、最低対応バージョンを 3.11 に引き上げました。

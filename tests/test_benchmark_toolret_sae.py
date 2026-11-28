@@ -110,6 +110,15 @@ class ScoreFromPublishedLabelsTests(TemporaryCache):
         self.assertEqual(report["valid_variants"]["heldout"]["S"], 3)
         self.assertIn("actionable_escalation", report["methods"]["greedy"]["heldout"])
 
+    def test_labels_of_a_split_that_is_not_scored_need_no_pool(self) -> None:
+        data = _world()
+        labels = self.write_labels(_labels_payload(data))
+        for query in data.queries:
+            if data.split(query) == "test":
+                del data.pools[query.id]
+        report = sae.stage_score(data, _args(labels))
+        self.assertEqual(report["queries"], {"labelled": 10, "dev": 4, "heldout": 3})
+
     def test_missing_dev_pools_fail_and_name_the_commands(self) -> None:
         data = _world()
         for query in data.queries:
@@ -361,6 +370,14 @@ class FreshSplitStageTests(TemporaryCache):
         self.assertEqual(payload["overlap_with_prior"]["same_text_other_id"], 0)
         with self.assertRaises(SystemExit):
             sae.stage_fresh_heldout(data, 1000, output)
+
+
+class MissingDecompositionTests(unittest.TestCase):
+    def test_a_query_without_text_is_not_reported_as_missing_a_decomposition(self) -> None:
+        queries = [SimpleNamespace(id="q1", query="find a flight"), SimpleNamespace(id="q2", query="  "),
+                   SimpleNamespace(id="q3", query="book a hotel"), SimpleNamespace(id="q4", query="rent a car")]
+        missing = sae.missing_decompositions(queries, {"q4": []}, {"find a flight": "[]"})
+        self.assertEqual([query.id for query in missing], ["q3"])
 
 
 if __name__ == "__main__":
