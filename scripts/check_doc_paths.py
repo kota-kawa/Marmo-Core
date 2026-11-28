@@ -51,8 +51,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # Documentation that is expected to describe the current repository layout.
 # CHANGELOG.md is deliberately absent: it records history, so it legitimately
-# names files that no longer exist. The initial requirements at the repository
-# root describe early plans, so they are excluded as well.
+# names files that no longer exist.
 DOC_GLOBS: tuple[str, ...] = (
     "README.md",
     "CONTRIBUTING*.md",
