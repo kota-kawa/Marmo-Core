@@ -83,7 +83,7 @@ CI（`.github/workflows/ci.yml`）は Python 3.11〜3.14 でテストを回し�
   --allow-side-effect read`）。
 - テストメソッド名は挙動を文で書く（`test_strict_fails_when_no_callable_reached_the_model`）。
 - 文書に書く `marmo` コマンドは、オプションを先、位置引数を最後にまとめる
-  （`marmo inspect --format json <id> <path>`）。CLI はどの順序でも受け付けるが、書き方を揃える。
+  （`marmo inspect --format json <id> <path>`）。CLI はオプションの後ろのパスも受け付けるが、書き方を揃える。
 
 ## 責務分割
 

@@ -110,6 +110,21 @@ _JAPANESE = {
     "match the run's timeout mode": "最初の実行と同じタイムアウトモードを使う",
     "JSONL audit file to continue the hash chain in": "ハッシュチェーンの続きを追記する監査用 JSONL ファイル",
     "list tasks held in a state store": "状態ストアに保存されているタスクを一覧表示する",
+    (
+        "serve the tool resources to an MCP client over stdio: the client searches for tools by goal "
+        "and calls them through the policy gates"
+    ): (
+        "Tool リソースを stdio の MCP サーバーとして公開する。クライアントは目標でツールを検索し、"
+        "ポリシーゲートを通して呼び出す"
+    ),
+    (
+        "resource id or id@version whose side effect is approved in advance; the server cannot ask "
+        "for approval, so other tools that need it are refused; repeatable"
+    ): (
+        "副作用を事前に承認するリソース ID または id@version。サーバーは承認を求められないため、"
+        "承認が必要なほかのツールは拒否する。複数回指定可"
+    ),
+    "most tools one search returns (default: the selector's limit)": "1 回の検索で返すツールの最大数（既定は Selector の上限）",
     "only show tasks in this status": "指定した状態のタスクだけを表示する",
     "lock, verify, and inspect a local resource package": "ローカルリソースパッケージをロック・検証・確認する",
     "pin the manifest and resource files by SHA-256": "マニフェストとリソースファイルを SHA-256 で固定する",

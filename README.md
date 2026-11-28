@@ -465,10 +465,46 @@ selection = LLMSetSelector(OpenAICompatibleLLMProvider()).select(
 
 On the public ToolRet benchmark (44,453 tools), decomposition improved the ranking and `LLMSetSelector` chose the best sets (Set F1 0.206 against 0.14–0.18 for the rules). The ToolRet section of [benchmarks/README.en.md](benchmarks/README.en.md) has the numbers and the methods that did not help.
 
+## Register functions and serve tools over MCP
+
+`FunctionToolkit` turns Python functions into Tool resources. The decorator builds the input schema from the signature and the description from the docstring, and keeps the function as the handler. The defaults match imported definitions: `community` trust, an `external` side effect, and the `tools.<namespace>` permission.
+
+`MCPGatewayServer` serves a catalog to any MCP client, such as an agent host with its own model. The client sees two tools whatever the size of the catalog. `search_tools` takes a goal and returns the tools that fit, with their input schemas. `call_tool` runs one of them.
+
+```python
+from marmo_core import FunctionToolkit, MCPGatewayServer, PolicyContext, ResourceRegistry
+
+crm = FunctionToolkit("crm", side_effect="read")
+
+@crm.tool
+def find_customer(email: str, limit: int = 5) -> list[dict]:
+    """Look up customers by email address."""
+    return [{"email": email, "plan": "pro"}][:limit]
+
+registry = ResourceRegistry()
+registry.extend(crm.resources)
+
+MCPGatewayServer(
+    registry,
+    tool_implementations=crm.implementations,
+    policy_context=PolicyContext(granted_permissions=("tools.crm",)),
+).serve()  # newline-delimited JSON-RPC on stdin/stdout
+```
+
+The policy context is fixed when the gateway starts, and a client cannot change it. A tool that `search_tools` has not returned in the session cannot be called, and every call passes the activation and execution gates. Nobody can approve on this channel, so a tool whose side effect needs approval is withheld unless you list it in `PolicyContext(approved_resources=...)`. Once the session has returned a tool result, a call with a `write`, `external`, or `irreversible` side effect is refused, as it would need a per-operation approval in the Kernel. Use the gateway for read-mostly catalogs and the Kernel for work that writes. [ADR 0016](docs/decisions/0016-mcp-gateway-outside-the-kernel.en.md) has the reasoning.
+
+From the CLI, `mcp-serve` serves the Tool resources under the given paths. Put this command in your MCP client's server configuration:
+
+```bash
+marmo mcp-serve --granted-permission fs.read resources/tools
+```
+
+`--approve-resource ID` approves a side effect in advance, `--tool-impl ID=MODULE:FUNC` binds a handler, and `--audit-log` appends the audit records after each tool call.
+
 ## Execution notes
 
 - `--granted-permission` and `--allow-side-effect` control separate checks. The latter is a repeatable exact allowlist: permitting both no side effect and reads requires both values as shown above.
-- Options and resource paths can be written in any order: `marmo inspect ID --format json PATH` and `marmo inspect --format json ID PATH` are read the same way. Put `--` before a path that starts with `-`.
+- Resource paths can be written before, between, or after options: `marmo inspect ID --format json PATH` and `marmo inspect --format json ID PATH` are read the same way. For `inspect` and `policy-check`, the resource id still comes before the paths. Put `--` before a path that starts with `-`.
 - `marmo run` uses the mock model by default. A skipped resource can be recoverable; use `--strict` in automation to fail when a resource is skipped, a Tool named in `--tool-args` is not evaluated, or retrieval finds no usable resource.
 - On POSIX systems, `--timeout-mode process` stops importable Python Tool handlers with JSON-compatible inputs and outputs at the deadline. Local closures are rejected in this mode; Windows rejects process mode because child-process termination cannot be guaranteed. The default `thread` mode limits waiting but cannot stop a timed-out handler. A timeout requires human reconciliation before retry because an external effect may have completed.
 - A paused task saves its selected resources. Resume keeps that set; if a selected resource or compiled context changed, the task fails and must be resumed with the original catalog and compiler configuration.
@@ -968,10 +1004,46 @@ selection = LLMSetSelector(OpenAICompatibleLLMProvider()).select(
 
 公開ベンチマーク ToolRet（44,453 ツール）では、分解で順位が改善し、`LLMSetSelector` が最も良い集合を選びました（Set F1 0.206、規則ベースは 0.14〜0.18）。数値と、効果がなかった手法は [benchmarks/README.md](benchmarks/README.md) の ToolRet 節にあります。
 
+### 関数を登録し、MCP でツールを公開する
+
+`FunctionToolkit` は Python の関数を Tool リソースにします。デコレータはシグネチャから入力スキーマを、docstring から説明を作り、関数をハンドラーとして保持します。既定値は取り込んだ定義と同じで、信頼度は `community`、副作用は `external`、権限は `tools.<namespace>` です。
+
+`MCPGatewayServer` は、カタログを MCP クライアント（自前のモデルを持つエージェントホストなど）に公開します。カタログの大きさにかかわらず、クライアントに見えるツールは 2 つです。`search_tools` は目標を受け取り、合うツールを入力スキーマ付きで返します。`call_tool` はそのうちの 1 つを実行します。
+
+```python
+from marmo_core import FunctionToolkit, MCPGatewayServer, PolicyContext, ResourceRegistry
+
+crm = FunctionToolkit("crm", side_effect="read")
+
+@crm.tool
+def find_customer(email: str, limit: int = 5) -> list[dict]:
+    """Look up customers by email address."""
+    return [{"email": email, "plan": "pro"}][:limit]
+
+registry = ResourceRegistry()
+registry.extend(crm.resources)
+
+MCPGatewayServer(
+    registry,
+    tool_implementations=crm.implementations,
+    policy_context=PolicyContext(granted_permissions=("tools.crm",)),
+).serve()  # stdin/stdout で改行区切りの JSON-RPC に応答する
+```
+
+ポリシーコンテキストはゲートウェイの起動時に固定され、クライアントからは変更できません。そのセッションで `search_tools` が返していないツールは呼べず、すべての呼び出しが activation と execution のゲートを通ります。この経路には承認者がいないため、副作用に承認が必要なツールは、`PolicyContext(approved_resources=...)` に指定しない限り公開されません。セッションがツールの結果を一度返した後は、副作用が `write`、`external`、`irreversible` の呼び出しを拒否します（Kernel では操作ごとの承認が必要になる場面です）。ゲートウェイは読み取り中心のカタログに、書き込みを伴う作業は Kernel に使ってください。判断の理由は [ADR 0016](docs/decisions/0016-mcp-gateway-outside-the-kernel.md) にあります。
+
+CLI では、`mcp-serve` が指定したパスの Tool リソースを公開します。次のコマンドを MCP クライアントのサーバー設定に書きます。
+
+```bash
+marmo mcp-serve --granted-permission fs.read resources/tools
+```
+
+`--approve-resource ID` は副作用を事前に承認し、`--tool-impl ID=MODULE:FUNC` はハンドラーを結び付けます。`--audit-log` を指定すると、ツールの呼び出しごとに監査レコードを追記します。
+
 ### 実行時の注意
 
 - `--granted-permission` と `--allow-side-effect` は別々の条件です。後者は値を厳密に照合する繰り返し指定可能な許可リストで、副作用なしと読み取りの両方を許すには、上の例のように両方を指定します。
-- オプションとリソースパスはどの順序で書いても同じように解釈されます（`marmo inspect ID --format json PATH` と `marmo inspect --format json ID PATH` は同じです）。`-` で始まるパスの前には `--` を置きます。
+- リソースパスは、オプションの前・間・後ろのどこに書いても同じように解釈されます（`marmo inspect ID --format json PATH` と `marmo inspect --format json ID PATH` は同じです）。`inspect` と `policy-check` では、リソース ID をパスより先に書きます。`-` で始まるパスの前には `--` を置きます。
 - `marmo run` の既定はモックモデルです。リソースのスキップ後も処理が続く場合があります。自動化では `--strict` を使うと、スキップ、`--tool-args` に指定した Tool の未評価、利用できるリソースとの不一致を失敗として扱えます。
 - POSIX 環境では、import 可能で入出力が JSON 対応の Python Tool ハンドラを `--timeout-mode process` で期限時に停止できます。このモードではローカル関数を実行前に拒否します。Windows では子プロセスの停止を保証できないため process モードを拒否します。既定の `thread` モードは待機時間だけを制限します。timeout 後は外部への副作用が完了した可能性があるため、人が結果を確認してから再実行します。
 - 一時停止した task は選択済み Resource を保存します。再開時もその集合を使い、選択 Resource またはコンパイル済み context が変わっていれば task は失敗します。元のカタログと compiler 設定で再開してください。

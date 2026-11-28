@@ -33,6 +33,7 @@ Marmo-Core は、Object Routing を実装する公開 Python ライブラリで�
 - `docs/decisions/0012-multi-intent-retrieval-and-coverage-selection.md`／クエリ分解検索とファセット被覆による集合選択の判断と ToolRet での根拠／`DecomposedRetriever`・`CoverageSetSelector` や集合サイズの決め方を変更するとき。
 - `docs/decisions/0015-execution-right-and-call-journal.md`／タスクの実行権（排他）、呼び出しジャーナル、キャンセル後の終端状態、予算予約の原子性の判断／`StateStore.execution`、`call` event、`closed_calls`、`Kernel._transition` を変更するとき。
 - `docs/decisions/0014-gate-aware-selection.md`／ゲートが必ず拒否する候補を Selector が選ばず escalate の理由にもしない判断（opt-in）と、既定化を見送った根拠／`SelectionContext.policy`、`static_denials`、`Kernel(gate_aware_selection)` を変更するとき。
+- `docs/decisions/0016-mcp-gateway-outside-the-kernel.md`／MCP ゲートウェイ（`MCPGatewayServer`、`marmo mcp-serve`）が Kernel の外で通すゲートと、承認が要る操作を拒否する判断／`mcp_server.py`、または Kernel の候補プール・制約適用・Tool 実行の手順を変更するとき。
 - `docs/threat-model.md`／信頼境界・想定脅威・リリース前レビューの記録／権限、副作用、ポリシー、シークレット、HITL に触る変更で読み、境界を動かしたら更新する。
 - `docs/connectors.md`、`docs/local-resource-packages.md`／利用者向けマニュアル／実装の責務や内部挙動を確認する資料としては使わない。
 - `benchmarks/README.md`／ベンチマークの実行方法、シナリオ設計、測定結果と読み方／検索・選択・ルーティングの挙動を変えるときに、比較の基準として読む。数値は隣の `benchmarks/results/*.json` の同一実行から取る。

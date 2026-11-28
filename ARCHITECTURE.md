@@ -32,7 +32,7 @@ Agent の 4 種別）を登録し、ゴールに対して必要なものだけ�
 | レジストリ・ロード | `registry.py` | `ResourceRegistry`（`revision` と `content_revision`） | errors, models |
 | レジストリ・ロード | `markdown_skill.py` | `SKILL.md` フロントマター → Skill 定義 | models |
 | レジストリ・ロード | `package.py` | `marmo-package.json` / `.lock.json`、SemVer、`verify_local_package` | _version, errors |
-| レジストリ・ロード | `function_tools.py` | `function_tool_resources`（OpenAI / Anthropic / MCP 形式の関数定義を Tool resource に変換。既定は community・external・`tools.<namespace>` 権限） | models |
+| レジストリ・ロード | `function_tools.py` | `function_tool_resources`（OpenAI / Anthropic / MCP 形式の関数定義を Tool resource に変換。既定は community・external・`tools.<namespace>` 権限）、`FunctionToolkit`（デコレータで Python 関数のシグネチャと docstring から同じ定義を作り、関数をハンドラーとして保持する） | models |
 | レジストリ・ロード | `loader.py` | ディレクトリ走査（`.json` / `.md`）、`load_registry`、`validate_resource_paths` | errors, markdown_skill, models, package, registry |
 | 検索 | `retriever.py` | `Retriever` ABC、BM25F 転置インデックスの `LexicalRetriever`、複合スコア | models, registry |
 | 検索 | `semantic.py` | `EmbeddingProvider` ABC、`HashingEmbeddingProvider`、`OpenAICompatibleEmbeddingProvider`、`HybridRetriever`（`vector_index=` で近傍探索を差し替え） | environment, errors, models, registry, retriever, secrets, vector_index |
@@ -65,6 +65,7 @@ Agent の 4 種別）を登録し、ゴールに対して必要なものだけ�
 | 状態・監査・HITL | `hitl.py` | `HitlRequest` / `HitlResponse` / `HitlPolicy`、`HitlBroker` ABC と Pending / Callback / Console / AutoApprove | errors, models |
 | コネクタ | `connectors.py` | `Connector` ABC、`ConnectorRuntime`（レート制限・リトライ・サーキット）、HTTP / FileSystem / Shell / SQLite | errors, models, registry |
 | コネクタ | `mcp.py` | `MCPStdioClient`、`connect_mcp_server`（既定 trust=community、side_effect=external） | _version, errors, models |
+| コネクタ | `mcp_server.py` | `MCPGatewayServer`（stdio の MCP サーバー。`search_tools` と `call_tool` の 2 つを公開し、Kernel を経由せずに候補プール・Selector・activation gate・`ToolRuntime` を通す。ADR 0016） | activator, audit, candidate_pool, errors, llm, mcp, models, policy, registry, retriever, security, selector, tool_runtime |
 | CLI | `formatting.py`、`cli.py` | 出力整形と argparse による `marmo` コマンド | ほぼ全部 |
 | サンプル | `sample_resources/` | `resources/*.json` から `python:` 参照される決定的なハンドラ | なし |
 
@@ -160,6 +161,22 @@ Agent 委譲を許し、その子からさらに Agent を呼ぶには明示的�
   実行済みの呼び出しは二度走らない。一時停止時に表示される resume コマンドは、実行時の
   `--granted-permission` / `--allow-side-effect` を必ず再現する。
 
+### 3.3 `marmo mcp-serve`
+
+`_cmd_mcp_serve` が `load_registry` と CLI 引数からの `PolicyContext`（`--approve-resource` は
+`approved_resources`）で `MCPGatewayServer` を組み立て、stdin が閉じるまで改行区切りの JSON-RPC に
+応答する。Kernel、モデル、State Store は使わない。
+
+- `search_tools`: `KindBalancedCandidatePool`（Tool のみ。activation gate が allow しない候補は、
+  首位のときだけ残す）→ `SetSelector` → `_enforce_set_constraints` → activation gate。通った Tool の
+  identity・説明・入力スキーマを返し、通らなかったものは理由と一緒に `withheld` に入れる。
+- `call_tool`: そのセッションの `search_tools` が返した Tool だけを `ToolRuntime.execute` に渡す。
+  escalate は承認者がいないので拒否する。結果を返した後は、その出所を
+  `untrusted_content_sources` に積んで次の呼び出しの execution gate に渡す。
+- 監査レコードの kind は Kernel と同じ `policy` / `retrieve` / `execute` / `security` で、`--audit-log` には
+  tool の呼び出しごとに追記する。応答中は `sys.stdout` を stderr に向け、stdout にはプロトコルの
+  メッセージだけを書く。リクエスト内の例外は JSON-RPC のエラー（-32603）で返し、セッションは続ける。
+
 ## 4. 契約と境界
 
 詳細と変更手順は `docs/knowledge/contracts-and-compatibility.md`。
@@ -220,6 +237,7 @@ Agent 委譲を許し、その子からさらに Agent を呼ぶには明示的�
 | グルーピング | `GroupingStrategy.partition` | `HierarchicalRetriever` 経由 |
 | Connector | `Connector.tools()` | `connectors=`（registry と handler に自動統合） |
 | MCP | `connect_mcp_server` の resources / implementations | registry と `tool_implementations=` |
+| Python 関数 | `FunctionToolkit.tool` で登録した関数の `resources` / `implementations` | registry と `tool_implementations=` |
 | ポリシー | `PolicyGateway` または `SafetyInspector` のサブクラス（ルール専用の ABC は無い） | `gateway=` |
 | HITL | `HitlBroker._ask` | `hitl=` |
 | Planner | `Planner.plan` / `replan` | `planner=` |

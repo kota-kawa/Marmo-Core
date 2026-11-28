@@ -2,12 +2,13 @@
 
 日本語版: [threat-model.ja.md](threat-model.ja.md).
 
-Last reviewed: 2026-11-09
+Last reviewed: 2026-11-27
 
 ## Scope and assets
 
 This document covers the in-process kernel, Policy Gateway, Context Compiler,
-State Store, audit log, LLM adapters, Tool Runtime, and connector contracts.
+State Store, audit log, LLM adapters, Tool Runtime, connector contracts, and
+the MCP gateway.
 Protected assets are user intent, credentials, private data, files and network
 destinations, execution permissions, persisted state, and audit integrity.
 
@@ -50,6 +51,17 @@ destinations, execution permissions, persisted state, and audit integrity.
   each child operation, and child Tool results are recorded on the parent task
   for compensation. Nested Agent calls share the parent's cost ledger and obey
   its configured depth and cumulative Agent cost limits.
+- An MCP client of `MCPGatewayServer` (`marmo mcp-serve`) is outside the trust
+  boundary, like LLM output: its goals and arguments are proposals. The policy
+  context is fixed by the operator who starts the gateway and no message
+  changes it. A Tool is callable only after `search_tools` returned it in the
+  same session, which requires passing the activation gate; every call then
+  passes the execution gate in the Tool Runtime. The channel has no approver,
+  so an escalation is a refusal; the operator pre-approves a resource with
+  `approved_resources`. A Tool result returned to the client marks the session
+  as having consumed untrusted content. The gateway has no discovery ACL: a
+  withheld Tool is named with the reason, so hosts must keep confidential
+  resources out of the served registry (ADR 0016).
 - Tool handlers and secret resolvers stay beyond the LLM boundary. Secret values
   are materialized only immediately before the handler call.
 - The default thread timeout ends the wait but cannot stop a handler. In
@@ -98,6 +110,7 @@ controls must continue to verify these guarantees.
 | Duplicate side effects from concurrent execution or an interrupted run | Per-task execution right taken before any side effect (OS file locks in the JSONL and SQLite stores), a call journal so a recorded result is never produced again, unknown outcomes escalated instead of retried, terminal status not overwritten after `cancel` | A custom State Store excludes other processes only if it implements `_execution_guard`; file locks depend on the filesystem (network filesystems may not honor them); a call cut off before its result is saved needs a person to inspect the outcome |
 | Reviewer edits that do not match what runs | A `modify` answer is validated against the Tool input schema before it is recorded and is stored on the paused call or plan step; an invalid edit leaves the request pending | The reviewer sees arguments, not the handler's effect |
 | Malicious resource package | trust levels, explicit permissions, local validation | Package signatures and distribution registry remain pending; a package that forges its trust, permissions, side-effect, and isolation declarations can pass metadata-based routing and gates. `benchmarks/run_forgery_benchmark.py` (see [`benchmarks/README.en.md`](../benchmarks/README.en.md)) tracks, per forged declaration and for Tool, Skill, and Agent decoys, how often a decoy is selected, passes activation, reaches the model, and reaches an inert stand-in handler through the execution gate; no shipped handler runs for a decoy. Only a decoy that forges every gate-relevant declaration passes activation; partial forgeries are still selected and displace the legitimate resource. A resource that stuffs its description with the task's words and honestly declares permissions the caller lacks makes the unit selectors escalate, which asks a person to grant those permissions (`net.external`, `message.send` in the benchmark). `Kernel(gate_aware_selection=True)` (off by default, ADR 0014) keeps a candidate the gate denies whatever is granted out of the selected set and out of the reasons to escalate; it does not help against a resource whose trust, side effect, and isolation declarations pass the gate |
+| MCP client driving Tools through the gateway | operator-fixed policy context, call only after disclosure by `search_tools`, activation and execution gates on every call, escalation refused, untrusted-content tracking of returned results, delimited and capped output | The gateway sees only its own session, not what else the client's model read; a pre-approved side-effecting Tool can run once before any result is returned; Tool names, descriptions, and denial reasons in the served registry are visible to the client |
 | State/audit leakage or tampering | `SecretRef` persistence checks, redaction, hash-chained audit log | Hash chaining detects changes but does not provide remote attestation |
 
 ## Release review
@@ -109,6 +122,10 @@ entry here whenever the threat model or its accepted residual risks change.
 
 ## Review history
 
+- 2026-11-27: reviewed the MCP gateway as a second path to Tool execution. It
+  uses the same Policy Gateway and Tool Runtime as the Kernel, treats the MCP
+  client as untrusted, and refuses instead of escalating; pre-approval and
+  registry visibility are operator responsibilities.
 - 2026-11-09: documented the opt-in task-sufficiency boundary: declared capability
   remains an assumption; frozen requirements, complete context dependencies and
   final payload validation complement existing activation/execution gates.

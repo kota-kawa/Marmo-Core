@@ -37,7 +37,7 @@ in `marmo_core/<module>.py` and the corresponding tests.
 | Registry and loading | `registry.py` | `ResourceRegistry` (`revision` and `content_revision`) | errors, models |
 | Registry and loading | `markdown_skill.py` | `SKILL.md` front matter → Skill definition | models |
 | Registry and loading | `package.py` | `marmo-package.json` / `.lock.json`, SemVer, `verify_local_package` | _version, errors |
-| Registry and loading | `function_tools.py` | `function_tool_resources` (converts function definitions in OpenAI / Anthropic / MCP formats into Tool resources; defaults to trust=community, side_effect=external, and `tools.<namespace>` permissions) | models |
+| Registry and loading | `function_tools.py` | `function_tool_resources` (converts function definitions in OpenAI / Anthropic / MCP formats into Tool resources; defaults to trust=community, side_effect=external, and `tools.<namespace>` permissions), `FunctionToolkit` (a decorator that builds the same definition from a Python function's signature and docstring and keeps the function as the handler) | models |
 | Registry and loading | `loader.py` | Directory traversal (`.json` / `.md`), `load_registry`, `validate_resource_paths` | errors, markdown_skill, models, package, registry |
 | Retrieval | `retriever.py` | `Retriever` ABC, `LexicalRetriever` with a BM25F inverted index, combined scores | models, registry |
 | Retrieval | `semantic.py` | `EmbeddingProvider` ABC, `HashingEmbeddingProvider`, `OpenAICompatibleEmbeddingProvider`, `HybridRetriever` (nearest-neighbor search can be replaced with `vector_index=`) | environment, errors, models, registry, retriever, secrets, vector_index |
@@ -70,6 +70,7 @@ in `marmo_core/<module>.py` and the corresponding tests.
 | State, audit, and HITL | `hitl.py` | `HitlRequest` / `HitlResponse` / `HitlPolicy`, `HitlBroker` ABC and Pending / Callback / Console / AutoApprove | errors, models |
 | Connectors | `connectors.py` | `Connector` ABC, `ConnectorRuntime` (rate limits, retries, circuit breaker), HTTP / FileSystem / Shell / SQLite | errors, models, registry |
 | Connectors | `mcp.py` | `MCPStdioClient`, `connect_mcp_server` (defaults to trust=community, side_effect=external) | _version, errors, models |
+| Connectors | `mcp_server.py` | `MCPGatewayServer` (an MCP server over stdio that exposes `search_tools` and `call_tool` and runs the candidate pool, selector, activation gate, and `ToolRuntime` without the Kernel; ADR 0016) | activator, audit, candidate_pool, errors, llm, mcp, models, policy, registry, retriever, security, selector, tool_runtime |
 | CLI | `formatting.py`, `cli.py` | Output formatting and the `marmo` command built with argparse | Almost all |
 | Samples | `sample_resources/` | Deterministic handlers referenced by `python:` from `resources/*.json` | None |
 
@@ -191,6 +192,24 @@ to allow that Agent's child to call another Agent.
   are not run a second time. The resume command shown when pausing reproduces
   the runtime `--granted-permission` / `--allow-side-effect` values.
 
+### 3.3 `marmo mcp-serve`
+
+`_cmd_mcp_serve` builds an `MCPGatewayServer` from `load_registry` and a `PolicyContext` made
+from the CLI arguments (`--approve-resource` becomes `approved_resources`), then answers
+newline-delimited JSON-RPC until stdin closes. It uses no Kernel, model, or State Store.
+
+- `search_tools`: `KindBalancedCandidatePool` (Tools only; a candidate the activation gate does
+  not allow stays only when it ranks first) → `SetSelector` → `_enforce_set_constraints` →
+  activation gate. It returns the identity, description, and input schema of each Tool that
+  passed, and lists the others under `withheld` with the reason.
+- `call_tool`: hands `ToolRuntime.execute` only a Tool that `search_tools` returned in the
+  session. An escalation is refused, since nobody can approve it. After a result is returned,
+  its source is added to `untrusted_content_sources` for the execution gate of later calls.
+- Audit records use the Kernel's kinds (`policy` / `retrieve` / `execute` / `security`) and are
+  appended to `--audit-log` after each tool call. While serving, `sys.stdout` points at
+  stderr, so stdout carries protocol messages only. An exception inside a request is returned
+  as a JSON-RPC error (-32603) and the session continues.
+
 ## 4. Contracts and boundaries
 
 Details and change procedures are in
@@ -266,6 +285,7 @@ Details and change procedures are in
 | Grouping | `GroupingStrategy.partition` | Through `HierarchicalRetriever` |
 | Connector | `Connector.tools()` | `connectors=` (automatically integrated with the registry and handlers) |
 | MCP | Resources / implementations from `connect_mcp_server` | Registry and `tool_implementations=` |
+| Python functions | `resources` / `implementations` of functions registered with `FunctionToolkit.tool` | Registry and `tool_implementations=` |
 | Policy | Subclass `PolicyGateway` or `SafetyInspector` (there is no rules-only ABC) | `gateway=` |
 | HITL | `HitlBroker._ask` | `hitl=` |
 | Planner | `Planner.plan` / `replan` | `planner=` |

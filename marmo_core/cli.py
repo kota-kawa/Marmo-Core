@@ -38,6 +38,7 @@ from .kernel import NO_CALLABLE_SELECTED_DETAIL, NO_RESOURCE_MATCHED_DETAIL, Ker
 from .llm import LLMProvider, MockLLMProvider
 from .llm_routing import HydeRetriever
 from .loader import load_registry, validate_resource_paths
+from .mcp_server import MCPGatewayServer
 from .models import KINDS, SIDE_EFFECTS, TRUST_LEVELS, SearchQuery
 from .package import verify_local_package, write_package_lock
 from .planner import LLMPlanner, Planner, RuleBasedPlanner
@@ -408,6 +409,56 @@ def build_parser(*, language: str = "en") -> _ArgumentParser:
     tasks_parser.add_argument("--status", help=_("only show tasks in this status"))
     tasks_parser.add_argument("--format", choices=("text", "json"), default="text")
     tasks_parser.set_defaults(func=_cmd_tasks)
+
+    serve_parser = subparsers.add_parser(
+        "mcp-serve",
+        help=_(
+            "serve the tool resources to an MCP client over stdio: the client searches for tools by goal "
+            "and calls them through the policy gates"
+        ),
+    )
+    _add_path_arg(serve_parser)
+    serve_parser.add_argument("--granted-permission", action="append", default=[], help=_("permission granted to the current context; repeatable"))
+    serve_parser.add_argument("--max-cost", type=float, help=_("deny resources whose cost_estimate exceeds this value"))
+    serve_parser.add_argument("--allow-trust-level", action="append", choices=TRUST_LEVELS, help=_("allowed trust level; repeatable"))
+    serve_parser.add_argument("--allow-side-effect", action="append", choices=SIDE_EFFECTS, help=_("allowed side effect; repeatable"))
+    serve_parser.add_argument("--escalate-side-effect", action="append", choices=SIDE_EFFECTS, help=_("side effect that requires human approval; repeatable"))
+    serve_parser.add_argument(
+        "--approve-resource",
+        action="append",
+        default=[],
+        metavar="ID",
+        help=_(
+            "resource id or id@version whose side effect is approved in advance; the server cannot ask "
+            "for approval, so other tools that need it are refused; repeatable"
+        ),
+    )
+    _add_safety_args(serve_parser)
+    _add_isolation_args(serve_parser)
+    serve_parser.add_argument(
+        "--tool-impl",
+        action="append",
+        default=[],
+        metavar="ID=MODULE:FUNC",
+        help=_("bind a tool resource id to an importable callable; repeatable"),
+    )
+    serve_parser.add_argument("--top-k", type=int, default=8, help=_("search candidates considered before set selection"))
+    serve_parser.add_argument("--max-tools", type=int, help=_("most tools one search returns (default: the selector's limit)"))
+    serve_parser.add_argument(
+        "--max-tool-output-tokens",
+        type=int,
+        default=8000,
+        help=_("estimated tokens kept from one tool result before it is truncated (0 to keep all)"),
+    )
+    serve_parser.add_argument("--timeout", type=float, default=30.0, help=_("per-tool execution timeout in seconds"))
+    serve_parser.add_argument(
+        "--audit-log",
+        help=_(
+            "append this run's hash-chained audit records to a JSONL file; an existing file's chain "
+            "is verified and continued, and a broken chain is refused"
+        ),
+    )
+    serve_parser.set_defaults(func=_cmd_mcp_serve)
 
     package_parser = subparsers.add_parser(
         "package",
@@ -974,6 +1025,49 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
         if state.pending:
             line += f"  (awaiting: {state.pending.get('operation', '')})"
         print(line)
+    return 0
+
+
+def _cmd_mcp_serve(args: argparse.Namespace) -> int:
+    """Serve MCP on stdin/stdout until the client closes stdin.
+
+    stdout carries protocol messages only; notes and errors go to stderr.
+    """
+
+    paths = _default_paths(args.paths, no_defaults=args.no_default_resources)
+    registry = load_registry(paths)
+    _warn_if_empty(registry, paths, args.language)
+    defaults = PolicyContext()
+    context = PolicyContext(
+        granted_permissions=tuple(args.granted_permission),
+        max_cost=args.max_cost,
+        allowed_trust_levels=tuple(args.allow_trust_level) if args.allow_trust_level else defaults.allowed_trust_levels,
+        allowed_side_effects=tuple(args.allow_side_effect) if args.allow_side_effect else defaults.allowed_side_effects,
+        escalate_side_effects=(
+            tuple(args.escalate_side_effect) if args.escalate_side_effect else defaults.escalate_side_effects
+        ),
+        approved_resources=tuple(args.approve_resource),
+        allowed_external_hosts=tuple(args.allow_external_host),
+        blocked_external_hosts=tuple(args.block_external_host),
+        minimum_isolation_level=args.minimum_isolation_level,
+        available_isolation_levels=(
+            tuple(args.available_isolation_level)
+            if args.available_isolation_level
+            else defaults.available_isolation_levels
+        ),
+    )
+    server = MCPGatewayServer(
+        registry,
+        policy_context=context,
+        tool_implementations=_parse_tool_impls(args.tool_impl),
+        audit_log=_load_audit_log(args.audit_log),
+        audit_path=args.audit_log,
+        top_k=args.top_k,
+        max_tools=args.max_tools,
+        timeout_seconds=args.timeout,
+        max_tool_output_tokens=args.max_tool_output_tokens or None,
+    )
+    server.serve()
     return 0
 
 

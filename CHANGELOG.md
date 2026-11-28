@@ -77,6 +77,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `MCPGatewayServer` and `marmo mcp-serve` serve the Tool resources to an MCP
+  client over stdio. The client sees two tools: `search_tools` routes a goal
+  through the candidate pool, set selection, and the activation gate and
+  returns the usable tools with their input schemas; `call_tool` runs one of
+  them through the execution gate. The policy context is fixed at start-up, a
+  tool the session was not shown cannot be called, and whatever a gate would
+  escalate is refused, because the channel has no approver
+  (`--approve-resource` approves a side effect in advance). After a tool
+  result has been returned, side-effecting calls are refused. See ADR 0016.
+  - `MCPGatewayServer` と `marmo mcp-serve` で、Tool リソースを stdio の MCP クライアントに
+    公開できるようにしました。クライアントに見えるツールは 2 つです。`search_tools` は目標を
+    候補プール・集合選択・activation gate に通し、使えるツールを入力スキーマ付きで返します。
+    `call_tool` はそのうちの 1 つを execution gate を通して実行します。ポリシーコンテキストは
+    起動時に固定され、セッションに提示していないツールは呼べません。この経路には承認者が
+    いないため、ゲートが escalate とする操作は拒否します（`--approve-resource` で副作用を事前に
+    承認できます）。ツールの結果を返した後は、副作用のある呼び出しを拒否します。ADR 0016 を
+    参照してください。
+- `FunctionToolkit` registers Python functions as Tool resources with a
+  decorator. The input schema comes from the signature (including `Optional`,
+  `Literal`, and `Annotated[T, "description"]`), the description from the
+  docstring, and the function stays the handler; `resources` and
+  `implementations` go to a registry and `tool_implementations=`. Defaults
+  match `function_tool_resources` (`community`, `external`,
+  `tools.<namespace>`).
+  - `FunctionToolkit` で、デコレータを付けた Python 関数を Tool リソースとして登録できるように
+    しました。入力スキーマはシグネチャ（`Optional`、`Literal`、`Annotated[T, "説明"]` を含む）
+    から、説明は docstring から作り、関数がそのままハンドラーになります。`resources` と
+    `implementations` を registry と `tool_implementations=` に渡します。既定値は
+    `function_tool_resources` と同じです（`community`、`external`、`tools.<namespace>`）。
+
 - `benchmarks/run_toolret_sae.py` adds ToolRet-SAE, which scores select,
   escalate, and abstain decisions on ToolRet: each query gets a variant with
   the gold tools permitted, one with only their scopes withheld, and one with
@@ -302,15 +332,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     なく Python を解析します。CI はビルドした wheel の smoke test と、スキップなしの
     Exact/HNSW インデックスのテストを実行します。Docker のビルドコンテキストから `.env` を
     除外しました。
-- `marmo` accepts resource paths written after an option, in any order
+- `marmo` accepts resource paths written after an option
   (`marmo inspect ID --format json PATH`, `marmo run PATH --task T PATH2`).
-  These were rejected as `unrecognized arguments`: on Python 3.11 for every
-  command, and on newer versions whenever an option split two paths. Unknown
+  These were rejected as `unrecognized arguments`: on Python 3.11 and 3.12 for
+  every command, and on 3.13 whenever an option split two paths. For `inspect`
+  and `policy-check` the resource id still comes before the paths. Unknown
   options are still errors.
-  - `marmo` は、オプションの後ろに書いたリソースパスを順序によらず受け付けます
+  - `marmo` は、オプションの後ろに書いたリソースパスを受け付けます
     （`marmo inspect ID --format json PATH`、`marmo run PATH --task T PATH2`）。これまでは
-    `unrecognized arguments` になっていました（Python 3.11 ではすべてのコマンドで、それ以降の
-    版でもオプションがパスを分断する場合）。未知のオプションは従来どおりエラーです。
+    `unrecognized arguments` になっていました（Python 3.11 と 3.12 ではすべてのコマンドで、
+    3.13 でもオプションがパスを分断する場合）。`inspect` と `policy-check` では、リソース ID を
+    パスより先に書く点は変わりません。未知のオプションは従来どおりエラーです。
 
 ## [0.7.0] - 2026-11-24
 
