@@ -267,12 +267,23 @@ def uses_cached_decompositions(retriever: str) -> bool:
     return any(part.removesuffix("!").partition("@")[0].partition("-")[0] == "llm" for part in retriever.split(":")[:-1])
 
 
+def missing_decompositions(queries: list, pools: dict, decompositions: dict) -> list:
+    """Queries that still need a pool and whose decomposition has not been cached.
+
+    A query without text is never decomposed (``LLMQueryDecomposer`` returns no
+    sub-task for it and calls no model), so it is not missing one.
+    """
+
+    return [query for query in queries
+            if query.id not in pools and query.query.strip() and query.query.strip() not in decompositions]
+
+
 def stage_pools(data: Data, queries: list, args) -> None:
     decompositions = load_cache(DECOMPOSITION_CACHE)
     if uses_cached_decompositions(data.retriever):
         # A retriever without the cached decomposition falls back to the goal alone,
         # which would store a different pool without saying so.
-        absent = [query for query in queries if query.id not in data.pools and query.query.strip() not in decompositions]
+        absent = missing_decompositions(queries, data.pools, decompositions)
         if absent:
             raise SystemExit(
                 f"{len(absent)} of {len(queries)} queries have no cached decomposition for {data.retriever} "
