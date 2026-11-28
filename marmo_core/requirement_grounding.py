@@ -225,10 +225,7 @@ class GroundedTaskSpecExtractor:
                 "a change before it can be recorded."
             )
         else:
-            scope = (
-                "List only the operations the request states explicitly. Do not add preparatory or "
-                "checking steps the request does not mention."
-            )
+            scope = "List every capability the task needs: the operations the request states."
         if menu is not None:
             source = "the numbered capability list below"
             choose = (

@@ -325,7 +325,15 @@ class UngroundedExtractionTest(unittest.TestCase):
 
         self.assertIn("necessary to carry those out correctly", default)
         self.assertNotIn("necessary to carry those out correctly", stated_only)
-        self.assertIn("List only the operations the request states explicitly", stated_only)
+        self.assertEqual(
+            stated_only,
+            default.replace(
+                ", and the operations that are necessary to carry those out correctly, such as inspecting an "
+                "input before changing it, checking a result the request says must hold, or preparing "
+                "a change before it can be recorded.",
+                ".",
+            ),
+        )
         self.assertEqual(with_conventions.replace("Known conventions: X\n", ""), default)
 
     def test_version_and_hash_must_be_given_together(self) -> None:
