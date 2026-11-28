@@ -46,7 +46,6 @@ Marmo-Core は、Object Routing を実装する公開 Python ライブラリで�
 - `CHANGELOG.md`／リリースごとの変更履歴（Keep a Changelog 形式）／利用者に見える変更の記録先。過去のパスを含むので、現在のリポジトリ構成の根拠には使わない。
 - `.github/BRANCH_PROTECTION.md`／`main` の保護設定と必須 CI チェックの記録／マージ条件や CI ゲートを確認・変更するときに参照する。
 - `.github/PULL_REQUEST_TEMPLATE.md`／PR 本文の型／PR を作るときに埋める。
-- `要件定義書１.md`／初期の要件定義／設計の経緯を確認するとき。実装済みの項目は `CHANGELOG.md` で確認する。
 - `.claude/RESUME.md`／Claude Code のセッション再開用チェックポイント／手で編集せず、内容を作業の根拠にしない。
 
 設計判断（ADR）は `docs/decisions/README.md` が索引である。判断を変更・追加するときは既存 ADR を確認し、理由と影響を更新・記録する。次の対象を変更するときは、先に該当する ADR を読む。
