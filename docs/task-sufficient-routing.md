@@ -71,6 +71,29 @@ selector = GoalAwareSetSelector(provider, strategy="exact")
 - Kernel は既定ではこの抽出器を使わない。有効性の評価は
   [Marmo-Core #101](https://github.com/kota-kawa/Marmo-Core/issues/101) で行っている。
 
+## 過去の実行記録から要求の書き方を教える（研究用）
+
+カタログの規約は、過去の依頼の例からも伝えられる。`RequirementExample` は、過去の依頼を「依頼文」と
+「呼び出しが成功した資源の ID」として持つ。新しい依頼の抽出では、その ID を**現在の**資源の契約に引き当て、
+宣言されている 5 項目の組を例示として抽出器に見せる。人が TaskSpec を書く必要は無く、契約の書き方が
+変わっても例示は書き直さずに済む。
+
+```python
+from marmo_core import ExampleGuidedTaskSpecProvider, GoalAwareSetSelector, example_from_results
+
+example = example_from_results(goal, outcome.tool_results)   # 成功した呼び出しが無ければ None
+provider = ExampleGuidedTaskSpecProvider(llm, examples, registry.all(), vocabulary=vocabulary)
+selector = GoalAwareSetSelector(provider, strategy="greedy")
+```
+
+- 例示は要求の書き方を教えるだけで、権限も能力も与えない。資源の ID はモデルに見せない。
+- 現在の資源に無い ID、契約が観測済みでない資源は、何も寄与しない。組が 1 つも引けない例示は使わない。
+- `example_from_results` は状態が `success` の呼び出しだけを数える。実行全体が成功したかどうかは見ない。
+  途中で止まった実行や、余分な資源を呼んだ実行も例示になる。
+- 一覧（メニュー）は見せないので、固定語彙（`vocabulary`）が要る。
+- Kernel は既定ではこの仕組みを使わない。有効性の評価は
+  [Marmo-Core #101](https://github.com/kota-kawa/Marmo-Core/issues/101) で行っている。
+
 ## 集合選択
 
 `DependencyExpandedCandidatePool(max_candidates=128)` を Kernel の

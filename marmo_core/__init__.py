@@ -193,6 +193,10 @@ from .requirement_grounding import (
     AffordanceMenu, AffordanceOption, GroundedTaskSpecExtractor, GroundedTaskSpecProvider,
     affordance_menu, supported_quote,
 )
+from .requirement_examples import (
+    ExampleGuidedTaskSpecProvider, RequirementExample, example_conventions, example_from_results,
+    render_conventions, resolve_examples,
+)
 from .sufficient_selector import GoalAwareSetSelector
 from .semantic import (
     EmbeddingProvider,
@@ -233,6 +237,8 @@ __all__ = [
     "GoalAwareSetSelector",
     "AffordanceMenu", "AffordanceOption", "GroundedTaskSpecExtractor",
     "GroundedTaskSpecProvider", "affordance_menu", "supported_quote",
+    "ExampleGuidedTaskSpecProvider", "RequirementExample", "example_conventions", "example_from_results",
+    "render_conventions", "resolve_examples",
     "Activation",
     "ActivationError",
     "AgentExecutionBackend",
