@@ -262,8 +262,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     短縮・整列するため、長い日本語の説明も冒頭が残ります。
 - Benchmarks: ToolRet paired differences and bootstrap intervals use the same
   subset-equal (macro) weighting as the tables, with the query-equal difference
-  reported separately (published tables keep the earlier values, now annotated,
-  until re-measured). ToolRet-SAE `score` accepts the published labels
+  reported separately. The published ToolRet tables and result files are
+  re-measured with this weighting; the LLM stages were rebuilt with Claude
+  Haiku 5.5 (earlier: Claude Sonnet), so values that depend on them are not
+  comparable with the earlier ones. Decomposition still improves the ranking
+  (+0.023 nDCG@10 on all 3,920 test queries), while `CoverageSetSelector` no
+  longer beats the top result on ToolRet (Set F1 −0.003; +0.012 with Sonnet
+  decompositions). `benchmarks/results/toolret-near-ties.json` is removed; its
+  row is now part of `toolret.json`. ToolRet-SAE `score` accepts the published labels
   (`--labels-input`), matches cached replies by candidate ids and order, and
   exits non-zero when inputs are missing. Results carry `metric_version`
   (version 2 adds actionable-escalation scoring), and the overlap between the
@@ -271,8 +277,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   documented. Results record the full commit, dataset revisions, input hashes,
   models, and arguments; ToolRet downloads are pinned to dataset commits.
   - ベンチマーク: ToolRet の対応差とブートストラップ区間を、表と同じサブセット等重み
-    （macro）で計算し、クエリ均等の差を別に併記します（公開表は再測定まで以前の値のままで、
-    その旨を注記）。ToolRet-SAE の `score` は公開ラベル（`--labels-input`）で採点でき、
+    （macro）で計算し、クエリ均等の差を別に併記します。ToolRet の公開表と結果ファイルは
+    この重み付けで再測定しました。LLM 段は Claude Haiku 5.5 で作り直したため（以前は Claude
+    Sonnet）、LLM 段に依存する値は以前の値と比べられません。分解による順位付けの改善は
+    残りましたが（test 全件 3,920 件で nDCG@10 +0.023）、`CoverageSetSelector` は ToolRet で
+    首位を上回らなくなりました（Set F1 −0.003。Sonnet の分解では +0.012）。
+    `benchmarks/results/toolret-near-ties.json` は削除し、その行は `toolret.json` に含めました。ToolRet-SAE の `score` は公開ラベル（`--labels-input`）で採点でき、
     キャッシュを候補 ID と順序で照合し、入力が欠けると非ゼロで終了します。結果に
     `metric_version` を記録し（版 2 は実行可能な承認要求の採点を追加）、SAE の held-out と
     過去の全件 test の重複（852 件中 431 件）を文書に記録しました。結果には完全なコミット、

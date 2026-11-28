@@ -245,9 +245,9 @@ class DecomposedRetriever(Retriever):
     descriptions -- scores its few known tokens (names, numbers) as strong
     matches. Counting the unknown terms as unmatched hands the ranking to the
     sub-tasks, which ``LLMQueryDecomposer`` writes in English. On ToolRet the
-    share averages 0.93 for English goals and 0.32 for Japanese translations
+    share averages 0.92 for English goals and 0.32 for Japanese translations
     of them; the discount left English nDCG@10 unchanged and raised Japanese
-    nDCG@10 from 0.057 to 0.134 (``benchmarks/README.md``). The index is the
+    nDCG@10 from 0.046 to 0.115 (``benchmarks/README.md``). The index is the
     inner retriever's own when it is, or wraps, a ``LexicalRetriever``;
     otherwise one is built per registry content revision. The share is
     lexical: with a multilingual embedding model behind ``HybridRetriever``

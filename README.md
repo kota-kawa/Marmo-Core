@@ -256,12 +256,12 @@ At 100,000 resources the hierarchy trades some accuracy for the latency gain. Th
 | | nDCG@10 | Completeness@10 | Set F1 |
 | --- | --- | --- | --- |
 | Hybrid search (BM25F + `all-MiniLM-L6-v2`), top result | 0.243 | 0.230 | 0.159 |
-| + LLM decomposition (`DecomposedRetriever`) | 0.266 | 0.244 | 0.176 (top result), 0.181 (`CoverageSetSelector`) |
-| + LLM re-ranking of the top 30 | **0.286** | **0.258** | — |
-| + LLM set selection (`LLMSetSelector`, top 20) | — | — | **0.243** |
-| Japanese goals over the same English catalog (206 queries): hybrid → + decomposition | 0.029 → 0.134 | 0.029 → 0.119 | 0.024 → 0.082 |
+| + LLM decomposition (`DecomposedRetriever`) | 0.265 | 0.247 | 0.169 (top result), 0.154 (`CoverageSetSelector`) |
+| + LLM re-ranking of the top 30 | **0.326** | **0.299** | — |
+| + LLM set selection (`LLMSetSelector`, top 20) | — | — | **0.206** |
+| Japanese goals over the same English catalog (206 queries): hybrid → + decomposition | 0.028 → 0.115 | 0.029 → 0.124 | 0.022 → 0.053 |
 
-The LLM steps used Claude Sonnet, one call each per goal. Decomposition and re-ranking improved on hybrid search, and LLM set selection on the top result of the same candidates, with 95% confidence (paired bootstrap). On all 3,920 test queries, decomposition gained +0.014 nDCG@10 and coverage selection +0.012 Set F1 over the top result (0.229 with `include_within=0.95`, against 0.234 for an oracle that knows the gold set size); on the smaller sample the coverage gain was within noise. The benchmark README has both runs and the methods that did not help.
+The LLM steps used Claude Haiku 5.5, one call each per goal. Decomposition and re-ranking improved on hybrid search, and LLM set selection on the top result of the same candidates, with 95% confidence (paired bootstrap). On all 3,920 test queries, decomposition gained +0.023 nDCG@10. Coverage selection did not improve Set F1 over the top result in this measurement (−0.015 on the sample, −0.003 on all test queries). With decompositions from Claude Sonnet it had gained +0.012 on all test queries, so its gain depends on the decomposing model. The benchmark README has both runs, the comparison with the earlier Sonnet measurement, and the methods that did not help.
 
 ## Lessons turned into guardrails
 
@@ -463,7 +463,7 @@ selection = LLMSetSelector(OpenAICompatibleLLMProvider()).select(
 )
 ```
 
-On the public ToolRet benchmark (44,453 tools), decomposition improved the ranking and `LLMSetSelector` chose the best sets (Set F1 0.243 against 0.18–0.19 for the rules). The ToolRet section of [benchmarks/README.en.md](benchmarks/README.en.md) has the numbers and the methods that did not help.
+On the public ToolRet benchmark (44,453 tools), decomposition improved the ranking and `LLMSetSelector` chose the best sets (Set F1 0.206 against 0.14–0.18 for the rules). The ToolRet section of [benchmarks/README.en.md](benchmarks/README.en.md) has the numbers and the methods that did not help.
 
 ## Execution notes
 
@@ -759,12 +759,12 @@ Kernel の既定の Selector は、より単純な `RuleBasedSetSelector` です
 | | nDCG@10 | Completeness@10 | Set F1 |
 | --- | --- | --- | --- |
 | hybrid 検索（BM25F + `all-MiniLM-L6-v2`）、首位 | 0.243 | 0.230 | 0.159 |
-| ＋ LLM 分解（`DecomposedRetriever`） | 0.266 | 0.244 | 0.176（首位）、0.181（`CoverageSetSelector`） |
-| ＋ 上位 30 件の LLM 再ランク | **0.286** | **0.258** | — |
-| ＋ LLM による集合選択（`LLMSetSelector`、上位 20 件） | — | — | **0.243** |
-| 同じ英語カタログに日本語のゴール（206 件）: hybrid → ＋分解 | 0.029 → 0.134 | 0.029 → 0.119 | 0.024 → 0.082 |
+| ＋ LLM 分解（`DecomposedRetriever`） | 0.265 | 0.247 | 0.169（首位）、0.154（`CoverageSetSelector`） |
+| ＋ 上位 30 件の LLM 再ランク | **0.326** | **0.299** | — |
+| ＋ LLM による集合選択（`LLMSetSelector`、上位 20 件） | — | — | **0.206** |
+| 同じ英語カタログに日本語のゴール（206 件）: hybrid → ＋分解 | 0.028 → 0.115 | 0.029 → 0.124 | 0.022 → 0.053 |
 
-LLM の各段は Claude Sonnet で、ゴールごとに 1 回ずつ呼び出します。分解と再ランクは hybrid 検索に対して、LLM 集合選択は同じ候補の首位に対して、95% 信頼区間（対応のあるブートストラップ）で改善しました。test 分割の全件（3,920 件）では、分解で nDCG@10 が +0.014、被覆型の集合選択で首位比 Set F1 が +0.012 改善しました（`include_within=0.95` で 0.229。正解件数を知る oracle は 0.234）。小さい標本では被覆型の差は誤差の範囲でした。両方の結果と、効果がなかった手法はベンチマークの README にあります。
+LLM の各段は Claude Haiku 5.5 で、ゴールごとに 1 回ずつ呼び出します。分解と再ランクは hybrid 検索に対して、LLM 集合選択は同じ候補の首位に対して、95% 信頼区間（対応のあるブートストラップ）で改善しました。test 分割の全件（3,920 件）では、分解で nDCG@10 が +0.023 改善しました。被覆型の集合選択は、この測定では首位の Set F1 を上回りませんでした（標本で −0.015、test 全件で −0.003）。Claude Sonnet の分解では test 全件で +0.012 だったので、被覆型の利得は分解するモデルに依存します。両方の結果、以前の Sonnet での測定との比較、効果がなかった手法はベンチマークの README にあります。
 
 ### 再発防止
 
@@ -966,7 +966,7 @@ selection = LLMSetSelector(OpenAICompatibleLLMProvider()).select(
 )
 ```
 
-公開ベンチマーク ToolRet（44,453 ツール）では、分解で順位が改善し、`LLMSetSelector` が最も良い集合を選びました（Set F1 0.243、規則ベースは 0.18〜0.19）。数値と、効果がなかった手法は [benchmarks/README.md](benchmarks/README.md) の ToolRet 節にあります。
+公開ベンチマーク ToolRet（44,453 ツール）では、分解で順位が改善し、`LLMSetSelector` が最も良い集合を選びました（Set F1 0.206、規則ベースは 0.14〜0.18）。数値と、効果がなかった手法は [benchmarks/README.md](benchmarks/README.md) の ToolRet 節にあります。
 
 ### 実行時の注意
 
