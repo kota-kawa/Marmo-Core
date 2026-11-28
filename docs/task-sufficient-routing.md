@@ -45,6 +45,32 @@ kernel = Kernel(registry, llm, selector=selector)
 要求抽出器は利用者の依頼だけから spec を作り、正解資源 ID や評価用の隠れた状態を
 見てはならない。自然言語からの自動抽出精度は、本変更で評価済みではない。
 
+## 要求の抽出をカタログの宣言に接地する（研究用）
+
+資源契約と照合できる要求を書くには、対象の型や出力の型にどの値を使うかという、カタログの作者の規約を
+知る必要がある。依頼文と語彙だけを見る抽出器には、この規約が分からない。
+`GroundedTaskSpecExtractor` は、候補資源の観測済み契約が宣言する 5 項目の組を重複なしの一覧にして
+モデルに見せ、要求を一覧の番号と依頼文からの引用で答えさせる。
+
+```python
+from marmo_core import GoalAwareSetSelector, GroundedTaskSpecExtractor, GroundedTaskSpecProvider
+
+extractor = GroundedTaskSpecExtractor(llm)
+provider = GroundedTaskSpecProvider(extractor, registry, retriever, top_k=25)
+selector = GoalAwareSetSelector(provider, strategy="exact")
+```
+
+- 一覧には資源の ID・名前・説明・検索順位を載せない。権限が足りない資源の宣言は載せる
+  （選択器が権限追加を判断できるようにするため）。
+- 接地は要求の書き方を変えるだけで、権限も能力も与えない。契約が正しいことは仮定である。
+- 一覧に無い能力が必要な場合、対象が曖昧な場合、番号や引用が不正な場合、モデル呼び出しが失敗した場合は、
+  `unknown_items` に記録する。選択器はその TaskSpec では棄権する。近い宣言で埋めることはしない。
+- 引用は依頼文に含まれることだけを検査する（前後の引用符と空白は除く）。意味の正しさは検査しない。
+- `extract(goal)` を資源なしで呼ぶと、同じ指示のまま、固定語彙から 5 項目を書かせる。
+  一覧の効果を切り分ける比較条件として使う。
+- Kernel は既定ではこの抽出器を使わない。有効性の評価は
+  [Marmo-Core #101](https://github.com/kota-kawa/Marmo-Core/issues/101) で行っている。
+
 ## 集合選択
 
 `DependencyExpandedCandidatePool(max_candidates=128)` を Kernel の

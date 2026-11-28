@@ -189,6 +189,10 @@ from .routing_contracts import (
     Affordance, AllOf, OneOf, Provenance, Requirement, ResourceContract, TaskSpec,
     TruthValue, match_requirement,
 )
+from .requirement_grounding import (
+    AffordanceMenu, AffordanceOption, GroundedTaskSpecExtractor, GroundedTaskSpecProvider,
+    affordance_menu, supported_quote,
+)
 from .sufficient_selector import GoalAwareSetSelector
 from .semantic import (
     EmbeddingProvider,
@@ -227,6 +231,8 @@ __all__ = [
     "Affordance", "AllOf", "OneOf", "Provenance", "Requirement",
     "ResourceContract", "TaskSpec", "TruthValue", "match_requirement",
     "GoalAwareSetSelector",
+    "AffordanceMenu", "AffordanceOption", "GroundedTaskSpecExtractor",
+    "GroundedTaskSpecProvider", "affordance_menu", "supported_quote",
     "Activation",
     "ActivationError",
     "AgentExecutionBackend",
