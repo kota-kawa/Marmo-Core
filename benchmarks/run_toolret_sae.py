@@ -103,7 +103,13 @@ from marmo_core import (  # noqa: E402
 from marmo_core.llm import ChatMessage, LLMProvider  # noqa: E402
 
 import toolret  # noqa: E402
-from _claude_cli import ClaudeCLIProvider, ModelRefusalError  # noqa: E402
+from _claude_cli import (  # noqa: E402
+    ClaudeCLIProvider,
+    ModelRefusalError,
+    SpendLedger,
+    add_spend_arguments,
+    ledger_from_arguments,
+)
 from _provenance import stamp  # noqa: E402
 from run_toolret_benchmark import DECOMPOSITION_CACHE, ReplayOnly, build_retriever, load_cache, split_of  # noqa: E402
 
@@ -434,8 +440,11 @@ def run_jobs(jobs: list, work: Callable, caches: dict[Path, LockedCache], worker
         save_cache(path, cache)
 
 
+SPEND_LEDGER: SpendLedger | None = None  # set by main() from --spend-cap-usd / --spend-ledger
+
+
 def make_llm(model: str) -> LLMProvider:
-    return ClaudeCLIProvider(model)
+    return ClaudeCLIProvider(model, ledger=SPEND_LEDGER)
 
 
 def stage_label(data: Data, queries: list, model: str, workers: int) -> None:
@@ -1330,7 +1339,10 @@ def main() -> None:
                              "reproduces the published values, matched does not depend on the gold tools' order")
     parser.add_argument("--substitutes-output",
                         default=str(Path(__file__).parent / "results" / "toolret-substitutes.json"))
+    add_spend_arguments(parser)
     args = parser.parse_args()
+    global SPEND_LEDGER
+    SPEND_LEDGER = ledger_from_arguments(parser, args)
 
     if not (toolret.DATA_DIR / "tools" / "web.parquet").exists():
         raise SystemExit("ToolRet is not downloaded: python3 benchmarks/run_toolret_benchmark.py --download")

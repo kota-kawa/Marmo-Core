@@ -41,7 +41,7 @@ from marmo_core import (  # noqa: E402
 )
 
 import toolret  # noqa: E402
-from _claude_cli import ClaudeCLIProvider  # noqa: E402
+from _claude_cli import ClaudeCLIProvider, add_spend_arguments, ledger_from_arguments  # noqa: E402
 from run_toolret_benchmark import (  # noqa: E402
     DECOMPOSITION_CACHE,
     TRANSLATION_CACHE,
@@ -126,7 +126,9 @@ def main() -> None:
     parser.add_argument("--ja-per-subset", type=int, default=6, help="test-split queries per subset to translate")
     parser.add_argument("--split", choices=["all", "dev", "test", "heldout"], default="all",
                         help="restrict the queries to one split; heldout is the frozen ToolRet-SAE held-out split")
+    add_spend_arguments(parser)
     args = parser.parse_args()
+    ledger = ledger_from_arguments(parser, args)
 
     every = toolret.load_queries()
     queries = toolret.sample_queries(every, args.per_subset or None, seed=args.seed)
@@ -140,7 +142,7 @@ def main() -> None:
         queries = queries[: args.limit]
     tasks = list(dict.fromkeys(query.query for query in queries))
     try:
-        llm = ClaudeCLIProvider(args.model)
+        llm = ClaudeCLIProvider(args.model, ledger=ledger)
     except ValueError as error:
         parser.error(str(error))
     lock = threading.Lock()
@@ -216,6 +218,8 @@ def main() -> None:
     for cache_path, cache in caches.items():
         save(cache_path, cache)
     print("done", {str(path.name): len(cache) for path, cache in caches.items()})
+    if ledger is not None:
+        print("spend ledger", ledger.snapshot())
 
 
 if __name__ == "__main__":
