@@ -631,34 +631,36 @@ python3 benchmarks/run_toolret_sae.py --stage methods --split heldout --sample 4
 python3 benchmarks/run_toolret_sae.py --stage score --stage export-labels --stage substitutes --method llm-set
 ```
 
-- **分割**: dev / test は `run_toolret_benchmark.py` の標本（1,689 件）を半分に分けたもの。held-out は標本に含まれないクエリ 852 件（18 サブセット）で、ID を [`toolret_sae_heldout_ids.json`](toolret_sae_heldout_ids.json) に固定しています。下の評価は、そのうち ID の SHA-1 順の先頭 400 件です（有効な変種は S 400、E 205、A 167）。
+- **分割**: dev / test は `run_toolret_benchmark.py` の標本（1,689 件）を半分に分けたもの。held-out は標本に含まれないクエリ 852 件（18 サブセット）で、ID を [`toolret_sae_heldout_ids.json`](toolret_sae_heldout_ids.json) に固定しています。下の評価は、そのうち ID の SHA-1 順の先頭 400 件です（有効な変種は S 400、E 207、A 175）。
 - **過去の評価との重複**（#78）: held-out が除外するのは**標本（1,689 件）だけ**です。`run_toolret_benchmark.py` と同じ分割規則（ID の SHA-1 の偶奇）で test にあたる全件（3,920 件）は、[`results/toolret-test-full.json`](results/toolret-test-full.json) で検索と分解を測定していますが、除外していません。取得を固定した ToolRet データ（下記）で数えると、固定 852 件のうち 431 件、評価に使う 400 件のうち 206 件が、この test 全件に ID で含まれます。ID が違っても、空白を畳んで小文字にした（`toolret.normalize_text`）クエリ本文が test 全件と一致するものが、852 件中 13 件、400 件中 5 件あります。標本との重複は ID も本文も 0 件です。test 全件の結果が手法の調整に使われたかは記録がなく、未確認です。したがって **ToolRet-SAE の held-out は、検索・分解手法については過去の評価と独立な「未使用データ」ではありません**。この節の結果は、標本（dev）で調整した規則と LLM 手法を held-out で比べたものとして読んでください。
 - **未使用データの分割**: 検索・分解手法を未使用データで評価したと主張する場合は、標本・test 全件・SAE の held-out の ID と、正規化した本文が一致するクエリをすべて除いた分割を、評価の前に `python3 benchmarks/run_toolret_sae.py --stage fresh-heldout` で固定してコミットします（`toolret.select_fresh_heldout`。現在のデータでは 14 サブセット 853 件、ID 一覧の SHA-256 は `6278eecd…`）。固定した一覧はまだこのリポジトリにないので、この節の結果はどれも未使用データでの評価ではありません。この分割を採点に使う機能は未実装です。旧分割（`select_heldout` と `toolret_sae_heldout_ids.json`）の関数・ID・既定値は変えておらず、この節の結果は旧分割のまま比較できます。
-- **モデル**: ラベルは Sonnet、`LLMSetSelector` と第 2 アノテータは Haiku。検索は `llm:hybrid-0.5`、各手法は上位 20 候補から選びます。
+- **モデル**: ラベルは Sonnet（公開ラベル）、分解と `LLMSetSelector` は Claude Haiku 5.5。検索は `llm:hybrid-0.5`、各手法は上位 20 候補から選びます。
 - **主指標**: S / E / A の正答率のマクロ平均。S は必要な正解（または代替）を全部含む集合を選んだときだけ正答です。
 
-結果は [`results/toolret-sae-heldout.json`](results/toolret-sae-heldout.json) です。規則の関連度の下限は dev（833 件）で選んでいます。
+結果は [`results/toolret-sae-heldout.json`](results/toolret-sae-heldout.json) です（2026-11-28 に、空のキャッシュから公開ラベルで測り直した値。下の「再測定の条件」）。規則の関連度の下限は dev（833 件）で選んでいます。「版 2」の列は、下の「指標の版」の採点です。
 
-| held-out（400 クエリ） | 関連度の下限 | マクロ正答率 | S 正答 | E 正答 | A 正答 | S Set F1 | S 不要 escalate | E 誤選択 | A 誤選択 |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 首位（阻まれていれば escalate） | 0.65（dev） | 0.367 | 0.065 | 0.156 | 0.880 | 0.067 | 0.033 | 0.059 | 0.066 |
-| `GreedyConstrainedSetSelector` | 0.55（dev） | 0.386 | 0.160 | 0.268 | 0.731 | 0.108 | 0.068 | 0.161 | 0.174 |
-| `CoverageSetSelector` | 0.55（dev） | 0.379 | 0.138 | 0.268 | 0.731 | 0.122 | 0.070 | 0.161 | 0.174 |
-| `LLMSetSelector`（Haiku、1 回） | — | 0.376 | 0.600 | 0.283 | 0.246 | 0.300 | 0.020 | 0.576 | 0.683 |
+| held-out（400 クエリ） | 関連度の下限 | マクロ正答率 | S 正答 | E 正答 | A 正答 | S Set F1 | S 不要 escalate | E 誤選択 | A 誤選択 | E 正答（版 2） | マクロ正答率（版 2） |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 首位（阻まれていれば escalate） | 0.75（dev） | 0.348 | 0.015 | 0.087 | 0.943 | 0.018 | 0.033 | 0.029 | 0.029 | 0.014 | 0.324 |
+| `GreedyConstrainedSetSelector` | 0.75（dev） | 0.349 | 0.018 | 0.087 | 0.943 | 0.018 | 0.033 | 0.029 | 0.029 | 0.000 | 0.320 |
+| `CoverageSetSelector` | 0.75（dev） | 0.348 | 0.015 | 0.087 | 0.943 | 0.018 | 0.033 | 0.029 | 0.029 | 0.000 | 0.319 |
+| `LLMSetSelector`（Haiku 5.5、1 回） | — | 0.343 | 0.600 | 0.222 | 0.206 | 0.296 | 0.013 | 0.628 | 0.743 | 0.000 | 0.269 |
 
-- **関連度の下限では状態を決められません**。dev に合わせた下限は S をほとんど選べなくなり（greedy の S 正答 0.160）、棄権に寄ります。
-- **LLM に集合と状態をまとめて決めさせると、選んでしまいます**。`LLMSetSelector` は S では最良ですが、A の 68%、E の 58% で何かを選びました。主指標は greedy と差がありません（−0.010 [−0.053, 0.033]）。
-- 要求ごとの能力判定と宣言制約から状態を決める研究用の Selector は、同じ held-out で主指標 0.552 でしたが（`research/requirement-coverage` ブランチのコミット f4ef28e7 にある `benchmarks/results/toolret-sae-heldout.json`。このブランチの結果ファイルには含まれません）、事前登録した採用基準の 1 つ（S での不要な escalate）を満たさなかったので、`main` には入れていません（#45、`research/requirement-coverage` ブランチ）。
+- **関連度の下限では状態を決められません**。dev に合わせた下限は S をほとんど選べなくなり（greedy の S 正答 0.018）、ほぼ常に棄権します。「常に棄権」のマクロ正答率は 0.333 です。
+- **LLM に集合と状態をまとめて決めさせると、選んでしまいます**。`LLMSetSelector` は S では最良ですが、A の 74%、E の 63% で何かを選びました。版 1 のマクロ正答率は greedy と差がありません（−0.007 [−0.041, 0.029]）。版 2 では greedy より 0.051 低い値ですが、版 2 の差の区間は計算していません。
+- **再測定の条件**: 候補プールは、分解を Haiku 5.5 でやり直して作り直しました（以前は dev が Sonnet、held-out が Haiku）。分解の応答は再現しないので、プールは公開ラベルを作ったときのものと違います。ラベルの代替が、作り直した上位 40 候補に入らないクエリが 1,233 件中 204 件あります（結果 JSON の `inputs.label_pool_mismatch`）。有効な変種の数（E 205 → 207、A 167 → 175）と dev で選ばれる下限（0.55〜0.65 → 0.75）も変わりました。以前の表の値（コミット `60dd5a5f` の README と結果 JSON）とは、行ごとに比べられません。`LLMSetSelector` のオラクル候補（S+ / E+）の応答は取り直しておらず、結果 JSON の `oracle_candidates` は、通常の変種と同じ入力になるクエリだけの値です。
+- 要求ごとの能力判定と宣言制約から状態を決める研究用の Selector は、作り直す前のプールの held-out で主指標 0.552 でしたが（`research/requirement-coverage` ブランチのコミット f4ef28e7 にある `benchmarks/results/toolret-sae-heldout.json`。このブランチの結果ファイルには含まれません）、事前登録した採用基準の 1 つ（S での不要な escalate）を満たさなかったので、`main` には入れていません（#45、`research/requirement-coverage` ブランチ）。
 
-**指標の版**（#79）: 結果 JSON の `metric_version` が指標の版です。**上の表と [`results/toolret-sae-heldout.json`](results/toolret-sae-heldout.json) は版 1** で（このキーが無い JSON は版 1）、E は `escalate` の状態を返せば正答でした。公表結果の Haiku は E の 205 件中 58 件で escalate を返しましたが、必要な権限を名指ししたのは 0 件です（`E_named_gold_scope` 0.0）。版 2 は版 1 のキーの意味を変えずに、`correct_v2`、`macro_correct_v2`、`actionable_escalation` を足します。
+**指標の版**（#79）: 結果 JSON の `metric_version` が指標の版です。版 1 では（このキーが無い JSON は版 1）、E は `escalate` の状態を返せば正答でした。版 2 は版 1 のキーの意味を変えずに、`correct_v2`、`macro_correct_v2`、`actionable_escalation` を足します。上の表は両方の版の値を並べています。
 
 - **E の正答（版 2）**: escalate が、まだ付与されていない権限（`missing_permissions`）を名指しし、それを付与すると候補の中に必要な項目（正解ツールまたはその代替）がすべて揃い（`grant_sufficient`）、かつ求めた権限のどれか一つを外すとそれが成り立たない（`actionable`。不要な権限を求めない）こと。S の正答（`sufficient`）と A の正答は版 1 と同じです。
 - **複数項目を一つの代替が満たす場合**: 一つのツールが複数の必要な正解ツールの代替と判定されていれば、そのツール一つで各項目を満たすものとして数えます（共有被覆）。S の `sufficient` と E の `actionable` はこの意味で、正解ツールの並び順に依存しません（ラベル 2,089 件のうち 49 件に、必要な 2 つの正解で共有される代替があります）。順位の指標 `toolret.group_metrics` は一つのツールを一つの項目にしか数えず、項目の順に貪欲に割り当てるため、項目の並びで recall が変わります。版 2 の `toolret.group_metrics_matched` は一対一の最大マッチングで、順序に依存しません。`--stage substitutes --substitute-matching matched` で使えます（既定は公表値と同じ貪欲版で、結果 JSON の `group_matching` に記録します）。
-- **未測定**: 版 2 の値は測っていません。候補プールと LLM の応答キャッシュが手元に無く、LLM なしでは再計算できないためです。必要な項目が 6 件以上のクエリ 15 件（6 件が 12、7 件が 3 件）では、集合の大きさの上限（`tool` 5 件）を検査していません。
+- **版 2 の結果**: E の 207 件で、dev で調整した構成と `LLMSetSelector` では、版 1 の正答は版 2 ではほとんど正答になりません。`LLMSetSelector` は 46 件で escalate を返しましたが、権限を名指ししたのは 0 件でした（版 1 の E 正答 0.222 → 版 2 は 0.000）。greedy と被覆型は 18 件で escalate を返し、権限を名指ししたのは 3 件、付与すれば必要な項目が揃うものは 0 件でした。首位の規則は 18 件すべてで権限を名指しし、うち 3 件が版 2 の正答です（0.014）。下限を 0 にした規則は、`greedy@0` と `top1-rule@0` が 118 件、`coverage@0` が 129 件で escalate を返し、3 構成とも 39 件が版 2 の正答でした（0.188）。権限を付与すれば候補の中に必要な項目が揃う変種（91 件）に限ると 0.429 です。権限のある首位だけを選ぶ `top1-permitted@0` は escalate を返しません。**状態が `escalate` であることと、付与すれば解決する権限を挙げることは別で、後者を満たす方式は、この表の dev で調整した構成にはほとんどありません。**
+- **検査していない点**: 必要な項目が 6 件以上のクエリ 15 件（6 件が 12、7 件が 3 件）では、集合の大きさの上限（`tool` 5 件）を検査していません。版 2 の差の信頼区間は計算していません（結果 JSON の対応のある差は版 1 の値です）。
 
 **ラベルの検証と公開**（#48）:
 
-- 第 2 アノテータ（Haiku、held-out の 100 クエリ）との一致度は、代替判定（7,520 組）が κ=0.80、必要性が κ=0.79、変種の有効性が κ=0.88 でした。どちらも Claude 系のモデルなので、同系統どうしの相関は排除できません。別系統のモデルや人との一致度は未測定です。
+- 第 2 アノテータ（Haiku、held-out の 100 クエリ）との一致度は、代替判定（7,520 組）が κ=0.80、必要性が κ=0.79、変種の有効性が κ=0.88 でした。どちらも Claude 系のモデルなので、同系統どうしの相関は排除できません。別系統のモデルや人との一致度は未測定です。この一致度は、ラベルを作ったときの結果 JSON（コミット `60dd5a5f` の `results/toolret-sae-heldout.json` の `annotator_agreement`）の値です。公開ラベルから採点し直した現在の結果 JSON には、第 2 アノテータの応答が無いので、このキーはありません。
 - ラベルは [`results/toolret-sae-heldout-labels.json`](results/toolret-sae-heldout-labels.json) にあります（dev 833、test 856、held-out 400 件）。中身は ToolRet のクエリ ID とツール ID、必要性と代替の判定だけです。ラベルと held-out の ID 一覧は CC0 1.0 で公開します。ToolRet のクエリやツールの本文は含まず、再配布しません（ToolRet 側のライセンスに従ってください）。
 
 **公開ラベルから再採点する**（#77）: キャッシュが空の状態から、公開ラベル（ToolRet の ID だけを持つ）を入力にして採点します。アノテータは呼びません。必要なのは、採点に使う dev 833 件と評価する分割の候補プール（`benchmarks/cache/` に保存）と、LLM 手法を採点するときはその応答だけです。
@@ -666,7 +668,7 @@ python3 benchmarks/run_toolret_sae.py --stage score --stage export-labels --stag
 ```bash
 python -m pip install -e '.[benchmark,benchmark-toolret]'
 python3 benchmarks/run_toolret_benchmark.py --download --retrievers lexical     # 固定した revision のデータを取得
-python3 benchmarks/run_toolret_llm_stages.py --stage decompose --model sonnet --split dev
+python3 benchmarks/run_toolret_llm_stages.py --stage decompose --model haiku --split dev
 python3 benchmarks/run_toolret_llm_stages.py --stage decompose --model haiku --split heldout --sample 400
 python3 benchmarks/run_toolret_sae.py --stage pools --split dev                  # 埋め込みを計算する（MiniLM で約 40 分）
 python3 benchmarks/run_toolret_sae.py --stage pools --split heldout --sample 400
@@ -678,7 +680,9 @@ python3 benchmarks/run_toolret_sae.py --stage score --method llm-set \
 - `--labels-input` を付けると、ラベルのキャッシュではなく公開ラベルを使います。ラベルのモデル（`--label-model`）、候補の深さ、ToolRet の ID と正解ツール、分割がデータと食い違うときは、採点せずに終了します。`candidates_sha256` を持つラベル（今後の `export-labels` の出力）は、候補の ID と順序まで照合します。最初の公開版にはこの項目が無く、再構築した候補に入らない代替を持つクエリ数が結果の `inputs.label_pool_mismatch` に残ります。
 - 採点に必要な dev または評価分割のクエリが欠けていたり、候補プールが無かったりすると、不足の件数と実行すべきコマンドを表示して**非ゼロで終了**します（以前は dev=0 / held-out=0 の結果を終了コード 0 で保存しました）。`--method` で指定した LLM 手法の応答が評価クエリの一部にでも欠けるときも同じです。
 - ラベルのキャッシュは、モデル・プロンプト・正解ツールと候補の ID（順序つき）のダイジェストを含むキーで照合します。LLM 手法の応答は、プロンプト（候補の ID・順序・本文・付与済みの権限を含む）のダイジェストをキーにし、モデルごとの別ファイルに保存します。候補の順序が変わると、同じ応答でも一致せず、再生されません（以前は ID だけをキーにしたラベルの応答が、並びの違う別のツールに割り当たりました）。以前の形式のラベルのキャッシュは使われず、`--stage label` で作り直しになります。
-- 分解の応答は LLM の出力で、再実行すると保存済みのものと違うことがあります。候補プールが変わると結果も公表値と変わります。分解のモデルはキャッシュに記録されないので、上のコマンドの `--model` は、この README の記述（標本は Sonnet、held-out は Haiku）に合わせたものです。
+- 分解の応答は LLM の出力で、再実行すると保存済みのものと違うことがあります。候補プールが変わると結果も公表値と変わります。分解のモデルはキャッシュに記録されないので、上のコマンドの `--model` は、公表値を測ったときの指定（dev も held-out も Haiku）に合わせたものです。
+- **費用の上限**: LLM を呼ぶ段（`run_toolret_llm_stages.py` と `run_toolret_sae.py` の label・agree・methods）に `--spend-cap-usd <ドル> --spend-ledger <ファイル>` を付けると、CLI が報告する公表価格での費用を台帳に足し上げ、最悪の場合に上限を超える呼び出しを送る前に拒否します。公表値の再測定では、分解 1,231 回と `LLMSetSelector` 1,200 回の合計 2,431 回で、台帳の計上は 1.75 ドルでした（台帳と応答のキャッシュは git 管理外で、この回数と金額は結果 JSON からは辿れません）。上限を共有する呼び出しには、同じ台帳ファイルを指定します。
+- **CLI の設定の分離**: `ClaudeCLIProvider` は、利用者の設定（MCP サーバー、スキル、メモリ）を外して CLI を起動します（`--safe-mode --strict-mcp-config --disable-slash-commands`）。外さないと、その PC の設定がすべての呼び出しの入力に加わります。ある作業用 PC では、2 語の依頼に対して入力が 637 トークンから 117,154 トークンに増えました。本文が空のクエリ（dev の標本に 1 件）は分解されないので、候補プールの段は分解の応答を要求しません。
 - ToolRet のデータは `toolret.DATASET_REVISIONS` の commit から取得します（`toolret.download(revisions=...)` で変更できます）。結果 JSON の `inputs.toolret_data` に、取得元の revision とファイルのハッシュを記録します。
 
 **代替ツールが ToolRet の標準指標に与える影響**（[`results/toolret-substitutes.json`](results/toolret-substitutes.json)、ラベルのある 2,089 クエリ、macro）:

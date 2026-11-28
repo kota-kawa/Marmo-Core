@@ -17,19 +17,23 @@ enter every benchmark prompt.
 
 Each call reports its list-price cost (``total_cost_usd`` of the CLI's JSON
 output). A ``SpendLedger`` adds those up in a file and refuses a call whose
-worst case would pass the cap.
+worst case would pass the cap. Use one ledger file for everything that counts
+against one cap; the file lock is POSIX-only (``fcntl``).
 """
 
 from __future__ import annotations
 
 import fcntl
 import json
+import math
 import os
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 from typing import Sequence
 
+from marmo_core.budget import BudgetExceededError
 from marmo_core.errors import ProviderError
 from marmo_core.llm import ChatMessage, LLMProvider, LLMResponse, LLMToolSpec
 
@@ -38,8 +42,16 @@ class ModelRefusalError(ProviderError):
     """The model's safety system declined the request: retrying returns the same."""
 
 
-class SpendLimitError(ProviderError):
-    """The call was not sent: its worst-case cost would pass the ledger's cap."""
+class SpendLimitError(BudgetExceededError):
+    """The call was not sent: its worst-case cost would pass the ledger's cap.
+
+    A ``BudgetExceededError``, so the library's LLM components re-raise it
+    instead of recording the call as a failed reply.
+    """
+
+
+class SpendLedgerError(RuntimeError):
+    """The ledger file exists but cannot be read: its total is unknown, so no call is admitted."""
 
 
 # Benchmarks may call only these model families through the CLI, to keep
@@ -107,47 +119,75 @@ class SpendLedger:
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
     def _update(self, change) -> dict:
-        with open(self.path, "a+", encoding="utf-8") as handle:
-            fcntl.flock(handle, fcntl.LOCK_EX)
-            handle.seek(0)
-            text = handle.read()
-            state = json.loads(text) if text.strip() else {"charged_usd": 0.0, "reserved_usd": 0.0, "calls": 0,
-                                                           "unknown_cost_calls": 0, "refused_calls": 0}
-            change(state)
-            handle.seek(0)
-            handle.truncate()
-            handle.write(json.dumps(state, indent=1, sort_keys=True) + "\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-            return state
+        """Apply ``change`` to the stored state under an exclusive lock and replace the file atomically."""
+
+        with open(self.path.with_name(self.path.name + ".lock"), "a", encoding="utf-8") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            if self.path.exists():
+                try:
+                    state = json.loads(self.path.read_text(encoding="utf-8"))
+                    for key in _STATE:
+                        if isinstance(state[key], bool) or not math.isfinite(state[key]) or state[key] < 0:
+                            raise ValueError(key)
+                except (ValueError, KeyError, TypeError) as error:
+                    # An empty or damaged file must not read as "nothing spent yet".
+                    raise SpendLedgerError(f"spend ledger {self.path} is unreadable ({error}); "
+                                           "restore it or move it away before calling a model") from error
+            else:
+                state = dict(_STATE)
+            outcome = change(state)
+            handle = tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=self.path.parent,
+                                                 prefix=self.path.name + ".", delete=False)
+            try:
+                with handle:
+                    handle.write(json.dumps(state, indent=1, sort_keys=True) + "\n")
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(handle.name, self.path)
+            except BaseException:
+                Path(handle.name).unlink(missing_ok=True)
+                raise
+            return {**state, "outcome": outcome}
 
     def snapshot(self) -> dict:
-        return self._update(lambda state: None)
+        state = self._update(lambda state: None)
+        del state["outcome"]
+        return state
 
     def reserve(self, amount: float) -> None:
-        def change(state: dict) -> None:
+        def change(state: dict) -> bool:
             if state["charged_usd"] + state["reserved_usd"] + amount > self.cap_usd + 1e-12:
                 state["refused_calls"] += 1
-                state["refused"] = True
-            else:
-                state["reserved_usd"] += amount
-                state["refused"] = False
+                return False
+            state["reserved_usd"] += amount
+            return True
 
         state = self._update(change)
-        if state["refused"]:
+        if not state["outcome"]:
             raise SpendLimitError(
                 f"CLI spend cap reached: ${state['charged_usd']:.4f} charged and ${state['reserved_usd']:.4f} "
                 f"reserved of ${self.cap_usd:.2f}; a further ${amount:.4f} was refused"
             )
 
     def settle(self, reserved: float, reported: float | None) -> None:
+        """Replace a reservation by the reported cost, or charge the reservation when the cost is unknown.
+
+        A reported cost above the reservation means the worst case was not
+        one; it is charged as reported and counted in ``underestimated_calls``.
+        """
+
         def change(state: dict) -> None:
             state["reserved_usd"] = max(0.0, state["reserved_usd"] - reserved)
             state["charged_usd"] += reserved if reported is None else reported
             state["calls"] += 1
             state["unknown_cost_calls"] += reported is None
+            state["underestimated_calls"] += reported is not None and reported > reserved + 1e-12
 
         self._update(change)
+
+
+_STATE = {"charged_usd": 0.0, "reserved_usd": 0.0, "calls": 0, "unknown_cost_calls": 0, "refused_calls": 0,
+          "underestimated_calls": 0}
 
 
 class ClaudeCLIProvider(LLMProvider):
@@ -199,8 +239,7 @@ class ClaudeCLIProvider(LLMProvider):
                     problem = f"claude CLI failed: {error}"
                     continue
                 reply = _parse(completed.stdout)
-                if reply is not None and isinstance(reply.get("total_cost_usd"), (int, float)):
-                    reported = float(reply["total_cost_usd"])
+                reported = _reported_cost(reply)
                 text = str(reply.get("result") or "").strip() if reply is not None else ""
                 if completed.returncode == 0 and reply is not None and not reply.get("is_error") and text:
                     return LLMResponse(content=text)
@@ -226,6 +265,15 @@ def ledger_from_arguments(parser, args) -> SpendLedger | None:
     if (args.spend_cap_usd is None) != (args.spend_ledger is None):
         parser.error("--spend-cap-usd and --spend-ledger are given together")
     return None if args.spend_cap_usd is None else SpendLedger(args.spend_ledger, args.spend_cap_usd)
+
+
+def _reported_cost(reply: dict | None) -> float | None:
+    """The cost the CLI reports, or ``None`` when it is absent or not a finite, non-negative number."""
+
+    cost = reply.get("total_cost_usd") if reply is not None else None
+    if isinstance(cost, bool) or not isinstance(cost, (int, float)) or not math.isfinite(cost) or cost < 0:
+        return None
+    return float(cost)
 
 
 def _parse(output: str) -> dict | None:

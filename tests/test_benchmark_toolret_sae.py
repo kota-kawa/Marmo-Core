@@ -372,7 +372,6 @@ class FreshSplitStageTests(TemporaryCache):
             sae.stage_fresh_heldout(data, 1000, output)
 
 
-
 class MissingDecompositionTests(unittest.TestCase):
     def test_a_query_without_text_is_not_reported_as_missing_a_decomposition(self) -> None:
         queries = [SimpleNamespace(id="q1", query="find a flight"), SimpleNamespace(id="q2", query="  "),
